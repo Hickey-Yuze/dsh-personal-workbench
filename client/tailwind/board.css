@@ -188,9 +188,12 @@
   box-shadow: none;
 }
 
-/* 没写背景类的按钮去掉浏览器默认的灰底 */
-.dsh-pwb-dark button:not([class*='bg-']) {
+/* 没写背景类的按钮/输入框去掉浏览器默认的灰白底（time/number 原生控件白底竖条即此） */
+.dsh-pwb-dark button:not([class*='bg-']),
+.dsh-pwb-dark input:not([class*='bg-']) {
   background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
 /* 输入框清除宿主/浏览器塞进来的背景图与部件（搜索图标、spinner 槽等叠字白条），并防 grid 内溢出 */
