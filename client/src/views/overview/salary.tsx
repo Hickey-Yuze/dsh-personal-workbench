@@ -179,7 +179,7 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
 
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setEditing(false)}>
-          <div className="flex max-h-[88vh] w-96 flex-col gap-4 overflow-y-auto rounded-2xl bg-white p-5 text-[11px] text-white/60 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="dsh-pwb-card flex max-h-[88vh] w-96 flex-col gap-4 overflow-y-auto rounded-2xl p-5 text-[11px] text-white/60 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             {/* 头部 */}
             <div className="flex items-center">
               <span className="text-base font-semibold text-white">薪资设置</span>
