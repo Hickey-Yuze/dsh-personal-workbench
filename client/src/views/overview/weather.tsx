@@ -56,31 +56,48 @@ export function WeatherWidget({ rpc }: { rpc: RpcFn }) {
 
   useEffect(() => { localStorage.setItem(`dsh-pwb:${CUSTOM_KEY}`, JSON.stringify(custom)); }, [custom]);
 
+  // 经纬度 → 地名+实况（Host 代理）
+  const fetchByCoords = useCallback(async (lat: number, lon: number) => {
+    const out = await rpc('personal-workbench/weather/fetch', { lat, lon });
+    if (!out.ok || !out.value) throw new Error((out.error as { message?: string })?.message ?? '获取失败');
+    const v = out.value as AutoWeather;
+    setAuto(v);
+    localStorage.setItem(`dsh-pwb:${AUTO_KEY}`, JSON.stringify(v));
+  }, [rpc]);
+
+  // IP 定位兜底（宿主 Electron 默认拒绝 geolocation 权限；IP 精度到城市级）
+  const fetchByIp = useCallback(async () => {
+    const out = await rpc('personal-workbench/geo/ip', {});
+    if (!out.ok || !out.value) throw new Error((out.error as { message?: string })?.message ?? '定位失败');
+    const v = out.value as { lat: number; lon: number; city: string };
+    await fetchByCoords(v.lat, v.lon);
+  }, [rpc, fetchByCoords]);
+
   const locateAndFetch = useCallback(() => {
     setError('');
-    if (!('geolocation' in navigator)) { setError('当前环境不支持定位'); return; }
     setLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          const out = await rpc('personal-workbench/weather/fetch', { lat: pos.coords.latitude, lon: pos.coords.longitude });
-          if (!out.ok || !out.value) throw new Error((out.error as { message?: string })?.message ?? '获取失败');
-          const v = out.value as AutoWeather;
-          setAuto(v);
-          localStorage.setItem(`dsh-pwb:${AUTO_KEY}`, JSON.stringify(v));
-        } catch (e) {
-          setError(e instanceof Error ? e.message : '天气获取失败');
-        } finally {
-          setLoading(false);
-        }
-      },
-      (err) => {
+    const tryIp = async (reason: string) => {
+      try {
+        await fetchByIp();
+      } catch (e) {
+        setError(`${reason}，IP 定位也失败：${e instanceof Error ? e.message : '未知错误'}`);
+      } finally {
         setLoading(false);
-        setError(err.code === err.PERMISSION_DENIED ? '定位权限被拒绝，请手动记录或允许定位' : '定位失败');
-      },
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 5 * 60_000 },
-    );
-  }, [rpc]);
+      }
+    };
+    // 先试浏览器精确定位（GPS 级，可到街巷）；宿主拒绝时自动降级 IP 定位
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          void fetchByCoords(pos.coords.latitude, pos.coords.longitude).catch(() => void tryIp('精确定位后获取天气失败')).finally(() => setLoading(false));
+        },
+        (err) => { void tryIp(err.code === err.PERMISSION_DENIED ? '定位权限被拒' : '精确定位失败'); },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 5 * 60_000 },
+      );
+    } else {
+      void tryIp('当前环境不支持定位');
+    }
+  }, [rpc, fetchByCoords, fetchByIp]);
 
   // 首次挂载：无自动数据且未拒绝过 → 自动定位一次
   useEffect(() => { if (auto === null) locateAndFetch(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);

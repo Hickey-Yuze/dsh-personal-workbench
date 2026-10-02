@@ -146,6 +146,15 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         };
       }
 
+      // ── IP 定位兜底（geolocation 被宿主拒绝时用；ip-api.com 免费无 key，中文）──
+      case 'personal-workbench/geo/ip': {
+        const res = await fetch('http://ip-api.com/json/?lang=zh-CN&fields=status,lat,lon,city,regionName');
+        if (!res.ok) fail('bad-gateway', '定位服务不可达');
+        const geo = (await res.json()) as { status?: string; lat?: number; lon?: number; city?: string; regionName?: string };
+        if (geo.status !== 'success' || typeof geo.lat !== 'number' || typeof geo.lon !== 'number') fail('bad-gateway', '定位失败');
+        return { lat: geo.lat, lon: geo.lon, city: [geo.regionName, geo.city].filter(Boolean).join(' ') };
+      }
+
       // ── 法定节假日（外联代理：timor 免费接口，全年休/班安排）──
       case 'personal-workbench/holidays/fetch': {
         const p = asRecord(payload);

@@ -526,6 +526,27 @@ const CSS = `
 }
 @keyframes dsh-pwf-float-up { 0% { opacity: 0; transform: translateY(6px); } 15% { opacity: 1; } 100% { opacity: 0; transform: translateY(-46px); } }
 .dsh-pwf-floater { top: 38%; animation: dsh-pwf-float-up 0.9s ease-out forwards; }
+/* 木鱼敲击动画（照抄原版）：双份同名 keyframes 交替切换实现无重挂载重播 */
+@keyframes dsh-pwf-hammer-knock-0 { 0% { transform: rotate(6deg); } 50% { transform: rotate(-26deg); } 100% { transform: rotate(6deg); } }
+@keyframes dsh-pwf-hammer-knock-1 { 0% { transform: rotate(6deg); } 50% { transform: rotate(-26deg); } 100% { transform: rotate(6deg); } }
+@keyframes dsh-pwf-fish-knock-0 {
+  0% { transform: rotateX(14deg) rotateY(-6deg) scale(1); }
+  20% { transform: rotateX(8deg) rotateY(-20deg) scale(1.06); }
+  40% { transform: rotateX(20deg) rotateY(4deg) scale(1); }
+  60% { transform: rotateX(12deg) rotateY(16deg) scale(1); }
+  80% { transform: rotateX(16deg) rotateY(-8deg) scale(1); }
+  100% { transform: rotateX(14deg) rotateY(-6deg) scale(1); }
+}
+@keyframes dsh-pwf-fish-knock-1 {
+  0% { transform: rotateX(14deg) rotateY(-6deg) scale(1); }
+  20% { transform: rotateX(8deg) rotateY(-20deg) scale(1.06); }
+  40% { transform: rotateX(20deg) rotateY(4deg) scale(1); }
+  60% { transform: rotateX(12deg) rotateY(16deg) scale(1); }
+  80% { transform: rotateX(16deg) rotateY(-8deg) scale(1); }
+  100% { transform: rotateX(14deg) rotateY(-6deg) scale(1); }
+}
+.dsh-pwf-stage { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+
 /* 万年历：农历小字 + 休/班标记 */
 .dsh-pwb-cal-lunar { margin-top: 1px; font-size: 8px; line-height: 1.1; color: var(--pwb-dim); }
 .dsh-pwb-cal-off { background: rgba(229, 72, 77, 0.09); border-radius: 8px; }
