@@ -1,0 +1,146 @@
+@layer utilities {
+  @keyframes aurora-drift {
+    0% { transform: translate3d(-4%, -2%, 0) scale(1); }
+    50% { transform: translate3d(4%, 3%, 0) scale(1.15); }
+    100% { transform: translate3d(-4%, -2%, 0) scale(1); }
+  }
+  @keyframes orb-float {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+    33% { transform: translate3d(24px, -30px, 0) scale(1.12); }
+    66% { transform: translate3d(-18px, 22px, 0) scale(0.94); }
+  }
+  @keyframes float-y {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+  @keyframes disc-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  @keyframes glow-breathe {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+  }
+  @keyframes shine-sweep {
+    0% { transform: translateX(-120%) skewX(-18deg); }
+    60%, 100% { transform: translateX(220%) skewX(-18deg); }
+  }
+  @keyframes border-flow {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+  @keyframes grid-pan {
+    0% { background-position: 0 0; }
+    100% { background-position: 48px 48px; }
+  }
+  @keyframes tick-pop {
+    0% { transform: scale(1.1); opacity: 0.5; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  /* 木鱼敲击：双份同名 keyframes，交替切换 animation-name 实现无重挂载重播 */
+  @keyframes hammer-knock-0 {
+    0% { transform: rotate(6deg); }
+    50% { transform: rotate(-26deg); }
+    100% { transform: rotate(6deg); }
+  }
+  @keyframes hammer-knock-1 {
+    0% { transform: rotate(6deg); }
+    50% { transform: rotate(-26deg); }
+    100% { transform: rotate(6deg); }
+  }
+  @keyframes fish-knock-0 {
+    0% { transform: rotateX(14deg) rotateY(-6deg) scale(1); }
+    20% { transform: rotateX(8deg) rotateY(-20deg) scale(1.06); }
+    40% { transform: rotateX(20deg) rotateY(4deg) scale(1); }
+    60% { transform: rotateX(12deg) rotateY(16deg) scale(1); }
+    80% { transform: rotateX(16deg) rotateY(-8deg) scale(1); }
+    100% { transform: rotateX(14deg) rotateY(-6deg) scale(1); }
+  }
+  @keyframes fish-knock-1 {
+    0% { transform: rotateX(14deg) rotateY(-6deg) scale(1); }
+    20% { transform: rotateX(8deg) rotateY(-20deg) scale(1.06); }
+    40% { transform: rotateX(20deg) rotateY(4deg) scale(1); }
+    60% { transform: rotateX(12deg) rotateY(16deg) scale(1); }
+    80% { transform: rotateX(16deg) rotateY(-8deg) scale(1); }
+    100% { transform: rotateX(14deg) rotateY(-6deg) scale(1); }
+  }
+
+  .animate-tick { animation: tick-pop 0.6s ease-out; }
+
+  .animate-aurora { animation: aurora-drift 28s ease-in-out infinite; }
+  .animate-orb { animation: orb-float 24s ease-in-out infinite; }
+  .animate-float { animation: float-y 5s ease-in-out infinite; }
+  .animate-glow { animation: glow-breathe 3s ease-in-out infinite; }
+  .animate-shine { animation: shine-sweep 6s ease-in-out infinite; }
+  .animate-grid-pan { animation: grid-pan 40s linear infinite; }
+
+  /* 流光边框（配合渐变背景使用） */
+  .border-flow {
+    background: linear-gradient(
+      90deg,
+      rgba(255,255,255,0.06) 0%,
+      rgba(255,255,255,0.02) 25%,
+      rgba(0,210,106,0.35) 50%,
+      rgba(255,255,255,0.02) 75%,
+      rgba(255,255,255,0.06) 100%
+    );
+    background-size: 250% 100%;
+    animation: border-flow 4s linear infinite;
+  }
+
+  /* 隐藏滚动条 */
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ============ Liquid Glass（液态玻璃） ============ */
+@layer components {
+.liquid-glass {
+  position: relative;
+  background:
+    radial-gradient(120% 65% at 50% -18%, rgba(255, 255, 255, 0.24) 0%, rgba(255, 255, 255, 0) 55%),
+    linear-gradient(
+      160deg,
+      rgba(255, 255, 255, 0.16) 0%,
+      rgba(255, 255, 255, 0.07) 34%,
+      rgba(255, 255, 255, 0.03) 68%,
+      rgba(255, 255, 255, 0.08) 100%
+    );
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(28px) saturate(170%);
+  -webkit-backdrop-filter: blur(28px) saturate(170%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 0 32px rgba(255, 255, 255, 0.05),
+    0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+/* 可交互液态玻璃 hover 提亮 */
+.liquid-glass-hover {
+  transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+.liquid-glass-hover:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+  background:
+    radial-gradient(120% 65% at 50% -18%, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0) 55%),
+    linear-gradient(
+      160deg,
+      rgba(255, 255, 255, 0.2) 0%,
+      rgba(255, 255, 255, 0.1) 34%,
+      rgba(255, 255, 255, 0.04) 68%,
+      rgba(255, 255, 255, 0.1) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    inset 0 0 32px rgba(255, 255, 255, 0.06),
+    0 10px 40px rgba(0, 0, 0, 0.45);
+}
+}

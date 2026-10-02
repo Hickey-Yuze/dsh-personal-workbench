@@ -1,0 +1,13 @@
+# dsh-personal-workbench 的宿主组合插入层：向 cordis 组合树插入插件实例。
+# 顶层必须是 YAML 数组（loader patch entries，见 profile 的 cordis.patch.yml 约定）。
+# 【铁律】insert 的 id 必须等于包名（dsh-personal-workbench）：宿主 client 清单按 id
+# 定位包，id≠包名时 Host 半区照常启动但 client bundle 永不广播。
+# 配置键与 src/config.ts 的 personalWorkbenchSchema 对应；默认值在 schema 中兜底。
+- insert:
+    - id: dsh-personal-workbench
+      name: dsh-personal-workbench
+      # config:
+      #   dataDir: "/Users/yuze/.dsh/personal-workbench"          # 插件自有数据目录（待办、日程 JSON）
+      #   obsidianUrl: "http://127.0.0.1:27123"                   # 知识库地址（本机 Obsidian Local REST API）
+      #   obsidianKeyPath: "/Users/yuze/.dsh/secrets/obsidian-rest-api.key"
+      #   obsidianTimeoutMs: 4000                                 # 知识库请求超时（毫秒）

@@ -1,0 +1,296 @@
+/*
+ * 待办看板的主题适配层 —— 让它长在宿主的背景色上，而不是自带一套黑底。
+ *
+ * 搬过来的组件通篇用 text-white / bg-white/[0.06] / border-white/[0.08] 来表达
+ * 「比背景更亮一档」。在浅色宿主里这个语义应该反过来：比背景更深一档。
+ *
+ * 关键就在于下面这一行：Tailwind v4 把这些 white 系列**全部**编译成
+ *   color: var(--color-white)
+ *   color: color-mix(in oklab, var(--color-white) N%, transparent)
+ * 所以只要把 --color-white 重定向到宿主的主文字色，整套组件的文字、卡片底色、
+ * 分隔线都会跟着宿主主题走，一行源码都不用动，也不用逐个类去覆盖。
+ */
+.dsh-pwb-dark {
+  --color-white: var(--dsw-alias-label-primary, #1f2328);
+
+  position: relative;
+  min-height: 100%;
+  /* 不设背景：面板背景继续跟随宿主，这里只提供文字基色与内边距 */
+  background: transparent;
+  color: var(--dsw-alias-label-primary, #1f2328);
+  padding: 20px 24px 30px;
+}
+
+/* 原版的液态玻璃是给黑底做的（白色半透明 + 白色描边），这里换成浅色底上的玻璃 */
+.dsh-pwb-dark .liquid-glass {
+  background:
+    radial-gradient(120% 65% at 50% -18%, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0) 55%),
+    linear-gradient(
+      160deg,
+      rgba(255, 255, 255, 0.92) 0%,
+      rgba(255, 255, 255, 0.74) 34%,
+      rgba(255, 255, 255, 0.68) 68%,
+      rgba(255, 255, 255, 0.82) 100%
+    );
+  border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.09));
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 2px 10px rgba(0, 0, 0, 0.06);
+}
+
+.dsh-pwb-dark .liquid-glass-hover:hover {
+  border-color: var(--dsw-alias-border-l3, rgba(0, 0, 0, 0.14));
+  background:
+    radial-gradient(120% 65% at 50% -18%, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0) 55%),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.86) 45%, rgba(255, 255, 255, 0.92) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    0 6px 18px rgba(0, 0, 0, 0.08);
+}
+
+/* 抵消面板 body 的 padding，让画布铺满 */
+.dsh-pwb-board-wrap {
+  margin: -4px -24px -24px;
+  min-height: calc(100% + 28px);
+}
+
+/* 紧凑头部：待办页自带标题，面板头部只留返回与状态 */
+.dsh-pwb-head-slim {
+  align-items: center;
+  padding: 12px 24px;
+}
+
+.dsh-pwb-head-slim .dsh-pwb-chip {
+  margin-left: auto;
+}
+
+/*
+ * 语义色翻面：原版这些变量都是「在纯黑上叠一层白」（--card: #ffffff0a 之类），
+ * 用在浅色宿主里等于隐形（弹窗、下拉菜单、输入框都会看不见）。
+ * 这里统一换成「在浅色上叠一层黑」，并优先取宿主自己的层级色。
+ * --primary 保持原版的亮绿不动 —— 那是这个页面的识别色。
+ */
+.dsh-pwb-dark {
+  --background: var(--dsw-alias-bg-base, #ffffff);
+  --foreground: var(--dsw-alias-label-primary, #1f2328);
+  --card: var(--dsw-alias-bg-layer-1, #ffffff);
+  --card-foreground: var(--dsw-alias-label-primary, #1f2328);
+  --popover: var(--dsw-alias-bg-layer-3, #ffffff);
+  --popover-foreground: var(--dsw-alias-label-primary, #1f2328);
+  --secondary: rgba(0, 0, 0, 0.05);
+  --secondary-foreground: var(--dsw-alias-label-secondary, #444444);
+  --muted: rgba(0, 0, 0, 0.05);
+  --muted-foreground: var(--dsw-alias-label-tertiary, #6b7280);
+  --accent: rgba(0, 0, 0, 0.07);
+  --accent-foreground: var(--dsw-alias-label-primary, #1f2328);
+  --border: rgba(0, 0, 0, 0.1);
+  --input: rgba(0, 0, 0, 0.05);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   对比度做实（第二版）：上一版只做了「白↔深」的语义翻面，但原版那些
+   4%/6% 的白色面是给黑底设计的 —— 同样 6% 的深色在白底上等于隐形。
+   这版按浅色 UI 的常规做法直接把档位做实：
+   · 卡片靠「白底 + 可见边框 + 阴影」成形（liquid-glass 覆盖已在上文）
+   · 半透明面（输入框底 / 图标底 / hover 面）→ 极浅灰
+   · 文字与边框按档位加深，保证白底可读
+   ─────────────────────────────────────────────────────────────────── */
+
+/* ── 文字档位加深 ── */
+.dsh-pwb-dark .text-white\/15 { color: rgba(31, 35, 40, 0.40); }
+.dsh-pwb-dark .text-white\/25 { color: rgba(31, 35, 40, 0.50); }
+.dsh-pwb-dark .text-white\/30 { color: rgba(31, 35, 40, 0.55); }
+.dsh-pwb-dark .text-white\/35 { color: rgba(31, 35, 40, 0.58); }
+.dsh-pwb-dark .text-white\/40 { color: rgba(31, 35, 40, 0.62); }
+.dsh-pwb-dark .text-white\/45 { color: rgba(31, 35, 40, 0.66); }
+.dsh-pwb-dark .text-white\/50 { color: rgba(31, 35, 40, 0.70); }
+.dsh-pwb-dark .text-white\/55 { color: rgba(31, 35, 40, 0.74); }
+.dsh-pwb-dark .text-white\/60 { color: rgba(31, 35, 40, 0.78); }
+.dsh-pwb-dark .text-white\/70 { color: rgba(31, 35, 40, 0.86); }
+.dsh-pwb-dark .text-white\/80 { color: rgba(31, 35, 40, 0.93); }
+.dsh-pwb-dark .text-white\/90 { color: rgba(31, 35, 40, 1); }
+.dsh-pwb-dark .placeholder-white\/30::placeholder { color: rgba(31, 35, 40, 0.32); }
+
+/* ── 半透明面 → 极浅灰（在白底上形成可见但克制的面） ── */
+.dsh-pwb-dark .bg-white\/\[0\.04\], .dsh-pwb-dark .bg-white\/5 { background-color: rgba(31, 35, 40, 0.035); }
+.dsh-pwb-dark .bg-white\/\[0\.06\] { background-color: rgba(31, 35, 40, 0.05); }
+.dsh-pwb-dark .bg-white\/\[0\.08\] { background-color: rgba(31, 35, 40, 0.065); }
+.dsh-pwb-dark .bg-white\/\[0\.1\], .dsh-pwb-dark .bg-white\/10 { background-color: rgba(31, 35, 40, 0.08); }
+.dsh-pwb-dark .bg-white\/\[0\.12\] { background-color: rgba(31, 35, 40, 0.095); }
+.dsh-pwb-dark .bg-white\/\[0\.18\] { background-color: rgba(31, 35, 40, 0.13); }
+.dsh-pwb-dark .bg-white\/20 { background-color: rgba(31, 35, 40, 0.14); }
+.dsh-pwb-dark .bg-white\/30 { background-color: rgba(31, 35, 40, 0.21); }
+.dsh-pwb-dark .bg-white\/40 { background-color: rgba(31, 35, 40, 0.27); }
+.dsh-pwb-dark .bg-white { background-color: rgba(31, 35, 40, 0.88); }
+
+/* hover 变体同步翻面 */
+.dsh-pwb-dark .hover\:bg-white\/\[0\.04\]:hover { background-color: rgba(31, 35, 40, 0.04); }
+.dsh-pwb-dark .hover\:bg-white\/\[0\.06\]:hover { background-color: rgba(31, 35, 40, 0.055); }
+.dsh-pwb-dark .hover\:bg-white\/\[0\.08\]:hover { background-color: rgba(31, 35, 40, 0.075); }
+.dsh-pwb-dark .hover\:bg-white\/\[0\.1\]:hover { background-color: rgba(31, 35, 40, 0.09); }
+
+/* ── 边框档位加深（卡片的轮廓就靠这些） ── */
+.dsh-pwb-dark .border-white\/5,
+.dsh-pwb-dark .border-white\/\[0\.06\] { border-color: rgba(31, 35, 40, 0.10); }
+.dsh-pwb-dark .border-white\/\[0\.08\] { border-color: rgba(31, 35, 40, 0.12); }
+.dsh-pwb-dark .border-white\/10,
+.dsh-pwb-dark .border-white\/\[0\.1\] { border-color: rgba(31, 35, 40, 0.14); }
+.dsh-pwb-dark .border-white\/15,
+.dsh-pwb-dark .border-white\/\[0\.18\] { border-color: rgba(31, 35, 40, 0.18); }
+.dsh-pwb-dark .border-white\/20 { border-color: rgba(31, 35, 40, 0.22); }
+
+.dsh-pwb-dark .ring-white\/60 { --tw-ring-color: rgba(31, 35, 40, 0.35); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   弹层双保险。Tailwind 的 utilities 全部在 @layer 里 —— 宿主的任何
+   未分层规则都能压过它们。任务编辑弹窗（fixed inset-0 z-50）一旦丢了
+   inset 约束就会贴回文档流原位，看起来像「嵌」在页面中间。
+   这里用未分层规则 + 更高特异性把三件事全部钉死：
+   铺满定位、全屏遮罩、面板之最顶层。
+   ─────────────────────────────────────────────────────────────────── */
+.dsh-pwb-dark .fixed.inset-0.z-50 {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 9999;
+}
+
+.dsh-pwb-dark .fixed.inset-0.z-50.bg-black\/60 {
+  background-color: rgba(0, 0, 0, 0.55);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   第三轮美化：原生控件边框 + 框线减重。
+   ─────────────────────────────────────────────────────────────────── */
+
+/* ── 表单控件重置（我们刻意没导 preflight，input/button 还顶着浏览器的
+      默认黑边框和灰底 —— 搜索框、详情面板里那些突兀的「框」多半是它） ── */
+.dsh-pwb-dark input,
+.dsh-pwb-dark textarea,
+.dsh-pwb-dark select,
+.dsh-pwb-dark button {
+  font-family: inherit;
+  color: inherit;
+}
+
+/* 只处理没有自带边框类的控件；有 border-* 类的交给工具类自己管 */
+.dsh-pwb-dark input:not([class*='border']):not([class*='ring']),
+.dsh-pwb-dark textarea:not([class*='border']):not([class*='ring']),
+.dsh-pwb-dark select:not([class*='border']):not([class*='ring']),
+.dsh-pwb-dark button:not([class*='border']):not([class*='ring']) {
+  border: none;
+  box-shadow: none;
+}
+
+/* 没写背景类的按钮去掉浏览器默认的灰底 */
+.dsh-pwb-dark button:not([class*='bg-']) {
+  background: transparent;
+}
+
+.dsh-pwb-dark input:focus,
+.dsh-pwb-dark textarea:focus,
+.dsh-pwb-dark select:focus,
+.dsh-pwb-dark button:focus,
+.dsh-pwb-dark [contenteditable]:focus {
+  outline: none;
+}
+
+.dsh-pwb-dark input::placeholder,
+.dsh-pwb-dark textarea::placeholder {
+  color: rgba(31, 35, 40, 0.32);
+}
+
+/* ── 框线减重：上一轮为了「看得清」把边框/面压得偏重，满屏都是框。
+      这轮整体调轻一档，只保留卡片层（liquid-glass）的明显轮廓 ── */
+.dsh-pwb-dark .border-white\/5,
+.dsh-pwb-dark .border-white\/\[0\.06\] { border-color: rgba(31, 35, 40, 0.07); }
+.dsh-pwb-dark .border-white\/\[0\.08\] { border-color: rgba(31, 35, 40, 0.09); }
+.dsh-pwb-dark .border-white\/10,
+.dsh-pwb-dark .border-white\/\[0\.1\] { border-color: rgba(31, 35, 40, 0.10); }
+.dsh-pwb-dark .border-white\/15,
+.dsh-pwb-dark .border-white\/\[0\.18\] { border-color: rgba(31, 35, 40, 0.14); }
+.dsh-pwb-dark .border-white\/20 { border-color: rgba(31, 35, 40, 0.17); }
+
+.dsh-pwb-dark .bg-white\/\[0\.04\], .dsh-pwb-dark .bg-white\/5 { background-color: rgba(31, 35, 40, 0.025); }
+.dsh-pwb-dark .bg-white\/\[0\.06\] { background-color: rgba(31, 35, 40, 0.036); }
+.dsh-pwb-dark .bg-white\/\[0\.08\] { background-color: rgba(31, 35, 40, 0.05); }
+.dsh-pwb-dark .bg-white\/\[0\.1\], .dsh-pwb-dark .bg-white\/10 { background-color: rgba(31, 35, 40, 0.062); }
+
+.dsh-pwb-dark .hover\:bg-white\/\[0\.04\]:hover { background-color: rgba(31, 35, 40, 0.032); }
+.dsh-pwb-dark .hover\:bg-white\/\[0\.06\]:hover { background-color: rgba(31, 35, 40, 0.045); }
+.dsh-pwb-dark .hover\:bg-white\/\[0\.08\]:hover { background-color: rgba(31, 35, 40, 0.06); }
+.dsh-pwb-dark .hover\:bg-white\/\[0\.1\]:hover { background-color: rgba(31, 35, 40, 0.075); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   悬浮件翻白：原版这些毛玻璃条是给黑底设计的（黑底上 60% 黑 + 白描边），
+   浅色宿主里就是一块突兀的黑砖。只翻「悬浮件」和「下拉菜单」，
+   弹窗遮罩（fixed inset-0 z-50）保持黑——双保险规则特异性更高，不受影响。
+   ─────────────────────────────────────────────────────────────────── */
+
+/* 任务行排序工具条（上移/下移按钮） */
+.dsh-pwb-dark .bg-black\/60.backdrop-blur-md {
+  background-color: rgba(255, 255, 255, 0.92);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border-color: rgba(31, 35, 40, 0.10);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+
+/* 3D 环 tooltip + 底部控制条 */
+.dsh-pwb-dark .bg-black\/60.backdrop-blur-xl,
+.dsh-pwb-dark .bg-black\/50.backdrop-blur-xl {
+  background-color: rgba(255, 255, 255, 0.90);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-color: rgba(31, 35, 40, 0.10);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+
+/* 筛选/排序/视图下拉菜单 */
+.dsh-pwb-dark .bg-black\/80.backdrop-blur-xl {
+  background-color: rgba(255, 255, 255, 0.95);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-color: rgba(31, 35, 40, 0.10);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   悬浮件翻白：原版这些毛玻璃条是给黑底设计的（黑底上 60% 黑 + 白描边），
+   浅色宿主里就是一块突兀的黑砖。只翻「悬浮件」和「下拉菜单」，
+   弹窗遮罩（fixed inset-0 z-50）保持黑——双保险规则特异性更高，不受影响。
+   ─────────────────────────────────────────────────────────────────── */
+
+/* 任务行排序工具条（上移/下移按钮） */
+.dsh-pwb-dark .bg-black\/60.backdrop-blur-md {
+  background-color: rgba(255, 255, 255, 0.92);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border-color: rgba(31, 35, 40, 0.10);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+
+/* 3D 环 tooltip + 底部控制条 */
+.dsh-pwb-dark .bg-black\/60.backdrop-blur-xl,
+.dsh-pwb-dark .bg-black\/50.backdrop-blur-xl {
+  background-color: rgba(255, 255, 255, 0.90);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-color: rgba(31, 35, 40, 0.10);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+
+/* 筛选/排序/视图下拉菜单 */
+.dsh-pwb-dark .bg-black\/80.backdrop-blur-xl {
+  background-color: rgba(255, 255, 255, 0.95);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-color: rgba(31, 35, 40, 0.10);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+}

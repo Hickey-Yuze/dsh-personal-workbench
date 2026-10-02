@@ -1,0 +1,90 @@
+/**
+ * 构建辅助：把 client/src（TS/TSX 多文件）经 esbuild 打包为 dist/client.js。
+ *
+ * 产物形态必须符合 dsh handoff 协议（对齐官方 dsh-client-ui-* 包的 lib/client.js）：
+ *   window.__ModuleLoader__.load({ id, factory: (require) => { …; return module.exports; } })
+ * esbuild 产 format=cjs 的 bundle（react / react/jsx-runtime / @deepseek-ai/* 全部
+ * external，顶层是 require(...) 调用），再把整个产物体包进 factory——require 解析到
+ * factory 参数（宿主 ModuleLoader 注入），不依赖浏览器全局 require。
+ * react 绝不打进 bundle：双 react 实例会炸 hooks（Symbol 身份不等）。
+ */
+import { build } from 'esbuild';
+import { mkdir, writeFile } from 'node:fs/promises';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const PLUGIN_ID = 'dsh-personal-workbench';
+
+const result = await build({
+  entryPoints: [path.join(root, 'client/src/entry.tsx')],
+  bundle: true,
+  format: 'cjs',
+  platform: 'browser',
+  target: 'es2020',
+  jsx: 'automatic',
+  charset: 'utf8',
+  external: ['react', 'react/jsx-runtime', 'react-dom', '@deepseek-ai/*'],
+  minify: false,
+  legalComments: 'none',
+  sourcemap: false,
+  write: false,
+  logLevel: 'info',
+  // 待办看板的 Tailwind CSS 以文本形式内联进 bundle，运行时注入 <style>
+  loader: { '.css': 'text' },
+});
+
+let body = result.outputFiles[0].text;
+// CJS 产物头部的 "use strict" 指令放进函数体无害，剥掉保持 wrapper 干净
+body = body.replace(/^("|')use strict\1;\s*/, '');
+
+const out =
+  'window.__ModuleLoader__.load({\n' +
+  `\tid: ${JSON.stringify(PLUGIN_ID)},\n` +
+  '\tfactory: (require) => {\n' +
+  '\t\tvar module = { exports: {} };\n' +
+  '\t\tvar exports = module.exports;\n' +
+  '\t\tObject.defineProperty(exports, Symbol.toStringTag, { value: "Module" });\n' +
+  body.replace(/\n/g, '\n\t\t') +
+  '\n\t\t// esbuild 对具名导出会整体替换 module.exports（__toCommonJS：getter + __esModule）；' +
+  '\n\t\t// 摊平回官方 bundle 同款的普通数据属性对象（含 toStringTag），loader 只按属性读取。' +
+  '\n\t\tvar __flat = {};' +
+  '\n\t\tfor (var __k in module.exports) __flat[__k] = module.exports[__k];' +
+  '\n\t\tObject.defineProperty(__flat, Symbol.toStringTag, { value: "Module" });' +
+  '\n\t\treturn __flat;\n' +
+  '\t}\n' +
+  '});\n';
+
+// ── 产物自检：协议包装形状 + external 未被打入 + 关键接线 ──
+if (!out.startsWith('window.__ModuleLoader__.load({')) {
+  throw new Error('build-client: 产物缺少协议包装头');
+}
+if (!out.includes(`id: ${JSON.stringify(PLUGIN_ID)}`)) {
+  throw new Error('build-client: ModuleLoader id 与包名不一致');
+}
+// 注意：只匹配字符串字面量内容，不依赖引号风格（esbuild 可能把单引号规范成双引号）
+if (!out.includes('sidebar-entry')) {
+  throw new Error('build-client: 侧栏入口接线标记缺失（dataset.wire）');
+}
+if (!out.includes('selectPanel')) {
+  throw new Error('build-client: 面板选择接线缺失（layout.selectPanel）');
+}
+if (!out.includes('personal-workbench/store/read')) {
+  throw new Error('build-client: 存储端点接线缺失');
+}
+if (!out.includes('personal-workbench/kb/list')) {
+  throw new Error('build-client: 知识库端点接线缺失');
+}
+if (/require\("react"\)/.test(out) && out.includes('react.production.min')) {
+  throw new Error('build-client: react 被打进 bundle（会造成双 react 实例）');
+}
+// 粗检：bundle 内不应出现 React 运行时实现的特征串
+for (const marker of ['react-dom/client', '__SECRET_INTERNALS']) {
+  if (out.includes(marker) && marker === '__SECRET_INTERNALS') {
+    throw new Error('build-client: 疑似把 React 运行时打进 bundle');
+  }
+}
+
+await mkdir(path.join(root, 'dist'), { recursive: true });
+await writeFile(path.join(root, 'dist/client.js'), out, 'utf8');
+console.log(`build-client: dist/client.js 已生成（${(out.length / 1024).toFixed(1)} KB）`);

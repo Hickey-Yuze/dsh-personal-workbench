@@ -1,0 +1,20 @@
+/*
+ * 待办看板的 Tailwind 入口。
+ *
+ * 两个刻意的取舍：
+ *  1. **不导入 preflight**（tailwindcss/preflight.css）—— 它会把宿主的全局样式一起重置，
+ *     面板嵌在 DSH 里，不能这么干。只取 theme + utilities。
+ *  2. 主题变量挂在下 `.dsh-pwb-dark` 容器上（见 theme.css），配合构建脚本的选择器作用域化，
+ *     保证 Tailwind 的一千多条工具类不会泄漏出去影响宿主界面。
+ */
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+@import './theme.css';
+@import './components.css';
+@import './board.css';
+
+/* 扫描范围：只扫搬过来的看板源码 */
+@source '../src/workbench';
