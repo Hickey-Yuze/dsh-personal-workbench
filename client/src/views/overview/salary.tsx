@@ -6,12 +6,14 @@
  * · 作息三选一：双休 / 大小周 / 单休（大小周按 ISO 周号奇偶交替）
  * · 法定节假日：自动拉取当年休/班安排（Host 代理）；「节假日照常计薪」开关
  *   默认开（对齐 iTab：数字每天跳），关闭后假期停跳、仅工作日累计
+ * · 设置弹窗：独立居中模态；节假日维护 = 可点选迷你月历
+ *   （点日期循环 无→休→班→清除，自动获取数据淡显、手动标记高亮）
  */
 // @ts-nocheck —— 移植自 iTab（原项目自带类型检查），此处不重复校验
 
-import { useEffect, useState } from 'react';
-import { Settings2, Loader2, Wallet } from 'lucide-react';
-import { SCHEDULE_META, fetchYearHolidays, getManualHolidays, isWorkday, saveManualHolidays, type HolidayMap, type WorkSchedule } from './holidays.js';
+import { useEffect, useMemo, useState } from 'react';
+import { Settings2, Loader2, Wallet, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { SCHEDULE_META, fetchYearHolidays, getManualHolidays, isWorkday, saveManualHolidays, type HolidayEntry, type HolidayMap, type WorkSchedule } from './holidays.js';
 import type { RpcFn } from '../../rpc.js';
 
 interface SalaryConfig { monthly: number; payday: number; start: string; end: string; schedule: WorkSchedule; holidayPay: boolean }
@@ -36,14 +38,18 @@ const toSec = (hm: string) => {
   return (h || 0) * 3600 + (m || 0) * 60;
 };
 const fmtHms = (s: number) => [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60].map((x) => String(x).padStart(2, '0')).join(':');
+const isoOf = (y: number, m: number, d: number) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
 export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
   const [config, setConfig] = useState<SalaryConfig>(loadConfig);
   const [editing, setEditing] = useState(false);
-  const [manualText, setManualText] = useState('');
   const [now, setNow] = useState(new Date());
   const [holidays, setHolidays] = useState<HolidayMap>(getManualHolidays);
   const [holidayLoading, setHolidayLoading] = useState(false);
+  // 设置弹窗：节假日日历的当前月份 + 手动标记表
+  const [calY, setCalY] = useState(() => new Date().getFullYear());
+  const [calM, setCalM] = useState(() => new Date().getMonth());
+  const [manualMap, setManualMap] = useState<Record<string, HolidayEntry>>({});
 
   useEffect(() => { localStorage.setItem(`dsh-pwb:${CONFIG_KEY}`, JSON.stringify(config)); }, [config]);
 
@@ -72,7 +78,8 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
   const dayEarn = config.monthly / (SCHEDULE_META[config.schedule]?.workdays ?? 24.25);
   const perSecEarn = dayEarn / 86400; // 全天 24h 匀速累计
   const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-  const holiday = holidays[`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`];
+  const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const holiday = holidays[todayIso];
   const working = isWorkday(now, config.schedule, holidays);
   // 节假日照常计薪（默认开，对齐 iTab 数字一直跳）→ 关闭后假期停跳
   const counting = working || config.holidayPay;
@@ -95,9 +102,41 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
   const mm = String(now.getMinutes()).padStart(2, '0');
   const ss = String(now.getSeconds()).padStart(2, '0');
 
+  /* ─── 设置弹窗：节假日迷你月历 ─── */
+  const calCells = useMemo(() => {
+    const first = new Date(calY, calM, 1);
+    const start = new Date(calY, calM, 1 - first.getDay());
+    return Array.from({ length: 42 }, (_, i) => {
+      const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+      return { date: isoOf(d.getFullYear(), d.getMonth(), d.getDate()), day: d.getDate(), inMonth: d.getMonth() === calM };
+    });
+  }, [calY, calM]);
+  const manualCount = Object.keys(manualMap).length;
+
   const openEditor = () => {
-    setManualText(Object.entries(holidays).map(([, h]) => `${h.date} ${h.holiday ? '休' : '班'}`).join('\n'));
+    setManualMap(getManualHolidays());
+    setCalY(new Date().getFullYear());
+    setCalM(new Date().getMonth());
     setEditing(true);
+  };
+
+  // 点日期循环：无 → 休 → 班 → 清除（回到自动获取的状态）
+  const toggleDay = (date: string) => {
+    const shown = manualMap[date] ?? holidays[date];
+    const cur = shown ? (shown.holiday ? '休' : '班') : null;
+    const next = cur === null ? '休' : cur === '休' ? '班' : null;
+    setManualMap((m) => {
+      const n = { ...m };
+      if (next) n[date] = { holiday: next === '休', name: next === '休' ? '手动节假日' : '调休上班', date };
+      else delete n[date];
+      return n;
+    });
+  };
+
+  const saveEditor = () => {
+    const text = Object.values(manualMap).map((h) => `${h.date} ${h.holiday ? '休' : '班'}`).sort().join('\n');
+    setHolidays((h) => ({ ...h, ...saveManualHolidays(text) }));
+    setEditing(false);
   };
 
   return (
@@ -140,56 +179,112 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
 
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setEditing(false)}>
-        <div className="flex max-h-[85vh] w-88 flex-col gap-2.5 overflow-y-auto rounded-2xl bg-white p-5 text-[11px] text-white/60 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center">
-            <span className="text-sm font-semibold text-white">薪资设置</span>
-            <button className="ml-auto grid size-6 place-items-center rounded-md text-white/40 hover:bg-white/[0.08] hover:text-white" onClick={() => setEditing(false)} title="关闭">×</button>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <label className="flex flex-col gap-1">月薪(元)
-              <input type="number" value={config.monthly} onChange={(e) => setConfig((c) => ({ ...c, monthly: Number(e.target.value) || 0 }))} className="w-full rounded-md border border-white/[0.08] bg-white/[0.05] px-2 py-1.5 text-sm text-white" />
-            </label>
-            <label className="flex flex-col gap-1">发薪日
-              <input type="number" min={1} max={31} value={config.payday} onChange={(e) => setConfig((c) => ({ ...c, payday: Math.min(31, Math.max(1, Number(e.target.value) || 1)) }))} className="w-full rounded-md border border-white/[0.08] bg-white/[0.05] px-2 py-1.5 text-sm text-white" />
-            </label>
-            <label className="flex flex-col gap-1">上班
-              <input type="time" value={config.start} onChange={(e) => setConfig((c) => ({ ...c, start: e.target.value }))} className="w-full rounded-md border border-white/[0.08] bg-white/[0.05] px-2 py-1.5 text-sm text-white" />
-            </label>
-            <label className="flex flex-col gap-1">下班
-              <input type="time" value={config.end} onChange={(e) => setConfig((c) => ({ ...c, end: e.target.value }))} className="w-full rounded-md border border-white/[0.08] bg-white/[0.05] px-2 py-1.5 text-sm text-white" />
-            </label>
-          </div>
-          <div>
-            <div className="mb-1">作息 · {SCHEDULE_META[config.schedule].desc}</div>
-            <div className="flex gap-1.5">
-              {(Object.keys(SCHEDULE_META) as WorkSchedule[]).map((k) => (
-                <button key={k} className={`flex-1 rounded-md px-2 py-1.5 text-xs ${config.schedule === k ? 'bg-primary font-semibold text-[var(--primary-foreground,#0c1d14)]' : 'border border-white/[0.08] text-white/60'}`} onClick={() => setConfig((c) => ({ ...c, schedule: k }))}>
-                  {SCHEDULE_META[k].label}
-                </button>
-              ))}
+          <div className="flex max-h-[88vh] w-96 flex-col gap-4 overflow-y-auto rounded-2xl bg-white p-5 text-[11px] text-white/60 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            {/* 头部 */}
+            <div className="flex items-center">
+              <span className="text-base font-semibold text-white">薪资设置</span>
+              <button className="ml-auto grid size-7 place-items-center rounded-lg text-white/40 hover:bg-white/[0.08] hover:text-white" onClick={() => setEditing(false)} title="关闭">
+                <X className="size-4" />
+              </button>
             </div>
-            <div className="mt-1 text-[10px] text-white/35">日薪按 {SCHEDULE_META[config.schedule].workdays} 天月薪折算</div>
+
+            {/* 基本信息 */}
+            <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] text-white/40">月薪(元)</span>
+                <input type="number" value={config.monthly} onChange={(e) => setConfig((c) => ({ ...c, monthly: Number(e.target.value) || 0 }))} className="h-8 w-full rounded-lg border border-white/[0.1] bg-white/[0.04] px-2.5 text-sm text-white outline-none hover:border-white/[0.18]" />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] text-white/40">发薪日(几号)</span>
+                <input type="number" min={1} max={31} value={config.payday} onChange={(e) => setConfig((c) => ({ ...c, payday: Math.min(31, Math.max(1, Number(e.target.value) || 1)) }))} className="h-8 w-full rounded-lg border border-white/[0.1] bg-white/[0.04] px-2.5 text-sm text-white outline-none hover:border-white/[0.18]" />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] text-white/40">上班</span>
+                <input type="time" value={config.start} onChange={(e) => setConfig((c) => ({ ...c, start: e.target.value }))} className="h-8 w-full rounded-lg border border-white/[0.1] bg-white/[0.04] px-2.5 text-sm text-white outline-none hover:border-white/[0.18]" />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] text-white/40">下班</span>
+                <input type="time" value={config.end} onChange={(e) => setConfig((c) => ({ ...c, end: e.target.value }))} className="h-8 w-full rounded-lg border border-white/[0.1] bg-white/[0.04] px-2.5 text-sm text-white outline-none hover:border-white/[0.18]" />
+              </label>
+            </div>
+
+            {/* 作息 */}
+            <div>
+              <div className="mb-1.5 text-[10px] text-white/40">作息 · {SCHEDULE_META[config.schedule].desc}</div>
+              <div className="grid grid-cols-3 gap-1 rounded-lg bg-white/[0.05] p-1">
+                {(Object.keys(SCHEDULE_META) as WorkSchedule[]).map((k) => (
+                  <button key={k} className={`rounded-md py-1.5 text-xs transition-colors ${config.schedule === k ? 'bg-primary font-semibold text-[var(--primary-foreground,#0c1d14)] shadow-sm' : 'text-white/55 hover:text-white'}`} onClick={() => setConfig((c) => ({ ...c, schedule: k }))}>
+                    {SCHEDULE_META[k].label}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-1 text-[10px] text-white/35">日薪按 {SCHEDULE_META[config.schedule].workdays} 天月薪折算</div>
+            </div>
+
+            {/* 节假日：可点选迷你月历 */}
+            <div>
+              <div className="mb-1.5 flex items-center">
+                <span className="text-[10px] text-white/40">节假日 · 点日期循环 休 / 班 / 清除</span>
+                <div className="ml-auto flex items-center gap-0.5">
+                  <button className="grid size-5 place-items-center rounded text-white/40 hover:bg-white/[0.08] hover:text-white" onClick={() => setCalM((m) => (m === 0 ? (setCalY((y) => y - 1), 11) : m - 1))}><ChevronLeft className="size-3.5" /></button>
+                  <span className="min-w-19 text-center text-[11px] tabular-nums text-white/70">{calY} 年 {calM + 1} 月</span>
+                  <button className="grid size-5 place-items-center rounded text-white/40 hover:bg-white/[0.08] hover:text-white" onClick={() => setCalM((m) => (m === 11 ? (setCalY((y) => y + 1), 0) : m + 1))}><ChevronRight className="size-3.5" /></button>
+                </div>
+              </div>
+              <div className="grid grid-cols-7 gap-0.5 pb-0.5 text-center text-[9px] text-white/30">
+                {['日', '一', '二', '三', '四', '五', '六'].map((w) => <div key={w}>{w}</div>)}
+              </div>
+              <div className="grid grid-cols-7 gap-0.5">
+                {calCells.map((c) => {
+                  const manual = manualMap[c.date];
+                  const auto = holidays[c.date];
+                  const isOff = (manual ?? auto)?.holiday;
+                  const marked = Boolean(manual ?? auto);
+                  const isManual = Boolean(manual);
+                  const isToday = c.date === todayIso;
+                  return (
+                    <button
+                      key={c.date}
+                      onClick={() => toggleDay(c.date)}
+                      title={`${c.date}${isOff === true ? ' · 休' : isOff === false ? ' · 调休班' : ''}${isManual ? '（手动）' : ''}`}
+                      className={[
+                        'flex h-8 flex-col items-center justify-center rounded-md text-[10px] leading-none transition-colors',
+                        !c.inMonth ? 'opacity-30' : '',
+                        isOff === true ? (isManual ? 'bg-red-400/25 font-semibold text-red-500' : 'bg-red-400/10 text-red-400/70') : '',
+                        isOff === false ? (isManual ? 'bg-green-500/25 font-semibold text-green-500 ring-1 ring-green-500/60' : 'text-green-500/70 ring-1 ring-green-500/25') : '',
+                        !marked ? 'text-white/55 hover:bg-white/[0.07]' : '',
+                        isToday && !marked ? 'ring-1 ring-primary/60' : '',
+                      ].filter(Boolean).join(' ')}
+                    >
+                      <span className="tabular-nums">{c.day}</span>
+                      {marked ? <span className="mt-px text-[8px]">{isOff ? '休' : '班'}</span> : null}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-1.5 flex items-center gap-2.5 text-[9px] text-white/30">
+                <span><i className="mr-0.5 inline-block size-1.5 rounded-full bg-red-400 align-middle" /> 休</span>
+                <span><i className="mr-0.5 inline-block size-1.5 rounded-full bg-green-500 align-middle" /> 调休班</span>
+                <span>淡色 = 自动获取 · 鲜色 = 手动</span>
+                {manualCount > 0 && (
+                  <button className="ml-auto text-primary underline" onClick={() => setManualMap({})}>清除手动标记（{manualCount}）</button>
+                )}
+              </div>
+            </div>
+
+            {/* 计薪开关 */}
+            <label className="flex items-start gap-2 leading-relaxed">
+              <input type="checkbox" checked={config.holidayPay} onChange={(e) => setConfig((c) => ({ ...c, holidayPay: e.target.checked }))} className="mt-0.5 accent-[var(--primary)]" />
+              <span>节假日照常计薪（默认开 = 数字每天跳；关 = 假期停跳，仅工作日累计）</span>
+            </label>
+
+            <button
+              className="w-full rounded-lg bg-primary py-2.5 text-sm font-semibold text-[var(--primary-foreground,#0c1d14)] transition-opacity hover:opacity-90"
+              onClick={saveEditor}
+            >
+              保存
+            </button>
           </div>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={config.holidayPay} onChange={(e) => setConfig((c) => ({ ...c, holidayPay: e.target.checked }))} className="accent-[var(--primary)]" />
-            节假日照常计薪（默认开 = 数字每天跳；关 = 假期停跳，仅工作日累计）
-          </label>
-          <div className="text-[10px] leading-relaxed text-white/35">
-            法定节假日自动获取（含调休班）；接口不可用时用下面的手动表兜底，每行一条：`2026-10-01 休` 或 `2026-10-10 班`。
-          </div>
-          <textarea
-            value={manualText}
-            onChange={(e) => setManualText(e.target.value)}
-            placeholder={'2026-10-01 休\n2026-10-10 班'}
-            className="h-16 w-full resize-none rounded-md border border-white/[0.08] bg-white/[0.05] p-2 text-[10px] text-white outline-none placeholder:text-white/25"
-          />
-          <button
-            className="mt-auto w-full rounded-lg bg-primary py-2 text-sm font-semibold text-[var(--primary-foreground,#0c1d14)]"
-            onClick={() => { setHolidays((h) => ({ ...h, ...saveManualHolidays(manualText) })); setEditing(false); }}
-          >
-            保存
-          </button>
-        </div>
         </div>
       )}
     </div>
