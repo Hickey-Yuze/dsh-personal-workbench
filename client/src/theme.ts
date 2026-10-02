@@ -526,7 +526,8 @@ const CSS = `
 }
 @keyframes dsh-pwf-float-up { 0% { opacity: 0; transform: translateY(6px); } 15% { opacity: 1; } 100% { opacity: 0; transform: translateY(-46px); } }
 .dsh-pwf-floater { top: 38%; animation: dsh-pwf-float-up 0.9s ease-out forwards; }
-/* 表单细节：number 输入去掉上下箭头（挤压数字），秒位跳动 pop */
+/* 表单细节：原生控件按浅色渲染（宿主 color-scheme:dark 会把 time/number 内部件渲染成白条），number 去上下箭头，秒位跳动 pop */
+.dsh-pwb-dark { color-scheme: light; }
 .dsh-pwb-dark input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
 .dsh-pwb-dark input[type='number']::-webkit-inner-spin-button,
 .dsh-pwb-dark input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
