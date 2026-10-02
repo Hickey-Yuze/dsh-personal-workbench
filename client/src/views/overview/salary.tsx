@@ -48,11 +48,11 @@ const shiftHm = (hm: string, deltaMin: number) => {
 function Stepper({ value, onStep, ariaLabel }: { value: string; onStep: (dir: 1 | -1) => void; ariaLabel: string }) {
   return (
     <div className="flex h-9 items-center justify-between rounded-lg border border-white/[0.1] bg-white/[0.04] px-1" aria-label={ariaLabel}>
-      <button type="button" className="grid size-7 shrink-0 place-items-center rounded-md text-white/45 transition-colors hover:bg-white/[0.08] hover:text-white" onClick={() => onStep(-1)} title="减小">
+      <button type="button" className="grid size-7 shrink-0 place-items-center rounded-md bg-transparent text-white/45 transition-colors hover:bg-white/[0.08] hover:text-white" style={{ appearance: 'none' }} onClick={() => onStep(-1)} title="减小">
         <ChevronLeft className="size-4" />
       </button>
       <span className="min-w-12 text-center text-sm tabular-nums text-white">{value}</span>
-      <button type="button" className="grid size-7 shrink-0 place-items-center rounded-md text-white/45 transition-colors hover:bg-white/[0.08] hover:text-white" onClick={() => onStep(1)} title="增大">
+      <button type="button" className="grid size-7 shrink-0 place-items-center rounded-md bg-transparent text-white/45 transition-colors hover:bg-white/[0.08] hover:text-white" style={{ appearance: 'none' }} onClick={() => onStep(1)} title="增大">
         <ChevronRight className="size-4" />
       </button>
     </div>
