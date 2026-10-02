@@ -195,6 +195,10 @@
   border: none;
   box-shadow: none;
 }
+.dsh-pwb-dark button {
+  -webkit-appearance: none;
+  appearance: none;
+}
 
 /* 输入框清除宿主/浏览器塞进来的背景图与部件（搜索图标、spinner 槽等叠字白条），并防 grid 内溢出 */
 .dsh-pwb-dark input {
