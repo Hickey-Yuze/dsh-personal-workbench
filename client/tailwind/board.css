@@ -193,6 +193,19 @@
   background: transparent;
 }
 
+/* 输入框清除宿主/浏览器塞进来的背景图与部件（搜索图标、spinner 槽等叠字白条），并防 grid 内溢出 */
+.dsh-pwb-dark input {
+  background-image: none !important;
+  min-width: 0;
+}
+.dsh-pwb-dark input::-webkit-inner-spin-button,
+.dsh-pwb-dark input::-webkit-outer-spin-button,
+.dsh-pwb-dark input::-webkit-calendar-picker-indicator,
+.dsh-pwb-dark input::-webkit-date-and-time-value {
+  display: none !important;
+  -webkit-appearance: none !important;
+}
+
 .dsh-pwb-dark input:focus,
 .dsh-pwb-dark textarea:focus,
 .dsh-pwb-dark select:focus,

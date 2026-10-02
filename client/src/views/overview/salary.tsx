@@ -197,11 +197,11 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
             <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
               <label className="flex flex-col gap-1">
                 <span className="text-[10px] text-white/40">月薪(元)</span>
-                <input type="number" value={config.monthly} onChange={(e) => setConfig((c) => ({ ...c, monthly: Number(e.target.value) || 0 }))} className="h-9 w-full rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none transition-colors hover:border-white/[0.18]" />
+                <input type="text" inputMode="numeric" value={config.monthly || ''} onChange={(e) => setConfig((c) => ({ ...c, monthly: Number(e.target.value.replace(/\D/g, '')) || 0 }))} placeholder="6000" className="h-9 w-full rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none transition-colors hover:border-white/[0.18]" />
               </label>
               <label className="flex flex-col gap-1">
                 <span className="text-[10px] text-white/40">发薪日(几号)</span>
-                <input type="number" min={1} max={31} value={config.payday} onChange={(e) => setConfig((c) => ({ ...c, payday: Math.min(31, Math.max(1, Number(e.target.value) || 1)) }))} className="h-9 w-full rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none transition-colors hover:border-white/[0.18]" />
+                <input type="text" inputMode="numeric" value={config.payday || ''} onChange={(e) => { const n = Number(e.target.value.replace(/\D/g, '')); setConfig((c) => ({ ...c, payday: Math.min(31, Math.max(1, n || 1)) })); }} placeholder="15" className="h-9 w-full rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none transition-colors hover:border-white/[0.18]" />
               </label>
               <label className="flex flex-col gap-1">
                 <span className="text-[10px] text-white/40">上班</span>
