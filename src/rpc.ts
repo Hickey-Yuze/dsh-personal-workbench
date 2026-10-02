@@ -118,6 +118,49 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         return await deps.knowledge.search(query);
       }
 
+      // ── 天气（外联代理：Nominatim 街道级反查 + open-meteo 实况；无 key 免费服务）──
+      case 'personal-workbench/weather/fetch': {
+        const p = asRecord(payload);
+        const lat = Number(p.lat);
+        const lon = Number(p.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) fail('bad-request', '坐标不合法');
+        const ua = 'dsh-personal-workbench/1.0 (local harness plugin)';
+        const [geoRes, wxRes] = await Promise.all([
+          fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&zoom=18&accept-language=zh-CN&format=json`, { headers: { 'user-agent': ua } }),
+          fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m`, { headers: { 'user-agent': ua } }),
+        ]);
+        if (!geoRes.ok || !wxRes.ok) fail('bad-gateway', '气象服务不可达');
+        const geo = (await geoRes.json()) as { display_name?: string; address?: Record<string, string> };
+        const wx = (await wxRes.json()) as { current?: { temperature_2m?: number; weather_code?: number; relative_humidity_2m?: number; wind_speed_10m?: number } };
+        const a = geo.address ?? {};
+        // 具体到街巷：门牌/道路 → 街区 → 区 → 市
+        const place = [a.house_number, a.road, a.neighbourhood, a.suburb, a.city ?? a.town ?? a.county].filter(Boolean).join(' ');
+        const c = wx.current ?? {};
+        return {
+          place: place || geo.display_name || '当前位置',
+          temp: Math.round(c.temperature_2m ?? 0),
+          code: c.weather_code ?? 0,
+          humidity: Math.round(c.relative_humidity_2m ?? 0),
+          wind: Math.round(c.wind_speed_10m ?? 0),
+          updated: new Date().toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+        };
+      }
+
+      // ── 法定节假日（外联代理：timor 免费接口，全年休/班安排）──
+      case 'personal-workbench/holidays/fetch': {
+        const p = asRecord(payload);
+        const year = Number(p.year);
+        if (!Number.isInteger(year) || year < 2020 || year > 2100) fail('bad-request', '年份不合法');
+        const res = await fetch(`https://timor.tech/api/holiday/year/${year}`, { headers: { 'user-agent': 'dsh-personal-workbench/1.0' } });
+        if (!res.ok) fail('bad-gateway', '节假日服务不可达');
+        const data = (await res.json()) as { holiday?: Record<string, { holiday?: boolean; name?: string; date?: string }> };
+        const out: Record<string, { holiday: boolean; name: string; date: string }> = {};
+        for (const [md, v] of Object.entries(data.holiday ?? {})) {
+          if (typeof v.date === 'string') out[v.date] = { holiday: v.holiday !== false, name: v.name ?? '', date: v.date };
+        }
+        return out;
+      }
+
       // ── 启动器（本机应用，只列 .app 名称 + open 启动）──
       case 'personal-workbench/apps/list': {
         const home = process.env.HOME ?? '';

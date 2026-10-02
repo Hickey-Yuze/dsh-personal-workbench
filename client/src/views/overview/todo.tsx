@@ -1,60 +1,100 @@
 /**
  * 待办事项卡 —— 移植自 Yuze Workbench OverviewPage.TodoWidget（交互 1:1）：
  * 顶部「添加待办…（同步到任务）」输入框 + 未完成任务列表 + 待办计数。
- * 数据源与待办模块同 key（task_board_tasks / task_board_groups），写入后
- * 待办模块切回时自动重读 —— 与原版跨页面共享 localStorage 的机制一致。
+ * 数据源与待办模块同 key（task_board_tasks / task_board_groups）。
+ * 同步保障（v2）：
+ * · 写入完整合法的 ITask 结构（枚举 priority: high/medium/low、taskNo、
+ *   assignee 等必填字段全补齐）—— 此前只写部分字段导致看板渲染取值失败
+ * · 写入后广播 dsh-pwb-tasks-changed，看板监听后即时重读，无需切模块
  */
 // @ts-nocheck —— 移植自 Yuze Workbench（原项目自带类型检查），此处不重复校验
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, ListTodo, Plus } from 'lucide-react';
 import type { RpcFn } from '../../rpc.js';
 
-interface TaskItem { id: string; title: string; status: string; priority?: string; group?: string; createdAt?: string }
-const PRIORITY_ORDER: Record<string, number> = { 高: 0, 中: 1, 低: 2 };
+interface TaskItem {
+  id: string;
+  taskNo: string;
+  title: string;
+  priority: 'high' | 'medium' | 'low';
+  status: 'todo' | 'in_progress' | 'completed' | 'overdue';
+  group: string;
+  assignee: string;
+  assigneeAvatar: string;
+  project: string;
+  deadline: string;
+  scheduleTime?: string;
+  description: string;
+  tags: string[];
+  createdAt?: string;
+}
+
+/** 任务变更广播：看板（TaskBoardSection）监听后即时重读。 */
+export const TASKS_CHANGED_EVENT = 'dsh-pwb-tasks-changed';
+
+const readTasks = (): TaskItem[] => {
+  try {
+    const t = localStorage.getItem('dsh-pwb:task_board_tasks');
+    const parsed = t ? (JSON.parse(t) as TaskItem[]) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
+};
+const readGroups = (): string[] => {
+  try {
+    const g = localStorage.getItem('dsh-pwb:task_board_groups');
+    const parsed = g ? (JSON.parse(g) as string[]) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
+};
 
 export function TodoWidget({ rpc, onOpen }: { rpc: RpcFn; onOpen: (id: string) => void }) {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [groups, setGroups] = useState<string[]>([]);
   const [text, setText] = useState('');
 
-  // 读（与待办模块同 key）：挂载读一次 + 5s 轮询，跟随待办模块的增删改
+  // 挂载读一次 + 5s 轮询 + 事件桥（本页/看板写入后即时跟随）
   useEffect(() => {
-    const read = () => {
-      try {
-        const t = localStorage.getItem('dsh-pwb:task_board_tasks');
-        const g = localStorage.getItem('dsh-pwb:task_board_groups');
-        if (t) setTasks(JSON.parse(t) as TaskItem[]);
-        if (g) setGroups(JSON.parse(g) as string[]);
-      } catch { /* ignore */ }
-    };
+    const read = () => { setTasks(readTasks()); setGroups(readGroups()); };
     read();
     const id = window.setInterval(read, 5000);
-    return () => window.clearInterval(id);
+    window.addEventListener(TASKS_CHANGED_EVENT, read);
+    return () => { window.clearInterval(id); window.removeEventListener(TASKS_CHANGED_EVENT, read); };
   }, []);
 
-  const open = useMemo(
-    () => tasks.filter((t) => t.status !== 'completed').sort((a, b) => (PRIORITY_ORDER[a.priority ?? '中'] ?? 1) - (PRIORITY_ORDER[b.priority ?? '中'] ?? 1)),
-    [tasks],
-  );
+  const open = useMemo(() => tasks.filter((t) => t.status !== 'completed'), [tasks]);
+
+  const persist = useCallback((next: TaskItem[]) => {
+    setTasks(next);
+    try { localStorage.setItem('dsh-pwb:task_board_tasks', JSON.stringify(next)); } catch { /* ignore */ }
+    void rpc('personal-workbench/store/write', { key: 'task_board_tasks', value: next }).catch(() => undefined);
+    window.dispatchEvent(new CustomEvent(TASKS_CHANGED_EVENT));
+  }, [rpc]);
 
   const add = () => {
     const title = text.trim();
     if (!title) return;
     const item: TaskItem = {
       id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      taskNo: `WXB-${new Date().getFullYear()}-${String(tasks.length + 1).padStart(3, '0')}`,
       title,
+      priority: 'medium',
       status: 'todo',
-      priority: '中',
       group: groups[0] ?? '待办',
+      assignee: '我',
+      assigneeAvatar: '',
+      project: '',
+      deadline: '',
+      description: '',
+      tags: [],
       createdAt: new Date().toISOString(),
     };
-    const next = [item, ...tasks];
-    setTasks(next);
-    try { localStorage.setItem('dsh-pwb:task_board_tasks', JSON.stringify(next)); } catch { /* ignore */ }
-    void rpc('personal-workbench/store/write', { key: 'task_board_tasks', value: next }).catch(() => undefined);
+    persist([item, ...tasks]);
     setText('');
   };
+
+  // 快捷勾完成：点行首圆圈直接完成（与看板状态同源）
+  const complete = (id: string) => persist(tasks.map((t) => (t.id === id ? { ...t, status: 'completed' as const } : t)));
 
   return (
     <div className="dsh-pwb-widget relative flex h-full flex-col">
@@ -85,16 +125,16 @@ export function TodoWidget({ rpc, onOpen }: { rpc: RpcFn; onOpen: (id: string) =
           <div className="grid h-full place-items-center text-xs text-white/35">暂无待办，上方输入框添加一条</div>
         ) : (
           open.map((t) => (
-            <button
-              key={t.id}
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-white/[0.05]"
-              onClick={() => onOpen('todo')}
-              title="打开待办模块处理"
-            >
-              <CheckCircle2 className="size-4 shrink-0 text-primary/70" />
-              <span className="min-w-0 flex-1 truncate text-xs text-white/75">{t.title}</span>
-              {t.priority && <span className="shrink-0 text-[10px] text-white/35">{t.priority}</span>}
-            </button>
+            <div key={t.id} className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-white/[0.05]">
+              <button className="grid size-4 shrink-0 place-items-center rounded-full border border-white/25 text-transparent transition-colors hover:border-primary hover:text-primary" onClick={() => complete(t.id)} title="标记完成">
+                <CheckCircle2 className="size-3.5" />
+              </button>
+              <button className="min-w-0 flex-1 truncate text-left text-xs text-white/75" onClick={() => onOpen('todo')} title="打开待办模块处理">
+                {t.title}
+              </button>
+              {t.priority === 'high' && <span className="shrink-0 text-[10px] text-red-400/80">高</span>}
+              {t.priority === 'low' && <span className="shrink-0 text-[10px] text-white/30">低</span>}
+            </div>
           ))
         )}
       </div>

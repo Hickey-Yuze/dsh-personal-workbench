@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import type { ScheduleEvent } from '../../../src/contract.js';
+import { fetchYearHolidays, festivalOf, getManualHolidays, lunarText, type HolidayMap } from './overview/holidays.js';
 import type { CellConfig } from '../grid.js';
 import { useKv } from '../store.js';
 import { toDateStr, todayStr } from '../util.js';
@@ -55,20 +56,34 @@ function Panel({ title, extra, children }: { title: string; extra?: ReactNode; c
 
 /* ─────────────────────────── 日历 / 时钟 / 便签 ─────────────────────────── */
 
-function CalendarWidget({ events, onOpen }: { events: ScheduleEvent[]; onOpen: (id: string) => void }): ReactElement {
+function CalendarWidget({ events, onOpen, rpc }: { events: ScheduleEvent[]; onOpen: (id: string) => void; rpc: RpcFn }): ReactElement {
   const today = todayStr();
   const base = new Date();
   const year = base.getFullYear();
   const month = base.getMonth();
+  // 法定节假日（缓存 7 天，失败回退手动表）
+  const [holidays, setHolidays] = useState<HolidayMap>(getManualHolidays);
+  useEffect(() => {
+    let alive = true;
+    void fetchYearHolidays(year, async (y) => {
+      try { const out = await rpc('personal-workbench/holidays/fetch', { year: y }); return { ok: out.ok, value: out.value }; } catch { return { ok: false, value: null }; }
+    }).then((map) => { if (alive) setHolidays({ ...map, ...getManualHolidays() }); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year]);
   const cells = useMemo(() => {
     const first = new Date(year, month, 1);
     const start = new Date(year, month, 1 - first.getDay());
     return Array.from({ length: 42 }, (_, i) => {
       const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
       const date = toDateStr(d);
-      return { date, day: d.getDate(), inMonth: d.getMonth() === month, isToday: date === today };
+      const lunar = lunarText(d);
+      const fest = festivalOf(d, holidays);
+      // 万年历格内文字：节日名 > 农历（初一显示月份）
+      const sub = fest || (lunar.startsWith('初一') ? lunar.slice(0, 1) + '月' : lunar);
+      return { date, day: d.getDate(), inMonth: d.getMonth() === month, isToday: date === today, sub, off: holidays[date]?.holiday === true, work: holidays[date]?.holiday === false };
     });
-  }, [year, month, today]);
+  }, [year, month, today, holidays]);
   const marked = useMemo(() => new Set(events.map((e) => e.date)), [events]);
   return (
     <Panel
@@ -88,16 +103,20 @@ function CalendarWidget({ events, onOpen }: { events: ScheduleEvent[]; onOpen: (
         {cells.map((c) => (
           <div
             key={c.date}
+            title={`${c.date}${c.off ? ' · 休' : c.work ? ' · 调休班' : ''}`}
             className={[
               'dsh-pwb-cal-cell',
               'dsh-pwb-cal-cell-static',
               c.inMonth ? '' : 'dsh-pwb-cal-out',
               c.isToday ? 'dsh-pwb-cal-today' : '',
+              c.off ? 'dsh-pwb-cal-off' : '',
+              c.work ? 'dsh-pwb-cal-work' : '',
             ]
               .filter(Boolean)
               .join(' ')}
           >
             <span className="dsh-pwb-cal-day">{c.day}</span>
+            {c.sub ? <span className="dsh-pwb-cal-lunar">{c.sub}</span> : null}
             {marked.has(c.date) ? (
               <span className="dsh-pwb-cal-dots">
                 <i className="dsh-pwb-dot-live" />
@@ -178,11 +197,11 @@ export function OverviewView({
       { id: 'archive', title: '文件归档', render: () => <ArchiveWidget rpc={rpc} /> },
       { id: 'dock', title: '启动器', render: () => <DockWidget rpc={rpc} /> },
       { id: 'muyu', title: '敲木鱼', render: () => <WoodenFishWidget /> },
-      { id: 'weather', title: '天气', render: () => <WeatherWidget /> },
-      { id: 'salary', title: '实时日薪', render: () => <SalaryWidget /> },
+      { id: 'weather', title: '天气', render: () => <WeatherWidget rpc={rpc} /> },
+      { id: 'salary', title: '实时日薪', render: () => <SalaryWidget rpc={rpc} /> },
       { id: 'todo', title: '待办事项', render: () => <TodoWidget rpc={rpc} onOpen={onOpen} /> },
       { id: 'notes', title: '便签', render: () => <NotesWidget rpc={rpc} /> },
-      { id: 'calendar', title: '日历', render: () => <CalendarWidget events={events} onOpen={onOpen} /> },
+      { id: 'calendar', title: '日历', render: () => <CalendarWidget events={events} onOpen={onOpen} rpc={rpc} /> },
     ],
     [rpc, onOpen, events],
   );

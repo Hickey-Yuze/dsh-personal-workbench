@@ -526,6 +526,13 @@ const CSS = `
 }
 @keyframes dsh-pwf-float-up { 0% { opacity: 0; transform: translateY(6px); } 15% { opacity: 1; } 100% { opacity: 0; transform: translateY(-46px); } }
 .dsh-pwf-floater { top: 38%; animation: dsh-pwf-float-up 0.9s ease-out forwards; }
+/* 万年历：农历小字 + 休/班标记 */
+.dsh-pwb-cal-lunar { margin-top: 1px; font-size: 8px; line-height: 1.1; color: var(--pwb-dim); }
+.dsh-pwb-cal-off { background: rgba(229, 72, 77, 0.09); border-radius: 8px; }
+.dsh-pwb-cal-off .dsh-pwb-cal-day, .dsh-pwb-cal-off .dsh-pwb-cal-lunar { color: #e5484d; }
+.dsh-pwb-cal-work { box-shadow: inset 0 0 0 1px rgba(0, 210, 106, 0.4); border-radius: 8px; }
+.dsh-pwb-cal-work .dsh-pwb-cal-lunar { color: #00b865; }
+
 .dsh-pwb-cell-drag .dsh-pwb-cell-body { opacity: 0.72; border-color: #00d26a; box-shadow: 0 8px 28px rgba(0, 210, 106, 0.18); }
 .dsh-pwb-canvas-edit .dsh-pwb-cell-body { border-style: solid; border-color: transparent; }
 .dsh-pwb-canvas-edit .dsh-pwb-cell:hover .dsh-pwb-cell-body { border-color: transparent; }

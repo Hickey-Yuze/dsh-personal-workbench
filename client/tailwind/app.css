@@ -18,3 +18,4 @@
 
 /* 扫描范围：只扫搬过来的看板源码 */
 @source '../src/workbench';
+@source '../src/views/overview';

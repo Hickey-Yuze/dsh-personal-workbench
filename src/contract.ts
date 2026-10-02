@@ -49,6 +49,8 @@ export interface KbSearchHit {
 export interface PersonalWorkbenchRequestMap {
   'personal-workbench/apps/list': Record<string, never>;
   'personal-workbench/apps/open': { name: string };
+  'personal-workbench/weather/fetch': { lat: number; lon: number };
+  'personal-workbench/holidays/fetch': { year: number };
   'personal-workbench/store/read': { key: string };
   'personal-workbench/store/write': { key: string; value: unknown };
   'personal-workbench/kb/list': { path?: string };
@@ -60,6 +62,8 @@ export interface PersonalWorkbenchRequestMap {
 export interface PersonalWorkbenchResponseMap {
   'personal-workbench/apps/list': { apps: string[] };
   'personal-workbench/apps/open': { ok: boolean; name: string };
+  'personal-workbench/weather/fetch': { place: string; temp: number; code: number; humidity: number; wind: number; updated: string };
+  'personal-workbench/holidays/fetch': Record<string, { holiday: boolean; name: string; date: string }>;
   'personal-workbench/store/read': { key: string; value: unknown };
   'personal-workbench/store/write': { key: string; bytes: number };
   'personal-workbench/kb/list': { entries: KbEntry[]; total: number; dir: string };

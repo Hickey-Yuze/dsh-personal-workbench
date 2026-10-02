@@ -746,6 +746,15 @@ const TaskBoardSection = forwardRef<TaskBoardHandle, TaskBoardSectionProps>(func
     // 插件内不播种示例任务：首屏就是空看板（版式与外层一致，数据全是你自己的）
     setTasks([]);
     void initDefaultTasks;
+    // 事件桥：项目总览「待办事项」卡等外部写入后，即时重读本地数据（不用切模块）
+    const onExternalChange = () => {
+      const g = scopedStorage.getItem(STORAGE_KEY_GROUPS);
+      const t = scopedStorage.getItem(STORAGE_KEY_TASKS);
+      if (g) { try { const parsed = JSON.parse(g); if (Array.isArray(parsed) && parsed.length > 0) setGroups(parsed); } catch { /* ignore */ } }
+      if (t) { try { const parsed = JSON.parse(t); if (Array.isArray(parsed)) setTasks(parsed); } catch { /* ignore */ } }
+    };
+    window.addEventListener('dsh-pwb-tasks-changed', onExternalChange);
+    return () => window.removeEventListener('dsh-pwb-tasks-changed', onExternalChange);
   }, []);
 
   // 外部触发：KPI 卡片点击 → 同步状态筛选
