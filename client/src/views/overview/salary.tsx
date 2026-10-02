@@ -122,21 +122,20 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
     setEditing(true);
   };
 
-  // 点日期循环：无 → 休 → 班 → 清除（回到自动获取的状态）
+  // 点日期三态循环：休 → 班 → 无（覆盖自动数据）→ 休 —— 「无」是显式状态，压掉国务院安排
   const toggleDay = (date: string) => {
     const shown = manualMap[date] ?? holidays[date];
-    const cur = shown ? (shown.holiday ? '休' : '班') : null;
-    const next = cur === null ? '休' : cur === '休' ? '班' : null;
+    const cur = shown ? (shown.holiday === null ? '无' : shown.holiday ? '休' : '班') : '无';
+    const next = cur === '休' ? '班' : cur === '班' ? '无' : '休';
     setManualMap((m) => {
       const n = { ...m };
-      if (next) n[date] = { holiday: next === '休', name: next === '休' ? '手动节假日' : '调休上班', date };
-      else delete n[date];
+      n[date] = { holiday: next === '休' ? true : next === '班' ? false : null, name: next === '休' ? '手动节假日' : next === '班' ? '调休上班' : '手动覆盖为无', date };
       return n;
     });
   };
 
   const saveEditor = () => {
-    const text = Object.values(manualMap).map((h) => `${h.date} ${h.holiday ? '休' : '班'}`).sort().join('\n');
+    const text = Object.values(manualMap).map((h) => `${h.date} ${h.holiday === null ? '无' : h.holiday ? '休' : '班'}`).sort().join('\n');
     setHolidays((h) => ({ ...h, ...saveManualHolidays(text) }));
     // 广播给日历卡等（它们重读手动表，保持口径一致）
     window.dispatchEvent(new CustomEvent('dsh-pwb-holidays-changed'));
@@ -195,21 +194,21 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
 
             {/* 基本信息 */}
             <div className="flex flex-wrap gap-x-3 gap-y-2.5 [&>label]:w-[calc(50%-6px)]">
-              <label className="flex flex-col gap-1">
+              <label className="flex flex-col gap-1" style={{ display: 'flex', flexDirection: 'column' }}>
                 <span className="text-[10px] text-white/40">月薪(元)</span>
-                <input type="text" inputMode="numeric" value={config.monthly || ''} onChange={(e) => setConfig((c) => ({ ...c, monthly: Number(e.target.value.replace(/\D/g, '')) || 0 }))} placeholder="6000" className="h-9 w-full rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none transition-colors hover:border-white/[0.18]" />
+                <input type="text" inputMode="numeric" value={config.monthly || ''} onChange={(e) => setConfig((c) => ({ ...c, monthly: Number(e.target.value.replace(/\D/g, '')) || 0 }))} placeholder="6000" className="h-9 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none transition-colors hover:border-white/[0.18]" style={{ width: '100%', display: 'block' }} />
               </label>
-              <label className="flex flex-col gap-1">
+              <label className="flex flex-col gap-1" style={{ display: 'flex', flexDirection: 'column' }}>
                 <span className="text-[10px] text-white/40">发薪日(几号)</span>
-                <input type="text" inputMode="numeric" value={config.payday || ''} onChange={(e) => { const n = Number(e.target.value.replace(/\D/g, '')); setConfig((c) => ({ ...c, payday: Math.min(31, Math.max(1, n || 1)) })); }} placeholder="15" className="h-9 w-full rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none transition-colors hover:border-white/[0.18]" />
+                <input type="text" inputMode="numeric" value={config.payday || ''} onChange={(e) => { const n = Number(e.target.value.replace(/\D/g, '')); setConfig((c) => ({ ...c, payday: Math.min(31, Math.max(1, n || 1)) })); }} placeholder="15" className="h-9 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none transition-colors hover:border-white/[0.18]" style={{ width: '100%', display: 'block' }} />
               </label>
-              <label className="flex flex-col gap-1">
+              <label className="flex flex-col gap-1" style={{ display: 'flex', flexDirection: 'column' }}>
                 <span className="text-[10px] text-white/40">上班</span>
-                <input type="time" value={config.start} onChange={(e) => setConfig((c) => ({ ...c, start: e.target.value }))} className="h-9 w-full rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none transition-colors hover:border-white/[0.18]" />
+                <input type="time" value={config.start} onChange={(e) => setConfig((c) => ({ ...c, start: e.target.value }))} className="h-9 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none transition-colors hover:border-white/[0.18]" style={{ width: '100%', display: 'block' }} />
               </label>
-              <label className="flex flex-col gap-1">
+              <label className="flex flex-col gap-1" style={{ display: 'flex', flexDirection: 'column' }}>
                 <span className="text-[10px] text-white/40">下班</span>
-                <input type="time" value={config.end} onChange={(e) => setConfig((c) => ({ ...c, end: e.target.value }))} className="h-9 w-full rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none transition-colors hover:border-white/[0.18]" />
+                <input type="time" value={config.end} onChange={(e) => setConfig((c) => ({ ...c, end: e.target.value }))} className="h-9 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none transition-colors hover:border-white/[0.18]" style={{ width: '100%', display: 'block' }} />
               </label>
             </div>
 
@@ -229,7 +228,7 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
             {/* 节假日：可点选迷你月历 */}
             <div>
               <div className="mb-1.5 flex items-center">
-                <span className="text-[10px] text-white/40">节假日 · 点日期循环 休 / 班 / 清除</span>
+                <span className="text-[10px] text-white/40">节假日 · 点日期循环 休 / 班 / 无</span>
                 <div className="ml-auto flex items-center gap-0.5">
                   <button className="grid size-5 place-items-center rounded text-white/40 hover:bg-white/[0.08] hover:text-white" onClick={() => setCalM((m) => (m === 0 ? (setCalY((y) => y - 1), 11) : m - 1))}><ChevronLeft className="size-3.5" /></button>
                   <span className="min-w-19 text-center text-[11px] tabular-nums text-white/70">{calY} 年 {calM + 1} 月</span>
@@ -243,8 +242,9 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
                 {calCells.map((c) => {
                   const manual = manualMap[c.date];
                   const auto = holidays[c.date];
-                  const isOff = (manual ?? auto)?.holiday;
-                  const marked = Boolean(manual ?? auto);
+                  const eff = manual ?? auto;
+                  const isOff = eff ? (eff.holiday === null ? undefined : eff.holiday) : undefined;
+                  const marked = Boolean(eff && eff.holiday !== null);
                   const isManual = Boolean(manual);
                   const isToday = c.date === todayIso;
                   return (

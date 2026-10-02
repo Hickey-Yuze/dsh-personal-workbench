@@ -6,7 +6,7 @@
  * · isWorkday：先查节假日（休→false / 调休班→true），再按作息（双休/单休/大小周）
  */
 
-export interface HolidayEntry { holiday: boolean; name: string; date: string }
+export interface HolidayEntry { holiday: boolean | null; name: string; date: string } // holiday:null = 手动覆盖为「无」
 
 const HOLIDAY_CACHE_KEY = 'overview_holidays_cache_v1';
 const HOLIDAY_MANUAL_KEY = 'overview_holidays_manual_v1';
@@ -24,10 +24,10 @@ function readJson<T>(key: string): T | null {
 export function parseManual(text: string): HolidayMap {
   const map: HolidayMap = {};
   for (const line of text.split('\n')) {
-    const m = line.trim().match(/^(\d{4}-\d{2}-\d{2})\s*(休|班)/);
+    const m = line.trim().match(/^(\d{4}-\d{2}-\d{2})\s*(休|班|无)/);
     const key = m?.[1];
     const kind = m?.[2];
-    if (key && kind) map[key] = { holiday: kind === '休', name: kind === '休' ? '手动节假日' : '调休上班', date: key };
+    if (key && kind) map[key] = { holiday: kind === '休' ? true : kind === '班' ? false : null, name: kind === '休' ? '手动节假日' : kind === '班' ? '调休上班' : '手动覆盖为无', date: key };
   }
   return map;
 }
@@ -77,7 +77,8 @@ const toISODate = (d: Date): string =>
 export function isWorkday(d: Date, schedule: WorkSchedule, holidays: HolidayMap): boolean {
   const iso = toISODate(d);
   const h = holidays[iso];
-  if (h) return !h.holiday; // 「休」= 放假不上班；「班」= 调休要上班
+  if (h && h.holiday !== null) return !h.holiday; // 「休」= 放假不上班；「班」= 调休要上班
+  // holiday === null = 手动覆盖为「无」→ 按普通周末逻辑判定
   const dow = d.getDay();
   if (schedule === 'single') return dow !== 0;
   if (schedule === 'bigsmall') {
