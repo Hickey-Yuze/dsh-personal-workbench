@@ -39,6 +39,25 @@ const toSec = (hm: string) => {
 };
 const fmtHms = (s: number) => [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60].map((x) => String(x).padStart(2, '0')).join(':');
 const isoOf = (y: number, m: number, d: number) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+const shiftHm = (hm: string, deltaMin: number) => {
+  const total = ((toSec(hm) + deltaMin) % 86400 + 86400) % 86400;
+  return `${String(Math.floor(total / 3600)).padStart(2, '0')}:${String(Math.floor((total % 3600) / 60)).padStart(2, '0')}`;
+};
+
+/** 步进器：纯 button+span 结构（零 input 元素），左右调节，观感对齐 iTab。 */
+function Stepper({ value, onStep, ariaLabel }: { value: string; onStep: (dir: 1 | -1) => void; ariaLabel: string }) {
+  return (
+    <div className="flex h-9 items-center justify-between rounded-lg border border-white/[0.1] bg-white/[0.04] px-1" aria-label={ariaLabel}>
+      <button type="button" className="grid size-7 shrink-0 place-items-center rounded-md text-white/45 transition-colors hover:bg-white/[0.08] hover:text-white" onClick={() => onStep(-1)} title="减小">
+        <ChevronLeft className="size-4" />
+      </button>
+      <span className="min-w-12 text-center text-sm tabular-nums text-white">{value}</span>
+      <button type="button" className="grid size-7 shrink-0 place-items-center rounded-md text-white/45 transition-colors hover:bg-white/[0.08] hover:text-white" onClick={() => onStep(1)} title="增大">
+        <ChevronRight className="size-4" />
+      </button>
+    </div>
+  );
+}
 
 export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
   const [config, setConfig] = useState<SalaryConfig>(loadConfig);
@@ -193,23 +212,23 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
             </div>
 
             {/* 基本信息 */}
-            <div className="flex flex-wrap gap-x-3 gap-y-2.5 [&>label]:w-[calc(50%-6px)]">
-              <label className="flex flex-col gap-1" style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="flex flex-wrap gap-x-3 gap-y-2.5 [&>div]:w-[calc(50%-6px)]">
+              <div className="flex flex-col gap-1" style={{ display: 'flex', flexDirection: 'column' }}>
                 <span className="text-[10px] text-white/40">月薪(元)</span>
-                <input type="text" inputMode="numeric" value={config.monthly || ''} onChange={(e) => setConfig((c) => ({ ...c, monthly: Number(e.target.value.replace(/\D/g, '')) || 0 }))} placeholder="6000" className="h-9 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none transition-colors hover:border-white/[0.18]" style={{ width: '100%', display: 'block' }} />
-              </label>
-              <label className="flex flex-col gap-1" style={{ display: 'flex', flexDirection: 'column' }}>
+                <input type="text" inputMode="numeric" value={config.monthly || ''} onChange={(e) => setConfig((c) => ({ ...c, monthly: Number(e.target.value.replace(/\D/g, '')) || 0 }))} placeholder="6000" className="h-9 w-full rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none transition-colors hover:border-white/[0.18]" style={{ width: '100%', display: 'block' }} />
+              </div>
+              <div className="flex flex-col gap-1" style={{ display: 'flex', flexDirection: 'column' }}>
                 <span className="text-[10px] text-white/40">发薪日(几号)</span>
-                <input type="text" inputMode="numeric" value={config.payday || ''} onChange={(e) => { const n = Number(e.target.value.replace(/\D/g, '')); setConfig((c) => ({ ...c, payday: Math.min(31, Math.max(1, n || 1)) })); }} placeholder="15" className="h-9 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none transition-colors hover:border-white/[0.18]" style={{ width: '100%', display: 'block' }} />
-              </label>
-              <label className="flex flex-col gap-1" style={{ display: 'flex', flexDirection: 'column' }}>
+                <Stepper value={`${config.payday} 号`} ariaLabel="发薪日" onStep={(dir) => setConfig((c) => ({ ...c, payday: Math.min(31, Math.max(1, c.payday + dir)) }))} />
+              </div>
+              <div className="flex flex-col gap-1" style={{ display: 'flex', flexDirection: 'column' }}>
                 <span className="text-[10px] text-white/40">上班</span>
-                <input type="time" value={config.start} onChange={(e) => setConfig((c) => ({ ...c, start: e.target.value }))} className="h-9 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none transition-colors hover:border-white/[0.18]" style={{ width: '100%', display: 'block' }} />
-              </label>
-              <label className="flex flex-col gap-1" style={{ display: 'flex', flexDirection: 'column' }}>
+                <Stepper value={config.start} ariaLabel="上班时间" onStep={(dir) => setConfig((c) => ({ ...c, start: shiftHm(c.start, dir * 30) }))} />
+              </div>
+              <div className="flex flex-col gap-1" style={{ display: 'flex', flexDirection: 'column' }}>
                 <span className="text-[10px] text-white/40">下班</span>
-                <input type="time" value={config.end} onChange={(e) => setConfig((c) => ({ ...c, end: e.target.value }))} className="h-9 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none transition-colors hover:border-white/[0.18]" style={{ width: '100%', display: 'block' }} />
-              </label>
+                <Stepper value={config.end} ariaLabel="下班时间" onStep={(dir) => setConfig((c) => ({ ...c, end: shiftHm(c.end, dir * 30) }))} />
+              </div>
             </div>
 
             {/* 作息 */}
