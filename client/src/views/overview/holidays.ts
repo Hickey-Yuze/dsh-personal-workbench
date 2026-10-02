@@ -123,7 +123,7 @@ export function lunarParts(d: Date): { month: number; day: number } {
 export function festivalOf(d: Date, holidays: HolidayMap): string {
   const iso = toISODate(d);
   const h = holidays[iso];
-  if (h?.name && h.name !== '调休上班' && h.name !== '手动节假日') return h.name;
+  if (h?.name && h.name !== '调休上班' && h.name !== '手动节假日' && h.name !== '手动覆盖为无' && h.holiday !== null) return h.name;
   const { month, day } = lunarParts(d);
   if (month === 1 && day === 1) return '春节';
   if (month === 1 && day === 15) return '元宵';
