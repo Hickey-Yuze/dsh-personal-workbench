@@ -526,6 +526,13 @@ const CSS = `
 }
 @keyframes dsh-pwf-float-up { 0% { opacity: 0; transform: translateY(6px); } 15% { opacity: 1; } 100% { opacity: 0; transform: translateY(-46px); } }
 .dsh-pwf-floater { top: 38%; animation: dsh-pwf-float-up 0.9s ease-out forwards; }
+/* 表单细节：number 输入去掉上下箭头（挤压数字），秒位跳动 pop */
+.dsh-pwb-dark input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
+.dsh-pwb-dark input[type='number']::-webkit-inner-spin-button,
+.dsh-pwb-dark input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+@keyframes dsh-pwb-sec-pop { 0% { transform: translateY(2px) scale(0.82); opacity: 0.35; } 100% { transform: none; opacity: 1; } }
+.dsh-pwb-sec-pop { animation: dsh-pwb-sec-pop 0.32s ease-out; }
+
 /* 木鱼敲击动画（照抄原版）：双份同名 keyframes 交替切换实现无重挂载重播 */
 @keyframes dsh-pwf-hammer-knock-0 { 0% { transform: rotate(6deg); } 50% { transform: rotate(-26deg); } 100% { transform: rotate(6deg); } }
 @keyframes dsh-pwf-hammer-knock-1 { 0% { transform: rotate(6deg); } 50% { transform: rotate(-26deg); } 100% { transform: rotate(6deg); } }

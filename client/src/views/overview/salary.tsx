@@ -79,8 +79,10 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
   const perSecEarn = dayEarn / 86400; // 全天 24h 匀速累计
   const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
   const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  const holiday = holidays[todayIso];
-  const working = isWorkday(now, config.schedule, holidays);
+  // 生效表：手动标记最高优先级（保存即落 localStorage，这里每次重算都并入，确保标班/标休立刻生效）
+  const holidaysNow = useMemo(() => ({ ...holidays, ...getManualHolidays() }), [holidays]);
+  const holiday = holidaysNow[todayIso];
+  const working = isWorkday(now, config.schedule, holidaysNow);
   // 节假日照常计薪（默认开，对齐 iTab 数字一直跳）→ 关闭后假期停跳
   const counting = working || config.holidayPay;
   const earned = counting ? perSecEarn * nowSec : 0;
@@ -136,6 +138,8 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
   const saveEditor = () => {
     const text = Object.values(manualMap).map((h) => `${h.date} ${h.holiday ? '休' : '班'}`).sort().join('\n');
     setHolidays((h) => ({ ...h, ...saveManualHolidays(text) }));
+    // 广播给日历卡等（它们重读手动表，保持口径一致）
+    window.dispatchEvent(new CustomEvent('dsh-pwb-holidays-changed'));
     setEditing(false);
   };
 
@@ -153,12 +157,13 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
 
       <div className="flex flex-1 flex-col justify-center gap-1.5 px-5 pb-4">
         <div className="text-center text-[11px] text-white/45">
-          今日已赚{!working && holiday ? ` · ${holiday.name}放假` : ''}{!working && !holiday ? ' · 今日休息' : ''}
+          今日已赚{!working && holiday ? ` · ${holiday.name.includes('手动') ? '今天休息' : holiday.name + '放假'}` : ''}{!working && !holiday ? ' · 今日休息' : ''}
+          {working && holiday?.holiday === false && holiday.name.includes('调休') ? ' · 调休班已计入' : ''}
         </div>
-        {/* ¥239.91³² —— 主数字每秒跳动，后两位小号 */}
+        {/* ¥239.91³² —— 主数字每秒跳动，厘秒位小号 + pop 动画强化跳动感 */}
         <div className="text-center font-bold tabular-nums text-primary">
           <span className="text-3xl">¥{earnedStr.slice(0, -2)}</span>
-          <span className="text-base align-super">{earnedStr.slice(-2)}</span>
+          <span key={earnedStr.slice(-2)} className="dsh-pwb-sec-pop text-base align-super">{earnedStr.slice(-2)}</span>
         </div>
 
         <div className="mt-1 flex items-center justify-between text-[11px] text-white/45">

@@ -69,6 +69,10 @@ function CalendarWidget({ events, onOpen, rpc }: { events: ScheduleEvent[]; onOp
       try { const out = await rpc('personal-workbench/holidays/fetch', { year: y }); return { ok: out.ok, value: out.value }; } catch { return { ok: false, value: null }; }
     }).then((map) => { if (alive) setHolidays({ ...map, ...getManualHolidays() }); });
     return () => { alive = false; };
+    // 手动标记变更（薪资设置里点选日历保存后）即时重读，保持与日薪口径一致
+    const onHolidaysChanged = () => setHolidays({ ...getManualHolidays() });
+    window.addEventListener('dsh-pwb-holidays-changed', onHolidaysChanged);
+    return () => window.removeEventListener('dsh-pwb-holidays-changed', onHolidaysChanged);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year]);
   const cells = useMemo(() => {
