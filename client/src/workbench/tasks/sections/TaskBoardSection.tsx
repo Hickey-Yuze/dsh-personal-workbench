@@ -746,7 +746,11 @@ const TaskBoardSection = forwardRef<TaskBoardHandle, TaskBoardSectionProps>(func
     // 插件内不播种示例任务：首屏就是空看板（版式与外层一致，数据全是你自己的）
     setTasks([]);
     void initDefaultTasks;
-    // 事件桥：项目总览「待办事项」卡等外部写入后，即时重读本地数据（不用切模块）
+  }, []);
+
+  // 事件桥：项目总览「待办事项」卡等外部写入后，即时重读本地数据（不用切模块）。
+  // 独立 useEffect —— 之前混在加载逻辑里，被 savedTasks 存在时的提前 return 跳过，导致不同步。
+  useEffect(() => {
     const onExternalChange = () => {
       const g = scopedStorage.getItem(STORAGE_KEY_GROUPS);
       const t = scopedStorage.getItem(STORAGE_KEY_TASKS);

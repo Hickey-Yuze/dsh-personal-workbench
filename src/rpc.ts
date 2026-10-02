@@ -155,19 +155,40 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         return { lat: geo.lat, lon: geo.lon, city: [geo.regionName, geo.city].filter(Boolean).join(' ') };
       }
 
-      // ── 法定节假日（外联代理：timor 免费接口，全年休/班安排）──
+      // ── 法定节假日（外联代理：国务院安排镜像 holiday-cn 走 jsdelivr，timor 兜底）──
       case 'personal-workbench/holidays/fetch': {
         const p = asRecord(payload);
         const year = Number(p.year);
         if (!Number.isInteger(year) || year < 2020 || year > 2100) fail('bad-request', '年份不合法');
-        const res = await fetch(`https://timor.tech/api/holiday/year/${year}`, { headers: { 'user-agent': 'dsh-personal-workbench/1.0' } });
-        if (!res.ok) fail('bad-gateway', '节假日服务不可达');
-        const data = (await res.json()) as { holiday?: Record<string, { holiday?: boolean; name?: string; date?: string }> };
         const out: Record<string, { holiday: boolean; name: string; date: string }> = {};
-        for (const [md, v] of Object.entries(data.holiday ?? {})) {
-          if (typeof v.date === 'string') out[v.date] = { holiday: v.holiday !== false, name: v.name ?? '', date: v.date };
+        const sources: Array<() => Promise<Response>> = [
+          () => fetch(`https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master/${year}.json`, { headers: { 'user-agent': 'dsh-personal-workbench/1.0' } }),
+          () => fetch(`https://fastly.jsdelivr.net/gh/NateScarlet/holiday-cn@master/${year}.json`, { headers: { 'user-agent': 'dsh-personal-workbench/1.0' } }),
+          () => fetch(`https://timor.tech/api/holiday/year/${year}`, { headers: { 'user-agent': 'dsh-personal-workbench/1.0' } }),
+        ];
+        for (const get of sources) {
+          try {
+            const res = await get();
+            if (!res.ok) continue;
+            const text = await res.text();
+            const data = JSON.parse(text) as { days?: Array<{ name?: string; date?: string; isOffDay?: boolean }>; holiday?: Record<string, { holiday?: boolean; name?: string; date?: string }> };
+            if (Array.isArray(data.days) && data.days.length > 0) {
+              // holiday-cn 格式：days[].{name, date, isOffDay}
+              for (const d of data.days) {
+                if (typeof d.date === 'string') out[d.date] = { holiday: d.isOffDay !== false, name: d.name ?? '', date: d.date };
+              }
+              return out;
+            }
+            if (data.holiday && typeof data.holiday === 'object') {
+              // timor 格式：holiday[MM-DD].{holiday, name, date}
+              for (const v of Object.values(data.holiday)) {
+                if (typeof v.date === 'string') out[v.date] = { holiday: v.holiday !== false, name: v.name ?? '', date: v.date };
+              }
+              return out;
+            }
+          } catch { /* 换下一个源 */ }
         }
-        return out;
+        fail('bad-gateway', '节假日数据源均不可达');
       }
 
       // ── 启动器（本机应用，只列 .app 名称 + open 启动）──

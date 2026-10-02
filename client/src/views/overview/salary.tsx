@@ -139,10 +139,11 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
       </div>
 
       {editing && (
-        <div className="absolute inset-0 z-10 flex flex-col gap-2.5 overflow-y-auto rounded-2xl bg-white/[0.03] p-4 text-[11px] text-white/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setEditing(false)}>
+        <div className="flex max-h-[85vh] w-88 flex-col gap-2.5 overflow-y-auto rounded-2xl bg-white p-5 text-[11px] text-white/60 shadow-2xl" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center">
             <span className="text-sm font-semibold text-white">薪资设置</span>
-            <span className="ml-auto text-[10px] text-white/30">回车保存</span>
+            <button className="ml-auto grid size-6 place-items-center rounded-md text-white/40 hover:bg-white/[0.08] hover:text-white" onClick={() => setEditing(false)} title="关闭">×</button>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <label className="flex flex-col gap-1">月薪(元)
@@ -188,6 +189,7 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
           >
             保存
           </button>
+        </div>
         </div>
       )}
     </div>
