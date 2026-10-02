@@ -184,7 +184,7 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
 
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setEditing(false)}>
-          <div className="dsh-pwb-card flex max-h-[88vh] w-96 flex-col gap-4 overflow-y-auto rounded-2xl p-5 text-[11px] text-white/60 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="dsh-pwb-card relative isolate z-10 flex max-h-[88vh] w-96 flex-col gap-4 overflow-y-auto rounded-2xl p-5 text-[11px] text-white/60 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             {/* 头部 */}
             <div className="flex items-center">
               <span className="text-base font-semibold text-white">薪资设置</span>
@@ -194,7 +194,7 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
             </div>
 
             {/* 基本信息 */}
-            <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
+            <div className="flex flex-wrap gap-x-3 gap-y-2.5 [&>label]:w-[calc(50%-6px)]">
               <label className="flex flex-col gap-1">
                 <span className="text-[10px] text-white/40">月薪(元)</span>
                 <input type="text" inputMode="numeric" value={config.monthly || ''} onChange={(e) => setConfig((c) => ({ ...c, monthly: Number(e.target.value.replace(/\D/g, '')) || 0 }))} placeholder="6000" className="h-9 w-full rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none transition-colors hover:border-white/[0.18]" />
