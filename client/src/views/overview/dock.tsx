@@ -54,7 +54,8 @@ export function DockWidget({ rpc }: { rpc: RpcFn }) {
     setRunning(label);
     setError('');
     try {
-      await rpc('personal-workbench/apps/open', { name: label });
+      const out = await rpc('personal-workbench/apps/open', { name: label });
+      if (!out?.ok) setError((out?.error as { message?: string })?.message ?? '启动失败');
     } catch (e) {
       setError(e instanceof Error ? e.message : '启动失败');
     } finally {
