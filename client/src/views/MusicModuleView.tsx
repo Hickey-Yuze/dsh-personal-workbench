@@ -575,7 +575,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
           }}>
             {isMuted ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
           </button>
-          <input type="range" min={0} max={100} value={isMuted ? 0 : volume} style={{ width: 64, accentColor: 'var(--pwb-accent, #00d26a)' }} onChange={(e) => {
+          <input type="range" min={0} max={100} value={isMuted ? 0 : volume} style={{ width: 64, accentColor: 'var(--pwb-accent)' }} onChange={(e) => {
             const v = Number(e.target.value);
             setVolume(v); gSession.volume = v;
             const audio = getAudio();
@@ -644,7 +644,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
             <h4>导入歌单</h4>
             <textarea rows={3} value={importLink} onChange={(e) => setImportLink(e.target.value)} placeholder="粘贴歌单分享链接（网易云 163cn.tv / music.163.com / y.qq.com / kugou.com / kuwo.cn）" />
             <div className="dsh-pwb-mu-hint">网易云/QQ/酷狗歌单按歌名自动匹配酷我曲库；酷我/波点歌单直接导入可播放歌曲。解析经 Host 代理，可能需要十几秒。</div>
-            {importMsg !== '' ? <div className="dsh-pwb-mu-hint" style={{ color: 'var(--pwb-accent, #00b862)' }}>{importMsg}</div> : null}
+            {importMsg !== '' ? <div className="dsh-pwb-mu-hint" style={{ color: 'var(--pwb-accent)' }}>{importMsg}</div> : null}
             <div className="dsh-pwb-mu-dialog-row">
               <button type="button" className="dsh-pwb-mu-btn" onClick={() => setShowImport(false)} disabled={importing}>取消</button>
               <button type="button" className="dsh-pwb-mu-search-btn" style={{ position: 'static' }} onClick={doImport} disabled={importing || importLink.trim() === ''}>
