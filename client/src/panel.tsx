@@ -81,10 +81,12 @@ function ModuleSwitch({
   id,
   rpc,
   onOpen,
+  onBack,
 }: {
   id: string;
   rpc: RpcFn;
   onOpen: (next: string) => void;
+  onBack: () => void;
 }): ReactElement {
   switch (id) {
     case 'todo':
@@ -100,7 +102,7 @@ function ModuleSwitch({
     case 'film':
       return <VideoModuleView rpc={rpc} />;
     case 'overview':
-      return <OverviewView rpc={rpc} onOpen={onOpen} onBack={() => setActive(null)} />;
+      return <OverviewView rpc={rpc} onOpen={onOpen} onBack={onBack} />;
     default: {
       const mod = moduleById(id);
       return mod === undefined ? <div className="dsh-pwb-empty">{t('common.loading')}</div> : <PendingView mod={mod} />;
