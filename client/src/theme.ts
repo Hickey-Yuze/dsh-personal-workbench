@@ -768,6 +768,20 @@ const CSS = `
 .dsh-pwb-vd-search:focus { border-color: color-mix(in srgb, var(--pwb-accent) 50%, transparent); }
 .dsh-pwb-vd-searchbtn { height: 38px; padding: 0 18px; border-radius: 19px; border: none; background: var(--pwb-accent); color: color-mix(in srgb, var(--pwb-accent) 12%, black); font-size: 13px; font-weight: 650; font-family: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
 .dsh-pwb-vd-searchbtn:disabled { opacity: .55; cursor: default; }
+/* ── 影视搜索历史下拉 ── */
+.dsh-pwb-vd-vhwrap { position: relative; flex: 1; min-width: 0; }
+.dsh-pwb-vd-vhpanel { position: absolute; top: calc(100% + 8px); left: 0; right: 0; z-index: 30; background: var(--pwb-card, #fff); border: 1px solid var(--pwb-border, rgba(20,20,30,0.1)); border-radius: 14px; box-shadow: 0 12px 34px rgba(0,0,0,0.13); overflow: hidden; padding: 6px; }
+.dsh-pwb-vd-vhhead { display: flex; align-items: center; justify-content: space-between; padding: 7px 12px 5px; font-size: 12px; color: var(--pwb-dim, #6b7280); }
+.dsh-pwb-vd-vhhead span { display: inline-flex; align-items: center; gap: 5px; }
+.dsh-pwb-vd-vhhead button { border: none; background: transparent; color: var(--pwb-dimmer, #9aa0a6); font-size: 12px; cursor: pointer; font-family: inherit; padding: 2px 6px; border-radius: 6px; }
+.dsh-pwb-vd-vhhead button:hover { color: var(--pwb-text, #1c1c22); background: var(--pwb-card-hi, #f2f3f5); }
+.dsh-pwb-vd-vhitem { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 9px; font-size: 13.5px; color: var(--pwb-text, #1c1c22); cursor: pointer; }
+.dsh-pwb-vd-vhitem svg { color: var(--pwb-dimmer, #9aa0a6); flex: 0 0 auto; }
+.dsh-pwb-vd-vhitem span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dsh-pwb-vd-vhitem:hover { background: var(--pwb-card-hi, #f2f3f5); }
+.dsh-pwb-vd-vhitem button { flex: 0 0 auto; display: grid; place-items: center; width: 22px; height: 22px; border: none; border-radius: 50%; background: transparent; color: var(--pwb-dimmer, #9aa0a6); cursor: pointer; opacity: 0; }
+.dsh-pwb-vd-vhitem:hover button { opacity: 1; }
+.dsh-pwb-vd-vhitem button:hover { background: var(--pwb-border, rgba(20,20,30,0.1)); color: #e5484d; }
 /* 加载旋转（Loader2 通用类；keyframes 用自有名避免与 tailwind layer 内 spin 冲突） */
 .spin { animation: dsh-pwb-spin 0.9s linear infinite; }
 @keyframes dsh-pwb-spin { to { transform: rotate(360deg); } }

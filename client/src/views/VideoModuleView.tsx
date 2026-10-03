@@ -8,7 +8,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ReactElement } from 'react';
-import { Search as SearchIcon, Heart, History, Loader2, ChevronLeft, ChevronRight, Play, ArrowLeft, Trash2, X } from 'lucide-react';
+import { Search as SearchIcon, Heart, History, Loader2, ChevronLeft, ChevronRight, Play, ArrowLeft, Trash2, X, Clock } from 'lucide-react';
 import type { RpcFn } from '../rpc.js';
 
 type VideoBrief = { id: string; name: string; pic?: string | undefined; remarks?: string | undefined; typeName?: string | undefined; year?: string | undefined };
@@ -60,6 +60,15 @@ function PosterCard({ name, pic, sub, rate, onClick }: { name: string; pic?: str
 
 export function VideoModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
   const [route, setRoute] = useState<Route>(gSession.route);
+  // 搜索历史（localStorage，最新在前、去重、上限 10 条）
+  const VH_KEY = 'dsh-pwb:video_search_history_v1';
+  const loadVh = (): string[] => { try { const a = JSON.parse(localStorage.getItem(VH_KEY) ?? '[]') as unknown; return Array.isArray(a) ? a.filter((x): x is string => typeof x === 'string') : []; } catch { return []; } };
+  const [vhOpen, setVhOpen] = useState(false);
+  const [vhList, setVhList] = useState<string[]>(loadVh);
+  const vhRef = useRef<HTMLDivElement | null>(null);
+  const saveVh = (list: string[]): void => { setVhList(list); try { localStorage.setItem(VH_KEY, JSON.stringify(list)); } catch { /* 忽略 */ } };
+  const pushVh = (q: string): void => saveVh([q, ...vhList.filter((x) => x !== q)].slice(0, 10));
+  const removeVh = (q: string): void => saveVh(vhList.filter((x) => x !== q));
   const [query, setQuery] = useState(gSession.query);
   const [results, setResults] = useState<VideoBrief[]>(gSession.results);
   const [loading, setLoading] = useState(false);
@@ -109,6 +118,7 @@ export function VideoModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     if (dropOpen === null) return;
     const onDown = (e: MouseEvent): void => {
       if (dropRef.current !== null && !dropRef.current.contains(e.target as Node)) setDropOpen(null);
+      if (vhRef.current !== null && !vhRef.current.contains(e.target as Node)) setVhOpen(false);
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
@@ -131,7 +141,8 @@ export function VideoModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
   const doSearch = (kw: string): void => {
     const q = kw.trim();
     if (q === '') return;
-    setLoading(true); setErr(''); setDropOpen(null);
+    setLoading(true); setErr(''); setDropOpen(null); setVhOpen(false);
+    pushVh(q);
     void (async () => {
       const out = await rpc('personal-workbench/video/search', { q });
       setLoading(false);
@@ -434,8 +445,26 @@ export function VideoModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
       {/* Hero：大搜索框 + 三态切换（原版 SearchBox + media toggle） */}
       <div className="dsh-pwb-vd-hero">
         <div className="dsh-pwb-vd-herosearch">
-          <input className="dsh-pwb-vd-search" value={query} onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') doSearch(query); }} placeholder="搜索电影、剧集、短剧、动漫…" />
+          <div className="dsh-pwb-vd-vhwrap" ref={vhRef}>
+            <input className="dsh-pwb-vd-search" value={query} onChange={(e) => setQuery(e.target.value)}
+              onFocus={() => { if (vhList.length > 0) setVhOpen(true); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') doSearch(query); }} placeholder="搜索电影、剧集、短剧、动漫…" />
+            {vhOpen && vhList.length > 0 ? (
+              <div className="dsh-pwb-vd-vhpanel">
+                <div className="dsh-pwb-vd-vhhead">
+                  <span><Clock className="size-3.5" /> 搜索历史</span>
+                  <button type="button" onClick={() => saveVh([])}>清空</button>
+                </div>
+                {vhList.map((h) => (
+                  <div key={h} className="dsh-pwb-vd-vhitem" onMouseDown={(e) => { e.preventDefault(); setQuery(h); doSearch(h); }}>
+                    <SearchIcon className="size-4" />
+                    <span>{h}</span>
+                    <button type="button" title="删除" onClick={(e) => { e.stopPropagation(); removeVh(h); }}><X className="size-3.5" /></button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
           <button type="button" className="dsh-pwb-vd-searchbtn" disabled={loading || query.trim() === ''} onClick={() => doSearch(query)}>
             {loading ? <Loader2 className="size-4 spin" /> : <SearchIcon className="size-4" />} 搜索
           </button>
