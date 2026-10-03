@@ -564,9 +564,23 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
                 <span>{fmtTime(audioDur)}</span>
               </div>
               <div className="dsh-pwb-mu-btns">
-                <button type="button" className={`dsh-pwb-mu-ctrlbtn${isShuffle ? ' dsh-pwb-mu-on' : ''}`} title="随机播放" onClick={() => { setIsShuffle(!isShuffle); gSession.isShuffle = !isShuffle; }}>
-                  <Shuffle className="size-4" />
-                </button>
+                {(() => {
+                  const mode: 'order' | 'all' | 'one' | 'shuffle' = isShuffle ? 'shuffle' : repeatMode;
+                  const label = mode === 'order' ? '顺序播放' : mode === 'all' ? '列表循环' : mode === 'one' ? '单曲循环' : '随机播放';
+                  const cycle = (): void => {
+                    const next = mode === 'order' ? 'all' : mode === 'all' ? 'one' : mode === 'one' ? 'shuffle' : 'order';
+                    const sh = next === 'shuffle';
+                    const rp = next === 'all' ? 'all' : next === 'one' ? 'one' : 'off';
+                    setIsShuffle(sh); gSession.isShuffle = sh;
+                    setRepeatMode(rp); gSession.repeatMode = rp;
+                  };
+                  return (
+                    <button type="button" className={`dsh-pwb-mu-ctrlbtn${mode !== 'order' ? ' dsh-pwb-mu-on' : ''}`} title={label} onClick={cycle}>
+                      {mode === 'shuffle' ? <Shuffle className="size-4" /> : <Repeat className="size-4" />}
+                      {mode === 'one' ? <span style={{ position: 'absolute', bottom: -1, right: -1, width: 12, height: 12, borderRadius: '50%', background: 'var(--pwb-accent, #00d26a)', color: '#04160c', fontSize: 8, fontWeight: 700, display: 'grid', placeItems: 'center' }}>1</span> : null}
+                    </button>
+                  );
+                })()}
                 <button type="button" className="dsh-pwb-mu-ctrlbtn" title="上一首" onClick={() => void handlePrev()}>
                   <SkipBack className="size-5" />
                 </button>
@@ -575,15 +589,6 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
                 </button>
                 <button type="button" className="dsh-pwb-mu-ctrlbtn" title="下一首" onClick={() => void handleNext()}>
                   <SkipForward className="size-5" />
-                </button>
-                <button
-                  type="button"
-                  className={`dsh-pwb-mu-ctrlbtn${repeatMode !== 'off' ? ' dsh-pwb-mu-on' : ''}`}
-                  title={repeatMode === 'one' ? '单曲循环' : repeatMode === 'all' ? '列表循环' : '顺序播放'}
-                  onClick={() => { const next = repeatMode === 'off' ? 'all' : repeatMode === 'all' ? 'one' : 'off'; setRepeatMode(next); gSession.repeatMode = next; }}
-                >
-                  <Repeat className="size-4" />
-                  {repeatMode === 'one' ? <span style={{ position: 'absolute', bottom: -1, right: -1, width: 12, height: 12, borderRadius: '50%', background: 'var(--pwb-accent, #00d26a)', color: '#04160c', fontSize: 8, fontWeight: 700, display: 'grid', placeItems: 'center' }}>1</span> : null}
                 </button>
               </div>
               <div className="dsh-pwb-mu-vol">
