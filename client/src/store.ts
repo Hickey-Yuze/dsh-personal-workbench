@@ -2,7 +2,7 @@
  * 客户端存储 hook：经 Host RPC 读写插件自有 JSON（<dataDir>/<key>.json）。
  * 乐观更新 + 400ms 防抖落盘；挂载时拉一次快照；写入失败不打断交互，只置 error。
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RpcFn } from './rpc.js';
 
 export interface KvState<T> {
