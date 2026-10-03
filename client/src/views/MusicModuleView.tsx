@@ -151,15 +151,24 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
   // ── 播放控制 ──
   const playSong = useCallback((song: Song): void => {
     const audio = getAudio();
-    const url = kuwoPlayUrl(song.id, QUALITY_MAP[quality]);
     gSession.songId = song.id;
     gSession.isPlaying = true;
-    if (audio.src !== url) audio.src = url;
-    audio.play().catch(() => setErr('播放被浏览器拦截或地址失效，再点一次试试'));
     setIsPlaying(true);
     setProgress(0);
     setAudioDur(0);
     setErr('');
+    // 官方 antiserver 直链优先（Host 解析），失败回落 nxinxz 镜像
+    void (async () => {
+      let url = kuwoPlayUrl(song.id, QUALITY_MAP[quality]);
+      const out = await rpc('personal-workbench/music/source', { id: song.id, quality });
+      if (out?.ok) {
+        const direct = (out.value as { url?: string }).url;
+        if (typeof direct === 'string' && direct.startsWith('http')) url = direct;
+      }
+      if (gSession.songId !== song.id) return; // 已切歌，丢弃
+      audio.src = url;
+      audio.play().catch(() => setErr('播放被浏览器拦截或地址失效，再点一次试试'));
+    })();
     // 最近播放前插（去重）
     setPlaylists((prev) => {
       const recent = prev.find((p) => p.id === 'recent');
@@ -171,7 +180,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
       return updated;
     });
     loadLyrics(song);
-  }, [quality, loadLyrics]);
+  }, [quality, loadLyrics, rpc]);
 
   const selectSong = useCallback((song: Song, listOverride?: Song[]): void => {
     const list = listOverride ?? playlistSongs;
@@ -407,10 +416,18 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     const audio = getAudio();
     if (gSession.songId !== null && audio.src !== '') {
       const wasPlaying = !audio.paused;
-      audio.src = kuwoPlayUrl(gSession.songId, QUALITY_MAP[q]);
-      if (wasPlaying) audio.play().catch(() => {});
+      void (async () => {
+        let url = kuwoPlayUrl(gSession.songId ?? '', QUALITY_MAP[q]);
+        const out = await rpc('personal-workbench/music/source', { id: gSession.songId ?? '', quality: q });
+        if (out?.ok) {
+          const direct = (out.value as { url?: string }).url;
+          if (typeof direct === 'string' && direct.startsWith('http')) url = direct;
+        }
+        audio.src = url;
+        if (wasPlaying) audio.play().catch(() => {});
+      })();
     }
-  }, []);
+  }, [rpc]);
 
   const rightTitle = listMode === 'online' ? `搜索结果${onlineTotal > 0 ? ` · ${onlineTotal} 首` : ''}` : (activePlaylist?.name ?? '歌单');
   const rightList = listMode === 'online' ? onlineResults : playlistSongs;

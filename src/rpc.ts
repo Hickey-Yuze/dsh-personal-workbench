@@ -40,6 +40,16 @@ export const API_PREFIX = '/api/personal-workbench';
 
 // ── 音乐平台：酷我接口 Host 代理（浏览器侧有 CORS，Node 侧无）──
 const MUSIC_PROXY_DEFAULT = 'https://jsnzkpg4.pages.dev/';
+const MUSIC_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1';
+/** Node 端无 CORS：直连优先，失败回落 pages.dev 代理。 */
+async function musicFetchSmart(url: string, ms = 15000, headers?: Record<string, string>): Promise<string> {
+  const h = { 'User-Agent': MUSIC_UA, ...headers };
+  try {
+    return await musicFetch(url, ms, h);
+  } catch {
+    return await musicFetch(musicWithProxy(url), ms, h);
+  }
+}
 function musicWithProxy(url: string, proxy?: string): string {
   const base = (proxy !== undefined && proxy.trim() !== '' ? proxy.trim() : MUSIC_PROXY_DEFAULT);
   const b = base.endsWith('/') ? base : `${base}/`;
@@ -403,12 +413,32 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         const url = `http://search.kuwo.cn/r.s?client=kt&all=${encodeURIComponent(q)}&pn=${page - 1}&rn=30&uid=2574109560&ver=kwplayer_ar_8.5.4.2&vipver=1&ft=music&cluster=0&strategy=2012&encoding=utf8&rformat=json&vermerge=1&mobi=1`;
         let data: Record<string, unknown>;
         try {
-          data = musicParseMaybeJsonp(await musicFetch(musicWithProxy(url, proxy)));
+          data = musicParseMaybeJsonp(await musicFetchSmart(url));
         } catch {
-          fail('bad-gateway', '搜索接口不可达');
+          if (proxy !== undefined) {
+            try { data = musicParseMaybeJsonp(await musicFetch(musicWithProxy(url, proxy))); } catch { fail('bad-gateway', '搜索接口不可达'); }
+          } else {
+            fail('bad-gateway', '搜索接口不可达');
+          }
         }
         const m = musicMapAbslist(data);
         return { songs: m.songs, isEnd: m.isEnd, total: m.total };
+      }
+      case 'personal-workbench/music/source': {
+        // 酷我官方直链（碳酸插件同源）：antiserver convert_url；带 iPhone UA + kuwo Referer
+        const p = asRecord(payload);
+        const id = typeof p.id === 'string' ? p.id : '';
+        const q = typeof p.quality === 'string' ? p.quality : '128k';
+        if (id === '' || !/^\d+$/.test(id)) fail('bad-request', '缺少歌曲 id');
+        const format = q === 'flac' ? 'flac' : 'mp3';
+        try {
+          const text = await musicFetch(`http://antiserver.kuwo.cn/anti.s?type=convert_url&rid=${id}&format=${format}&response=url`, 9000, { 'User-Agent': MUSIC_UA, Referer: 'https://www.kuwo.cn/' });
+          const url = text.trim();
+          if (url.startsWith('http')) return { url };
+          fail('bad-gateway', '直链获取失败');
+        } catch (e) {
+          fail('bad-gateway', e instanceof Error ? e.message : '直链获取失败');
+        }
       }
       case 'personal-workbench/music/detail': {
         // 歌词 + 高清封面（同一接口；酷我偶发 301 限流，重试 3 次退避）
@@ -420,7 +450,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         let lastErr = '';
         for (let attempt = 0; attempt < 3; attempt++) {
           try {
-            const data = musicParseMaybeJsonp(await musicFetch(musicWithProxy(url, proxy))) as {
+            const data = musicParseMaybeJsonp(await musicFetchSmart(url)) as {
               status?: number; data?: { lrclist?: Array<{ time?: unknown; lineLyric?: unknown }>; songinfo?: { pic?: unknown } };
             };
             if (data.status === 301 || data.data === undefined) { await musicSleep(800 * (attempt + 1)); continue; }
