@@ -704,6 +704,7 @@ html { color-scheme: light !important; }
 .dsh-pwb-progress-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #00d26a, #6ee7a8); }
 
 /* 便签 */
+/* 便签：便利贴黄（内容语义色，非主题背景），深浅色主题下同为黄纸 */
 .dsh-pwb-notes {
   width: 100%;
   height: 100%;
@@ -711,13 +712,16 @@ html { color-scheme: light !important; }
   resize: none;
   border: none;
   outline: none;
-  background: transparent;
-  color: var(--pwb-text);
+  background: linear-gradient(180deg, #fdf6b2, #f9e98c);
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: inset 0 0 0 1px rgba(180, 150, 40, 0.28), 0 1px 3px rgba(120, 90, 10, 0.10);
+  color: #6b5320;
   font-family: inherit;
   font-size: 12.5px;
   line-height: 1.7;
 }
-.dsh-pwb-notes::placeholder { color: var(--pwb-dimmer); }
+.dsh-pwb-notes::placeholder { color: #ab954c; }
 
 /* 模块快捷入口 */
 .dsh-pwb-modlist { display: flex; flex-wrap: wrap; gap: 8px; align-content: flex-start; }
