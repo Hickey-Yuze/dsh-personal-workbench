@@ -528,6 +528,8 @@ const CSS = `
 .dsh-pwf-floater { top: 38%; animation: dsh-pwf-float-up 0.9s ease-out forwards; }
 /* 表单细节：原生控件按浅色渲染（宿主 color-scheme:dark 会把 time/number 内部件渲染成白条），number 去上下箭头，秒位跳动 pop */
 .dsh-pwb-dark { color-scheme: light; }
+/* 日期/时间选择弹层跟随页面根元素的 color-scheme（容器级声明管不到弹层）——宿主浅色主题下根就该是 light，声明之 */
+html { color-scheme: light !important; }
 .dsh-pwb-dark input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
 .dsh-pwb-dark input[type='number']::-webkit-inner-spin-button,
 .dsh-pwb-dark input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
