@@ -115,46 +115,41 @@ export function WorkbenchPanel({ rpc }: WorkbenchPanelProps): ReactElement {
   return (
     <div className="dsh-pwb-panel">
       {active === 'todo' ? (
-        // 待办页自带完整标题行（TopBarSection），面板头部让位，只留返回与状态
+        // 待办页自带完整标题行（TopBarSection），面板头部只留左侧返回
         <div className="dsh-pwb-head dsh-pwb-head-slim">
           <button type="button" className="dsh-pwb-btn" onClick={() => setActive(null)}>
             ← {t('act.back')}
           </button>
-          <span className="dsh-pwb-chip">
-            <i className="dsh-pwb-chip-dot" />
-            {t('panel.local')}
-          </span>
         </div>
       ) : (
-        <div className="dsh-pwb-head">
-          <div className="dsh-pwb-head-main">
-            <div className="dsh-pwb-title-row">
-              <span className="dsh-pwb-title-mark">
-                {current !== undefined && current.image !== undefined
-                  ? <img src={current.image} alt="" style={{ width: 34, height: 34, borderRadius: 9, objectFit: 'cover', boxShadow: '0 2px 8px rgba(0,0,0,0.18)' }} />
-                  : <ModIcon path={current === undefined ? MARK_ICON : current.icon} />}
-              </span>
-              <span className="dsh-pwb-title" style={current !== undefined && current.id === 'music' ? { color: '#34a853', fontWeight: 800 } : undefined}>
-                {current === undefined ? t('panel.title') : t(`mod.${current.id}.label`)}
-              </span>
-            </div>
-            {current === undefined || current.id !== 'music' ? (
-              <div className="dsh-pwb-sub">
-                {current === undefined ? t('panel.subtitle') : t(`mod.${current.id}.desc`)}
-              </div>
-            ) : null}
-          </div>
+        <>
           {active !== null ? (
-            <button type="button" className="dsh-pwb-btn" onClick={() => setActive(null)}>
-              ← {t('act.back')}
-            </button>
-          ) : (
-            <span className="dsh-pwb-chip">
-              <i className="dsh-pwb-chip-dot" />
-              {t('panel.local')}
-            </span>
-          )}
-        </div>
+            <div className="dsh-pwb-head dsh-pwb-head-slim">
+              <button type="button" className="dsh-pwb-btn" onClick={() => setActive(null)}>
+                ← {t('act.back')}
+              </button>
+            </div>
+          ) : null}
+          <div className="dsh-pwb-head">
+            <div className="dsh-pwb-head-main">
+              <div className="dsh-pwb-title-row">
+                <span className="dsh-pwb-title-mark">
+                  {current !== undefined && current.image !== undefined
+                    ? <img src={current.image} alt="" style={{ width: 34, height: 34, borderRadius: 9, objectFit: 'cover', boxShadow: '0 2px 8px rgba(0,0,0,0.18)' }} />
+                    : <ModIcon path={current === undefined ? MARK_ICON : current.icon} />}
+                </span>
+                <span className="dsh-pwb-title" style={current !== undefined && current.id === 'music' ? { color: '#34a853', fontWeight: 800 } : undefined}>
+                  {current === undefined ? t('panel.title') : t(`mod.${current.id}.label`)}
+                </span>
+              </div>
+              {current === undefined || current.id !== 'music' ? (
+                <div className="dsh-pwb-sub">
+                  {current === undefined ? t('panel.subtitle') : t(`mod.${current.id}.desc`)}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </>
       )}
 
       <div className="dsh-pwb-body">
