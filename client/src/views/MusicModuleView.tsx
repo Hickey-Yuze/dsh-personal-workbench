@@ -142,7 +142,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
         const v = out.value as { lyrics: LyricLine[]; coverUrl?: string };
         const cleaned = v.lyrics.filter((l, i) => !(i === 0 && (l.text === song.title || l.text.startsWith(`${song.title} -`) || l.text.startsWith(`${song.title} (`))));
         setLyrics(cleaned);
-        if (v.coverUrl !== undefined) setCurrent((prev) => (prev !== null && prev.id === song.id ? { ...prev, coverUrl: v.coverUrl } : prev));
+        if (v.coverUrl) setCurrent((prev) => (prev !== null && prev.id === song.id ? { ...prev, coverUrl: v.coverUrl } : prev));
       }
     })();
   }, [rpc]);
