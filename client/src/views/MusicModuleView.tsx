@@ -94,6 +94,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     el.style.setProperty('width', '340px', 'important');
     el.style.setProperty('height', '340px', 'important');
     el.style.setProperty('corner-shape', 'round', 'important');
+    el.querySelectorAll<HTMLElement>('img, span, i').forEach((c) => { c.style.setProperty('corner-shape', 'round', 'important'); c.style.setProperty('border-radius', '50%', 'important'); });
   }, []);
   const [singerError, setSingerError] = useState('');
   const [onlineLoading, setOnlineLoading] = useState(false);

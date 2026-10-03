@@ -678,9 +678,9 @@ const CSS = `
   animation: dsh-pwb-disc-spin 20s linear infinite; animation-play-state: paused;
 }
 .dsh-pwb-mu-playing .dsh-pwb-mu-fs-disc { animation-play-state: running; }
-.dsh-pwb-mu-fs-disc img { width: 56%; height: 56%; border-radius: 50% !important; object-fit: cover; box-shadow: 0 0 0 7px rgba(8, 8, 10, 0.75), 0 10px 34px rgba(0, 0, 0, 0.5); }
-.dsh-pwb-mu-fs-disc-dummy { width: 56%; height: 56%; border-radius: 50%; background: radial-gradient(circle, #33333a, #1c1c20); box-shadow: 0 0 0 7px rgba(8, 8, 10, 0.75); display: grid; place-items: center; color: rgba(255, 255, 255, 0.35); }
-.dsh-pwb-mu-fs-disc i { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 15px; height: 15px; border-radius: 50%; background: #0a0a0c; box-shadow: inset 0 0 0 3.5px #26262a, 0 0 0 5px rgba(8, 8, 10, 0.75); }
+.dsh-pwb-mu-fs-disc img { corner-shape: round; width: 56%; height: 56%; border-radius: 50% !important; object-fit: cover; box-shadow: 0 0 0 7px rgba(8, 8, 10, 0.75), 0 10px 34px rgba(0, 0, 0, 0.5); }
+.dsh-pwb-mu-fs-disc-dummy { corner-shape: round; width: 56%; height: 56%; border-radius: 50%; background: radial-gradient(circle, #33333a, #1c1c20); box-shadow: 0 0 0 7px rgba(8, 8, 10, 0.75); display: grid; place-items: center; color: rgba(255, 255, 255, 0.35); }
+.dsh-pwb-mu-fs-disc i { corner-shape: round; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 15px; height: 15px; border-radius: 50%; background: #0a0a0c; box-shadow: inset 0 0 0 3.5px #26262a, 0 0 0 5px rgba(8, 8, 10, 0.75); }
 /* 右侧歌词：垂直居中、当前行品牌绿高亮、上下渐隐遮罩 */
 .dsh-pwb-mu-fs-right { position: relative; flex: 1; min-width: 0; align-self: center; height: min(460px, 78%); display: flex; flex-direction: column; overflow: hidden; }
 .dsh-pwb-mu-fs-lyrics { position: relative; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; text-align: center; padding: 190px 12px; box-sizing: border-box; }
