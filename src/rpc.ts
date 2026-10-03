@@ -133,6 +133,37 @@ async function videoCmsGet(query: string): Promise<{ code?: number; list?: Array
   return (await res.json()) as { code?: number; list?: Array<Record<string, unknown>>; total?: number; pagecount?: number };
 }
 /** 详情：SCF 直连优先（境内出口免风控，实测 2s），失败走磁力猫多入口容灾。 */
+/** 影视海报豆瓣缓存（键=片名，含负缓存）。 */
+const videoPosterCache = new Map<string, string | undefined>();
+/** 按片名从豆瓣镜像搜海报（tv→movie 双查，标题相等/前缀匹配）；豆瓣图防盗链，Host 抓图转 base64 data URL。 */
+async function videoPosterFromDouban(name: string): Promise<string | undefined> {
+  const hit = videoPosterCache.get(name);
+  if (hit !== undefined) return hit;
+  for (const type of ['tv', 'movie'] as const) {
+    try {
+      const res = await fetch(`https://movie.douban.cmliussss.com/j/search_subjects?type=${type}&tag=${encodeURIComponent(name)}&sort=recommend&page_limit=5&page_start=0`, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', Referer: 'https://movie.douban.com/', Accept: 'application/json' }, signal: AbortSignal.timeout(12000) });
+      const data = (await res.json()) as { subjects?: Array<Record<string, unknown>> };
+      const matched = (data.subjects ?? []).find((it) => {
+        const t = String(it.title ?? '');
+        return t !== '' && (t === name || name.startsWith(t) || t.startsWith(name));
+      });
+      const cover = matched !== undefined && typeof matched.cover === 'string' && (matched.cover as string) !== ''
+        ? (matched.cover as string).replace(/^http:/, 'https:')
+        : undefined;
+      if (cover === undefined) continue;
+      const imgRes = await fetch(cover, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', Referer: 'https://movie.douban.com/' }, signal: AbortSignal.timeout(8000) });
+      if (!imgRes.ok) continue;
+      const buf = Buffer.from(await imgRes.arrayBuffer());
+      const mime = imgRes.headers.get('content-type') ?? 'image/jpeg';
+      const b64 = `data:${mime};base64,${buf.toString('base64')}`;
+      videoPosterCache.set(name, b64);
+      return b64;
+    } catch { /* 下一个类型 */ }
+  }
+  videoPosterCache.set(name, '');
+  return undefined;
+}
+
 async function videoDetailFetch(id: string): Promise<Record<string, unknown> | null> {
   for (const base of VIDEO_BASES) {
     try {
@@ -540,6 +571,18 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
               }));
             }
             if (picMap.size > 0) items = items.map((x) => (picMap.has(x.id) ? { ...x, pic: picMap.get(x.id) } : x));
+          }
+          // 二级回落：详情源没有的（新片详情库未同步），按片名从豆瓣搜海报（base64）
+          const still = items.filter((x) => x.pic === undefined);
+          if (still.length > 0) {
+            const dbMap = new Map<string, string>();
+            for (let i = 0; i < still.length; i += 4) {
+              await Promise.all(still.slice(i, i + 4).map(async (x) => {
+                const b64 = await videoPosterFromDouban(x.name);
+                if (b64 !== undefined && b64 !== '') dbMap.set(x.id, b64);
+              }));
+            }
+            if (dbMap.size > 0) items = items.map((x) => (dbMap.has(x.id) ? { ...x, pic: dbMap.get(x.id) } : x));
           }
           const result = { items };
           videoSearchCache.set(skey, { at: Date.now(), data: result });
