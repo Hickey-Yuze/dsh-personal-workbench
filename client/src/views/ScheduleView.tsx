@@ -152,7 +152,7 @@ export function ScheduleView({ rpc }: { rpc: RpcFn }): ReactElement {
       <div className="dsh-pwb-view-body">
         <div className="dsh-pwb-cal">
           {WEEK.map((w) => (
-            <div key={w} className="dsh-pwb-cal-head">
+            <div key={w} className="dsh-pwb-mcal-head">
               {w}
             </div>
           ))}
@@ -163,28 +163,28 @@ export function ScheduleView({ rpc }: { rpc: RpcFn }): ReactElement {
                 key={c.date}
                 type="button"
                 className={[
-                  'dsh-pwb-cal-cell',
-                  c.inMonth ? '' : 'dsh-pwb-cal-out',
-                  c.isToday ? 'dsh-pwb-cal-today' : '',
-                  c.date === selected ? 'dsh-pwb-cal-sel' : '',
+                  'dsh-pwb-mcal-cell',
+                  c.inMonth ? '' : 'dsh-pwb-mcal-out',
+                  c.isToday ? 'dsh-pwb-mcal-today' : '',
+                  c.date === selected ? 'dsh-pwb-mcal-sel' : '',
                 ]
                   .filter(Boolean)
                   .join(' ')}
                 onClick={() => setSelected(c.date)}
               >
-                <span className="dsh-pwb-cal-day">{c.day}{c.isToday ? <i className="dsh-pwb-cal-now">今</i> : null}</span>
+                <span className="dsh-pwb-mcal-day">{c.day}{c.isToday ? <i className="dsh-pwb-mcal-now">今</i> : null}</span>
                 {(() => { const l = lunarOf(c.date); const hol = holidays[c.date]; return (
                   <>
-                    <span className={l.festival !== undefined ? (l.festival.includes('节') ? 'dsh-pwb-cal-lunar dsh-pwb-cal-festival' : 'dsh-pwb-cal-lunar dsh-pwb-cal-jieqi') : 'dsh-pwb-cal-lunar'}>{l.festival ?? l.short}</span>
-                    {hol !== undefined ? <span className={`dsh-pwb-cal-hol${hol.holiday ? '' : ' dsh-pwb-cal-ban'}`}>{hol.holiday ? '休' : '班'}</span> : null}
+                    <span className={l.festival !== undefined ? (l.festival.includes('节') ? 'dsh-pwb-mcal-lunar dsh-pwb-mcal-festival' : 'dsh-pwb-mcal-lunar dsh-pwb-mcal-jieqi') : 'dsh-pwb-mcal-lunar'}>{l.festival ?? l.short}</span>
+                    {hol !== undefined ? <span className={`dsh-pwb-mcal-hol${hol.holiday ? '' : ' dsh-pwb-mcal-ban'}`}>{hol.holiday ? '休' : '班'}</span> : null}
                   </>
                 ); })()}
                 {list.length > 0 ? (
-                  <span className="dsh-pwb-cal-evs">
+                  <span className="dsh-pwb-mcal-evs">
                     {list.slice(0, 2).map((e) => (
-                      <span key={e.id} className={`dsh-pwb-cal-ev${e.done === true ? ' dsh-pwb-cal-ev-done' : ''}`}>{e.title}</span>
+                      <span key={e.id} className={`dsh-pwb-mcal-ev${e.done === true ? ' dsh-pwb-mcal-ev-done' : ''}`}>{e.title}</span>
                     ))}
-                    {list.length > 2 ? <span className="dsh-pwb-cal-more">+{list.length - 2} 更多</span> : null}
+                    {list.length > 2 ? <span className="dsh-pwb-mcal-more">+{list.length - 2} 更多</span> : null}
                   </span>
                 ) : null}
               </button>
