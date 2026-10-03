@@ -44,15 +44,30 @@ const shiftHm = (hm: string, deltaMin: number) => {
   return `${String(Math.floor(total / 3600)).padStart(2, '0')}:${String(Math.floor((total % 3600) / 60)).padStart(2, '0')}`;
 };
 
+/** 时间步进器：两侧 ±30 分钟按钮（onPointerDown 即按即走）+ 中间原生时间选择器。 */
+function TimeStepper({ value, onStep, onChange, ariaLabel }: { value: string; onStep: (dir: 1 | -1) => void; onChange: (v: string) => void; ariaLabel: string }) {
+  return (
+    <div className="flex h-9 items-center gap-1 rounded-lg border border-white/[0.1] bg-white/[0.04] px-1" aria-label={ariaLabel}>
+      <button type="button" className="grid size-7 shrink-0 place-items-center rounded-md bg-transparent text-white/45 transition-colors hover:bg-white/[0.08] hover:text-white" style={{ appearance: 'none' }} onPointerDown={() => onStep(-1)} title="减 30 分钟">
+        <ChevronLeft className="size-4" />
+      </button>
+      <input type="time" value={value} onChange={(e) => e.target.value && onChange(e.target.value)} className="h-7 min-w-0 flex-1 rounded-md bg-transparent px-1 text-center text-sm tabular-nums text-white outline-none" style={{ appearance: 'none' }} />
+      <button type="button" className="grid size-7 shrink-0 place-items-center rounded-md bg-transparent text-white/45 transition-colors hover:bg-white/[0.08] hover:text-white" style={{ appearance: 'none' }} onPointerDown={() => onStep(1)} title="加 30 分钟">
+        <ChevronRight className="size-4" />
+      </button>
+    </div>
+  );
+}
+
 /** 步进器：纯 button+span 结构（零 input 元素），左右调节，观感对齐 iTab。 */
 function Stepper({ value, onStep, ariaLabel }: { value: string; onStep: (dir: 1 | -1) => void; ariaLabel: string }) {
   return (
     <div className="flex h-9 items-center justify-between rounded-lg border border-white/[0.1] bg-white/[0.04] px-1" aria-label={ariaLabel}>
-      <button type="button" className="grid size-7 shrink-0 place-items-center rounded-md bg-transparent text-white/45 transition-colors hover:bg-white/[0.08] hover:text-white" style={{ appearance: 'none' }} onClick={() => onStep(-1)} title="减小">
+      <button type="button" className="grid size-7 shrink-0 place-items-center rounded-md bg-transparent text-white/45 transition-colors hover:bg-white/[0.08] hover:text-white" style={{ appearance: 'none' }} onPointerDown={() => onStep(-1)} title="减小">
         <ChevronLeft className="size-4" />
       </button>
       <span className="min-w-12 text-center text-sm tabular-nums text-white">{value}</span>
-      <button type="button" className="grid size-7 shrink-0 place-items-center rounded-md bg-transparent text-white/45 transition-colors hover:bg-white/[0.08] hover:text-white" style={{ appearance: 'none' }} onClick={() => onStep(1)} title="增大">
+      <button type="button" className="grid size-7 shrink-0 place-items-center rounded-md bg-transparent text-white/45 transition-colors hover:bg-white/[0.08] hover:text-white" style={{ appearance: 'none' }} onPointerDown={() => onStep(1)} title="增大">
         <ChevronRight className="size-4" />
       </button>
     </div>
@@ -223,11 +238,11 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
               </div>
               <div className="flex flex-col gap-1" style={{ display: 'flex', flexDirection: 'column' }}>
                 <span className="text-[10px] text-white/40">上班</span>
-                <Stepper value={config.start} ariaLabel="上班时间" onStep={(dir) => setConfig((c) => ({ ...c, start: shiftHm(c.start, dir * 30) }))} />
+                <TimeStepper value={config.start} ariaLabel="上班时间" onStep={(dir) => setConfig((c) => ({ ...c, start: shiftHm(c.start, dir * 30) }))} onChange={(v) => setConfig((c) => ({ ...c, start: v }))} />
               </div>
               <div className="flex flex-col gap-1" style={{ display: 'flex', flexDirection: 'column' }}>
                 <span className="text-[10px] text-white/40">下班</span>
-                <Stepper value={config.end} ariaLabel="下班时间" onStep={(dir) => setConfig((c) => ({ ...c, end: shiftHm(c.end, dir * 30) }))} />
+                <TimeStepper value={config.end} ariaLabel="下班时间" onStep={(dir) => setConfig((c) => ({ ...c, end: shiftHm(c.end, dir * 30) }))} onChange={(v) => setConfig((c) => ({ ...c, end: v }))} />
               </div>
             </div>
 
