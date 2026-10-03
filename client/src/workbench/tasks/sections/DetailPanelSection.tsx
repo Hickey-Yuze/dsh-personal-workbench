@@ -245,15 +245,22 @@ function DetailPanelComponent({
 
               <DetailRow icon={<CalendarClock className="size-3.5" />} label="截止时间">
                 {isEditing && editingKey === 'deadline' ? (
-                  <input
-                    autoFocus
-                    type="datetime-local"
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    onBlur={handleFieldSave}
-                    onKeyDown={(e) => e.key === 'Escape' && setEditingKey(null)}
-                    className={inputCls}
-                  />
+                  <span className="relative block">
+                    <button
+                      type="button"
+                      autoFocus
+                      className={`${inputCls} w-full text-left`}
+                      onClick={(e) => e.currentTarget.nextElementSibling && (e.currentTarget.nextElementSibling as HTMLElement).classList.toggle('hidden')}
+                    >
+                      {editValue ? editValue.replace('T', ' ') : '选择日期时间'}
+                    </button>
+                    <DeadlinePicker
+                      value={editValue}
+                      onChange={(v) => setEditValue(v)}
+                      onDone={() => { handleFieldSave(); }}
+                      onClose={() => setEditingKey(null)}
+                    />
+                  </span>
                 ) : (
                   editableValue('deadline', <span className="tabular-nums">{(currentTask.deadline || '').replace('T', ' ')}</span>)
                 )}
@@ -447,3 +454,82 @@ function DetailRow({
 }
 
 export default memo(DetailPanelComponent);
+
+
+/* ───────── 自绘日期时间选择器：原生 picker 弹层跟系统外观(深色系统下无法用)，插件内自绘浅色浮层 ───────── */
+
+const DP_PAD = (n: number) => String(n).padStart(2, '0');
+
+function DeadlinePicker({ value, onChange, onDone, onClose }: { value: string; onChange: (v: string) => void; onDone: () => void; onClose: () => void }) {
+  const init = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value || '');
+  const [y, setY] = useState(init ? Number(init[1]) : new Date().getFullYear());
+  const [m, setM] = useState(init ? Number(init[2]) - 1 : new Date().getMonth());
+  const [d, setD] = useState(init ? Number(init[3]) : 0);
+  const [hh, setHh] = useState(init ? Number(init[4]) : 9);
+  const [mm, setMm] = useState(init ? Number(init[5]) : 0);
+  const [today] = useState(() => { const t = new Date(); return `${t.getFullYear()}-${DP_PAD(t.getMonth() + 1)}-${DP_PAD(t.getDate())}`; });
+
+  const cells = useMemo(() => {
+    const first = new Date(y, m, 1);
+    const start = new Date(y, m, 1 - first.getDay());
+    return Array.from({ length: 42 }, (_, i) => {
+      const dt = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+      return { day: dt.getDate(), iso: `${dt.getFullYear()}-${DP_PAD(dt.getMonth() + 1)}-${DP_PAD(dt.getDate())}`, inMonth: dt.getMonth() === m };
+    });
+  }, [y, m]);
+
+  const emit = (day: number) => {
+    setD(day);
+    onChange(`${y}-${DP_PAD(m + 1)}-${DP_PAD(day)}T${DP_PAD(hh)}:${DP_PAD(mm)}`);
+  };
+  const emitTime = (nh: number, nm: number) => {
+    const H = ((nh % 24) + 24) % 24;
+    const M = ((nm % 60) + 60) % 60;
+    setHh(H); setMm(M);
+    if (d > 0) onChange(`${y}-${DP_PAD(m + 1)}-${DP_PAD(d)}T${DP_PAD(H)}:${DP_PAD(M)}`);
+  };
+
+  return (
+    <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded-xl p-3 shadow-2xl" style={{ background: 'var(--pwb-card, #fff)' }} onClick={(e) => e.stopPropagation()}>
+      <div className="mb-1.5 flex items-center">
+        <span className="text-[11px] font-semibold text-white/80 tabular-nums">{y} 年 {m + 1} 月</span>
+        <div className="ml-auto flex gap-0.5">
+          <button type="button" className="grid size-5 place-items-center rounded bg-transparent text-white/40 hover:bg-white/[0.08] hover:text-white" style={{ appearance: 'none' }} onClick={() => setM((v) => (v === 0 ? (setY((yy) => yy - 1), 11) : v - 1))}>‹</button>
+          <button type="button" className="grid size-5 place-items-center rounded bg-transparent text-white/40 hover:bg-white/[0.08] hover:text-white" style={{ appearance: 'none' }} onClick={() => setM((v) => (v === 11 ? (setY((yy) => yy + 1), 0) : v + 1))}>›</button>
+        </div>
+      </div>
+      <div className="grid grid-cols-7 gap-px text-center text-[9px] text-white/30">
+        {['日', '一', '二', '三', '四', '五', '六'].map((w) => <div key={w}>{w}</div>)}
+      </div>
+      <div className="mt-0.5 grid grid-cols-7 gap-px">
+        {cells.map((c) => (
+          <button
+            key={c.iso}
+            type="button"
+            onClick={() => emit(c.day)}
+            className={`grid h-6 place-items-center rounded text-[10px] tabular-nums transition-colors ${c.day === d && c.inMonth ? 'bg-primary font-semibold text-[var(--primary-foreground,#0c1d14)]' : c.iso === today ? 'bg-primary/15 font-semibold text-primary' : c.inMonth ? 'text-white/65 hover:bg-white/[0.08]' : 'text-white/25'}`}
+          >
+            {c.day}
+          </button>
+        ))}
+      </div>
+      <div className="mt-2 flex items-center gap-1.5">
+        <div className="flex flex-1 items-center justify-between rounded-md bg-white/[0.05] px-1">
+          <button type="button" className="bg-transparent px-1 text-white/40 hover:text-white" style={{ appearance: 'none' }} onClick={() => emitTime(hh - 1, mm)}>‹</button>
+          <span className="text-[11px] font-semibold tabular-nums text-white">{DP_PAD(hh)} 时</span>
+          <button type="button" className="bg-transparent px-1 text-white/40 hover:text-white" style={{ appearance: 'none' }} onClick={() => emitTime(hh + 1, mm)}>›</button>
+        </div>
+        <div className="flex flex-1 items-center justify-between rounded-md bg-white/[0.05] px-1">
+          <button type="button" className="bg-transparent px-1 text-white/40 hover:text-white" style={{ appearance: 'none' }} onClick={() => emitTime(hh, mm - 15)}>‹</button>
+          <span className="text-[11px] font-semibold tabular-nums text-white">{DP_PAD(mm)} 分</span>
+          <button type="button" className="bg-transparent px-1 text-white/40 hover:text-white" style={{ appearance: 'none' }} onClick={() => emitTime(hh, mm + 15)}>›</button>
+        </div>
+      </div>
+      <div className="mt-2 flex items-center gap-1.5">
+        <button type="button" className="flex-1 rounded-md bg-white/[0.06] py-1 text-[10px] text-white/60 hover:bg-white/[0.1]" onClick={() => { onChange(''); onDone(); }}>清除</button>
+        <button type="button" className="flex-1 rounded-md bg-primary py-1 text-[10px] font-semibold text-[var(--primary-foreground,#0c1d14)]" onClick={() => onDone()}>确定</button>
+        <button type="button" className="rounded-md px-2 py-1 text-[10px] text-white/40 hover:text-white" onClick={onClose}>取消</button>
+      </div>
+    </div>
+  );
+}
