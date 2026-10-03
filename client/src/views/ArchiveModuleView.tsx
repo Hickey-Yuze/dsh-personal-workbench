@@ -7,7 +7,7 @@
 // @ts-nocheck —— 移植自 Yuze Workbench（原项目自带类型检查），此处不重复校验
 
 import { useCallback, useEffect, useState } from 'react';
-import { Archive, Folder, FileText, ChevronRight, ExternalLink, Loader2, Video } from 'lucide-react';
+import { Archive, Folder, FileText, ChevronRight, ExternalLink, Loader2, Video, FolderOpen, X, House } from 'lucide-react';
 import type { ReactElement } from 'react';
 import type { RpcFn } from '../rpc.js';
 import { API_PREFIX } from '../rpc.js';
@@ -22,6 +22,11 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
+  const [root, setRoot] = useState<string>(() => localStorage.getItem('dsh-pwb:archive_root_v1') ?? '');
+  const [roots, setRoots] = useState<string[]>([]);
+  const [home, setHome] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [rootInput, setRootInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [reading, setReading] = useState(false);
   const [err, setErr] = useState('');
@@ -31,7 +36,7 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     setLoading(true);
     setErr('');
     try {
-      const out = await rpc('personal-workbench/fs/list', { path: d });
+      const out = await rpc('personal-workbench/fs/list', { path: d, root: root || undefined });
       if (!out?.ok) throw new Error((out?.error as { message?: string })?.message ?? '读取失败');
       setEntries(((out.value as { entries?: Node[] })?.entries ?? []) as Node[]);
     } catch (e) {
@@ -40,9 +45,22 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     } finally {
       setLoading(false);
     }
+  }, [rpc, root]);
+
+  useEffect(() => { void load(dir); }, [dir, load, root]);
+
+  useEffect(() => {
+    void (async () => {
+      const out = await rpc('personal-workbench/fs/roots/list', {});
+      if (out?.ok) {
+        const v = out.value as { roots: string[]; home: string };
+        setRoots(v.roots);
+        setHome(v.home);
+      }
+    })();
   }, [rpc]);
 
-  useEffect(() => { void load(dir); }, [dir, load]);
+  useEffect(() => { localStorage.setItem('dsh-pwb:archive_root_v1', root); }, [root]);
 
   const enter = (n: Node) => {
     setUnsupported(null);
@@ -53,7 +71,7 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
       : ['mp4', 'm4v', 'webm', 'mov'].includes(ext) ? 'video' : null;
     if (mediaKind !== null) {
       // 图片/视频走流式 GET（无大小上限；视频 Range 分段可拖进度条）
-      setNote({ path: n.path, kind: mediaKind, url: `${API_PREFIX}/fsfile?path=${encodeURIComponent(n.path)}` });
+      setNote({ path: n.path, kind: mediaKind, url: `${API_PREFIX}/fsfile?path=${encodeURIComponent(n.path)}${root ? `&root=${encodeURIComponent(root)}` : ''}` });
       return;
     }
     void (async () => {
@@ -62,7 +80,7 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
       setNote(null);
       setUnsupported(null);
       try {
-        const out = await rpc('personal-workbench/fs/read', { path: n.path });
+        const out = await rpc('personal-workbench/fs/read', { path: n.path, root: root || undefined });
         if (!out?.ok) {
           const code = (out?.error as { code?: string })?.code ?? '';
           const msg = (out?.error as { message?: string })?.message ?? '读取失败';
@@ -80,12 +98,33 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     })();
   };
 
+  const addRoot = async (): Promise<void> => {
+    const path = rootInput.trim();
+    if (path === '') return;
+    const out = await rpc('personal-workbench/fs/roots/add', { path });
+    if (!out?.ok) { setErr((out?.error as { message?: string })?.message ?? '添加失败'); return; }
+    const added = (out.value as { roots: string[] }).roots;
+    setRoots(added);
+    const real = added.find((r) => r.endsWith('/' + path.split('/').pop()) || r === path) ?? path;
+    setRoot(real);
+    setRootInput('');
+    setStack(['']);
+    setNote(null);
+    setPickerOpen(false);
+  };
+
+  const removeRoot = async (r: string): Promise<void> => {
+    await rpc('personal-workbench/fs/roots/remove', { path: r });
+    setRoots((prev) => prev.filter((x) => x !== r));
+    if (root === r) { setRoot(''); setStack(['']); setNote(null); }
+  };
+
   const saveNote = async (): Promise<void> => {
     if (note === null) return;
     setSaving(true);
     setErr('');
     try {
-      const out = await rpc('personal-workbench/fs/write', { path: note.path, content: draft });
+      const out = await rpc('personal-workbench/fs/write', { path: note.path, content: draft, root: root || undefined });
       if (!out?.ok) throw new Error((out?.error as { message?: string })?.message ?? '保存失败');
       setNote({ path: note.path, kind: 'text', content: draft });
       setEditing(false);
@@ -97,7 +136,7 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
   };
 
   const openWithSystem = async (rel: string) => {
-    const out = await rpc('personal-workbench/fs/open', { path: rel });
+    const out = await rpc('personal-workbench/fs/open', { path: rel, root: root || undefined });
     if (!out?.ok) setErr((out?.error as { message?: string })?.message ?? '打开失败');
   };
 
@@ -109,7 +148,15 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     <div className="dsh-pwb-view">
       <div className="dsh-pwb-toolbar">
         <span className="grid size-7 place-items-center rounded-lg bg-primary/15 text-primary"><Archive className="size-4" /></span>
-        <span className="text-sm font-semibold text-white">主目录</span>
+        <span className="text-sm font-semibold text-white">{root === '' ? '主目录' : (root.split('/').pop() || root)}</span>
+        <button type="button" className="dsh-pwb-btn" onClick={() => setPickerOpen((v) => !v)} title="选择或添加根目录">
+          <FolderOpen className="size-3.5" /> {root === '' ? '选择文件夹' : '切换根目录'}
+        </button>
+        {root !== '' ? (
+          <button type="button" className="dsh-pwb-btn" onClick={() => { setRoot(''); setStack(['']); setNote(null); }} title="回到主目录">
+            <House className="size-3.5" /> 主目录
+          </button>
+        ) : null}
         <button
           type="button"
           className="dsh-pwb-btn"
@@ -120,6 +167,37 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
           <ExternalLink className="size-3.5" /> 在访达中打开
         </button>
       </div>
+
+      {pickerOpen ? (
+        <div className="dsh-pwb-almanac" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input
+              className="dsh-pwb-input dsh-pwb-input-grow"
+              style={{ flex: 1 }}
+              value={rootInput}
+              onChange={(e) => setRootInput(e.target.value)}
+              placeholder="输入本机目录的绝对路径，如 /Users/yuze/Documents"
+              onKeyDown={(e) => { if (e.key === 'Enter') void addRoot(); }}
+            />
+            <button type="button" className="dsh-pwb-btn dsh-pwb-btn-primary" onClick={() => void addRoot()}>添加并切换</button>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontSize: 11, color: 'var(--pwb-dimmer, #9aa0a6)' }}>已授权目录：</span>
+            {roots.map((r) => (
+              <span key={r} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 8, background: r === root ? 'var(--pwb-accent, #00b862)' : 'var(--pwb-card-hi, #f2f3f5)', color: r === root ? '#fff' : 'var(--pwb-text, #1c1c22)', fontSize: 11, cursor: 'pointer' }}>
+                <button type="button" style={{ all: 'unset', cursor: 'pointer' }} onClick={() => { setRoot(r); setStack(['']); setNote(null); }}>
+                  {r === home ? '主目录' : (r.split('/').pop() || r)}
+                </button>
+                {r !== home ? (
+                  <button type="button" style={{ all: 'unset', cursor: 'pointer', opacity: 0.6 }} onClick={() => void removeRoot(r)} title="移除">
+                    <X className="size-3" />
+                  </button>
+                ) : null}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {/* 面包屑 */}
       <div className="dsh-pwb-crumbs">

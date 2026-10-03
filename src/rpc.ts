@@ -38,22 +38,47 @@ interface WebServerLike {
 
 export const API_PREFIX = '/api/personal-workbench';
 
-/** 文件归档路径安全解析：HOME 相对、禁 ..、realpath 校验防 symlink 逃逸。 */
-function fsResolveSafe(rel: string): string {
+/** 文件归档根白名单：持久化 ~/.dsh/personal-workbench/roots.json；HOME 永远在列。 */
+const ROOTS_FILE = `${process.env.HOME ?? ''}/.dsh/personal-workbench/roots.json`;
+function loadRoots(): string[] {
   const home = process.env.HOME ?? '';
-  if (home === '') throw Object.assign(new Error('无法定位主目录'), { code: 'internal' });
+  const base = [home];
+  try {
+    const data = JSON.parse(fs.readFileSync(ROOTS_FILE, 'utf8')) as { roots?: string[] };
+    for (const r of Array.isArray(data.roots) ? data.roots : []) {
+      if (typeof r === 'string' && r !== '' && !base.includes(r)) base.push(r);
+    }
+  } catch { /* 无文件 → 仅 HOME */ }
+  return base;
+}
+function saveRoots(roots: string[]): void {
+  fs.mkdirSync(`${process.env.HOME ?? ''}/.dsh/personal-workbench`, { recursive: true });
+  fs.writeFileSync(ROOTS_FILE, JSON.stringify({ roots }, null, 2), 'utf8');
+}
+function resolveRoot(raw: string | undefined): string {
+  const home = process.env.HOME ?? '';
+  if (raw === undefined || raw === '' || raw === home) return home;
+  const roots = loadRoots();
+  if (!roots.includes(raw)) throw Object.assign(new Error('该根目录未在白名单中，请先添加'), { code: 'bad-root' });
+  return raw;
+}
+
+/** 文件归档路径安全解析：指定根目录内相对浏览、禁 ..、realpath 校验防 symlink 逃逸。 */
+function fsResolveSafe(rel: string, rootRaw?: string): string {
+  const root = resolveRoot(rootRaw);
+  let rootReal = '';
+  try { rootReal = fs.realpathSync(root); } catch { throw Object.assign(new Error('根目录不存在'), { code: 'not-found' }); }
   const parts = rel.split('/').filter((x) => x !== '' && x !== '.');
   if (parts.includes('..')) throw Object.assign(new Error('路径不允许包含 ..'), { code: 'bad-path' });
-  const abs = [home, ...parts].join('/');
-  if (!abs.startsWith(home)) throw Object.assign(new Error('路径越界'), { code: 'bad-path' });
+  const abs = [root, ...parts].join('/');
   try {
     const real = fs.realpathSync(abs);
-    if (!real.startsWith(fs.realpathSync(home))) throw Object.assign(new Error('路径越界（符号链接）'), { code: 'bad-path' });
+    if (!real.startsWith(rootReal)) throw Object.assign(new Error('路径越界（符号链接）'), { code: 'bad-path' });
+    return real;
   } catch (e) {
     if ((e as { code?: string }).code === 'bad-path') throw e;
     throw Object.assign(new Error('路径不存在'), { code: 'not-found' });
   }
-  return abs;
 }
 const BODY_MAX = 2 * 1024 * 1024;
 
@@ -310,10 +335,33 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
       }
 
       // ── 文件归档：HOME 下安全浏览/读文本/系统程序打开 ──
+      case 'personal-workbench/fs/roots/list':
+        return { roots: loadRoots(), home: process.env.HOME ?? '' };
+      case 'personal-workbench/fs/roots/add': {
+        const p = asRecord(payload);
+        const raw = typeof p.path === 'string' ? p.path.trim() : '';
+        if (raw === '') fail('bad-request', '缺少目录路径');
+        let real = '';
+        try { real = fs.realpathSync(raw); } catch { fail('not-found', '目录不存在'); }
+        const st = fs.statSync(real);
+        if (!st.isDirectory()) fail('bad-request', '不是目录');
+        const roots = loadRoots();
+        if (!roots.includes(real)) { roots.push(real); saveRoots(roots); }
+        return { ok: true, roots };
+      }
+      case 'personal-workbench/fs/roots/remove': {
+        const p = asRecord(payload);
+        const raw = typeof p.path === 'string' ? p.path : '';
+        const home = process.env.HOME ?? '';
+        if (raw === home) fail('bad-request', '主目录不可移除');
+        saveRoots(loadRoots().filter((r) => r !== raw));
+        return { ok: true };
+      }
       case 'personal-workbench/fs/list': {
         const p = asRecord(payload);
         const rel = typeof p.path === 'string' ? p.path : '';
-        const abs = fsResolveSafe(rel);
+        const rootRaw = typeof p.root === 'string' ? p.root : undefined;
+        const abs = fsResolveSafe(rel, rootRaw);
         const dirents = fs.readdirSync(abs, { withFileTypes: true });
         const entries = dirents
           .map((d) => ({
@@ -327,7 +375,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
       case 'personal-workbench/fs/read': {
         const p = asRecord(payload);
         const rel = typeof p.path === 'string' ? p.path : '';
-        const abs = fsResolveSafe(rel);
+        const abs = fsResolveSafe(rel, typeof p.root === 'string' ? p.root : undefined);
         const st = fs.statSync(abs);
         if (!st.isFile()) fail('bad-request', '不是文件');
         const ext = rel.split('.').pop()?.toLowerCase() ?? '';
@@ -345,7 +393,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         const ext = rel.split('.').pop()?.toLowerCase() ?? '';
         const TEXT_EXT2 = new Set(['md', 'txt', 'json', 'csv', 'log', 'yaml', 'yml', 'js', 'jsx', 'ts', 'tsx', 'py', 'sh', 'html', 'css', 'xml', 'ini', 'conf', 'env', 'sql']);
         if (!TEXT_EXT2.has(ext)) fail('unsupported', '该类型不支持编辑保存');
-        const abs = fsResolveSafe(rel);
+        const abs = fsResolveSafe(rel, typeof p.root === 'string' ? p.root : undefined);
         fs.writeFileSync(abs, content, 'utf8');
         return { ok: true, path: rel, bytes: Buffer.byteLength(content, 'utf8') };
       }
@@ -353,7 +401,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
       case 'personal-workbench/fs/open': {
         const p = asRecord(payload);
         const rel = typeof p.path === 'string' ? p.path : '';
-        const abs = fsResolveSafe(rel);
+        const abs = fsResolveSafe(rel, typeof p.root === 'string' ? p.root : undefined);
         // 先按默认应用打开；无关联应用（如 .py，-10810）→ 回退默认文本编辑器
         await new Promise<void>((resolve, reject) => {
           execFile('open', [abs], { timeout: 10_000 }, (err) => {
@@ -406,7 +454,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
       try {
         const u = new URL(req.url ?? '/', 'http://localhost');
         const rel = u.searchParams.get('path') ?? '';
-        const abs = fsResolveSafe(rel);
+        const abs = fsResolveSafe(rel, u.searchParams.get('root') ?? undefined);
         const st = fs.statSync(abs);
         if (!st.isFile()) {
           send(res, 400, { ok: false, error: { code: 'bad-request', message: '不是文件' } });
