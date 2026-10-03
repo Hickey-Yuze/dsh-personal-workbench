@@ -65,6 +65,9 @@ const CSS = `
 }
 .dsh-pwb-head { display: flex; align-items: flex-start; gap: 12px; padding: 20px 24px 14px; }
 .dsh-pwb-head-inline { align-items: center; padding-top: 14px; padding-bottom: 12px; }
+/* 总览页标题块内嵌于页面容器：与内容网格共用缩进链（无水平 padding），天然左对齐 */
+.dsh-pwb-ovpage > .dsh-pwb-head { padding-left: 0; padding-right: 0; }
+.dsh-pwb-ovpage .dsh-pwb-head-ov { padding-top: 12px; padding-bottom: 0; }
 .dsh-pwb-head-main { flex: 1; min-width: 0; }
 .dsh-pwb-title-row { display: flex; align-items: center; gap: 9px; }
 .dsh-pwb-title-mark {

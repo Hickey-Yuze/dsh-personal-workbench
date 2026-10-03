@@ -184,9 +184,11 @@ function NotesWidget({ rpc }: { rpc: RpcFn }): ReactElement {
 export function OverviewView({
   rpc,
   onOpen,
+  onBack,
 }: {
   rpc: RpcFn;
   onOpen: (id: string) => void;
+  onBack?: () => void;
 }): ReactElement {
   const { value: events } = useKv<ScheduleEvent[]>(rpc, 'events', []);
   const { value: layout, save: saveLayout } = useKv<CellConfig[]>(rpc, LAYOUT_KEY, DEFAULT_LAYOUT);
@@ -235,7 +237,24 @@ export function OverviewView({
   );
 
   return (
-    <div className="dsh-pwb-dark dsh-pwb-view">
+    <div className="dsh-pwb-dark dsh-pwb-view dsh-pwb-ovpage">
+      {/* 标题块放在总览容器内部：与下方网格共用同一条缩进链，天然左对齐 */}
+      {onBack !== undefined ? (
+        <div className="dsh-pwb-head dsh-pwb-head-slim">
+          <button type="button" className="dsh-pwb-btn" onClick={onBack}>← 返回工作台</button>
+        </div>
+      ) : null}
+      <div className="dsh-pwb-head dsh-pwb-head-ov">
+        <div className="dsh-pwb-head-main">
+          <div className="dsh-pwb-title-row">
+            <span className="dsh-pwb-title-mark">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z" /></svg>
+            </span>
+            <span className="dsh-pwb-title">项目总览</span>
+          </div>
+          <div className="dsh-pwb-sub">待办、日程与知识库的聚合视图</div>
+        </div>
+      </div>
       <div className="dsh-pwb-toolbar">
         {editMode ? (
           <>

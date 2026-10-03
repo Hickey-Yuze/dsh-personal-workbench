@@ -62,15 +62,17 @@ function ModuleBody({
   id,
   rpc,
   onOpen,
+  onBack,
 }: {
   id: string;
   rpc: RpcFn;
   onOpen: (next: string) => void;
+  onBack: () => void;
 }): ReactElement {
   // 单模块崩溃只降级该模块，不再整页白屏
   return (
     <ModuleBoundary label={id}>
-      <ModuleSwitch id={id} rpc={rpc} onOpen={onOpen} />
+      <ModuleSwitch id={id} rpc={rpc} onOpen={onOpen} onBack={onBack} />
     </ModuleBoundary>
   );
 }
@@ -98,7 +100,7 @@ function ModuleSwitch({
     case 'film':
       return <VideoModuleView rpc={rpc} />;
     case 'overview':
-      return <OverviewView rpc={rpc} onOpen={onOpen} />;
+      return <OverviewView rpc={rpc} onOpen={onOpen} onBack={() => setActive(null)} />;
     default: {
       const mod = moduleById(id);
       return mod === undefined ? <div className="dsh-pwb-empty">{t('common.loading')}</div> : <PendingView mod={mod} />;
@@ -121,7 +123,7 @@ export function WorkbenchPanel({ rpc }: WorkbenchPanelProps): ReactElement {
             ← {t('act.back')}
           </button>
         </div>
-      ) : (
+      ) : active !== 'overview' ? (
         <>
           {active !== null ? (
             <div className="dsh-pwb-head dsh-pwb-head-slim">
@@ -150,7 +152,7 @@ export function WorkbenchPanel({ rpc }: WorkbenchPanelProps): ReactElement {
             </div>
           </div>
         </>
-      )}
+      ) : null}
 
       <div className="dsh-pwb-body">
         {active === null ? (
@@ -180,7 +182,7 @@ export function WorkbenchPanel({ rpc }: WorkbenchPanelProps): ReactElement {
             ))}
           </div>
         ) : (
-          <ModuleBody id={active} rpc={rpc} onOpen={setActive} />
+          <ModuleBody id={active} rpc={rpc} onOpen={setActive} onBack={() => setActive(null)} />
         )}
       </div>
     </div>
