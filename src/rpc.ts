@@ -133,32 +133,31 @@ async function videoCmsGet(query: string): Promise<{ code?: number; list?: Array
   return (await res.json()) as { code?: number; list?: Array<Record<string, unknown>>; total?: number; pagecount?: number };
 }
 /** 详情：SCF 直连优先（境内出口免风控，实测 2s），失败走磁力猫多入口容灾。 */
-/** 影视海报豆瓣缓存（键=片名，含负缓存）。 */
+/** 影视海报豆瓣缓存（键=片名，含负缓存：'' 表示查无）。 */
 const videoPosterCache = new Map<string, string | undefined>();
-/** 按片名从豆瓣镜像搜海报（tv→movie 双查，标题相等/前缀匹配）；豆瓣图防盗链，Host 抓图转 base64 data URL。 */
+/** 按片名从豆瓣镜像 suggest 搜海报；全名搜不到则逐步截短前缀重试（衍生长名「仙逆剧场神临之战」→「仙逆」）。豆瓣图防盗链，Host 抓图转 base64 data URL。 */
 async function videoPosterFromDouban(name: string): Promise<string | undefined> {
   const hit = videoPosterCache.get(name);
   if (hit !== undefined) return hit;
-  for (const type of ['tv', 'movie'] as const) {
+  let q = name;
+  while (q.length >= 2) {
     try {
-      const res = await fetch(`https://movie.douban.cmliussss.com/j/search_subjects?type=${type}&tag=${encodeURIComponent(name)}&sort=recommend&page_limit=5&page_start=0`, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', Referer: 'https://movie.douban.com/', Accept: 'application/json' }, signal: AbortSignal.timeout(12000) });
-      const data = (await res.json()) as { subjects?: Array<Record<string, unknown>> };
-      const matched = (data.subjects ?? []).find((it) => {
-        const t = String(it.title ?? '');
-        return t !== '' && (t === name || name.startsWith(t) || t.startsWith(name));
-      });
-      const cover = matched !== undefined && typeof matched.cover === 'string' && (matched.cover as string) !== ''
-        ? (matched.cover as string).replace(/^http:/, 'https:')
-        : undefined;
-      if (cover === undefined) continue;
-      const imgRes = await fetch(cover, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', Referer: 'https://movie.douban.com/' }, signal: AbortSignal.timeout(8000) });
-      if (!imgRes.ok) continue;
-      const buf = Buffer.from(await imgRes.arrayBuffer());
-      const mime = imgRes.headers.get('content-type') ?? 'image/jpeg';
-      const b64 = `data:${mime};base64,${buf.toString('base64')}`;
-      videoPosterCache.set(name, b64);
-      return b64;
-    } catch { /* 下一个类型 */ }
+      const res = await fetch(`https://movie.douban.cmliussss.com/j/subject_suggest?q=${encodeURIComponent(q)}`, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', Accept: 'application/json' }, signal: AbortSignal.timeout(12000) });
+      const arr = (await res.json()) as Array<Record<string, unknown>>;
+      const first = arr.find((x) => typeof x.img === 'string' && (x.img as string) !== '');
+      if (first !== undefined) {
+        const cover = (first.img as string).replace(/^http:/, 'https:');
+        const imgRes = await fetch(cover, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', Referer: 'https://movie.douban.com/' }, signal: AbortSignal.timeout(8000) });
+        if (imgRes.ok) {
+          const buf = Buffer.from(await imgRes.arrayBuffer());
+          const mime = imgRes.headers.get('content-type') ?? 'image/jpeg';
+          const b64 = `data:${mime};base64,${buf.toString('base64')}`;
+          videoPosterCache.set(name, b64);
+          return b64;
+        }
+      }
+    } catch { /* 截短重试 */ }
+    q = q.slice(0, -2);
   }
   videoPosterCache.set(name, '');
   return undefined;
