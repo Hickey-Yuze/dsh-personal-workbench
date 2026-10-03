@@ -309,7 +309,8 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
       case 'personal-workbench/apps/open': {
         const p = asRecord(payload);
         const name = asString(p.name, 'name', 120);
-        if (!/^[\w .()（）\-·、]+$/.test(name)) fail('bad-request', '应用名含非法字符');
+        // 只挡路径穿越/注入字符（名字会拼进 ${name}.app 路径）；中文名合法，存在性校验兜底
+        if (name.trim() === '' || /[/\\\u0000]|\.\./.test(name)) fail('bad-request', '应用名含非法字符');
         // 二次校验：必须真实存在于应用目录（白名单，防任意执行）
         const home = process.env.HOME ?? '';
         const candidates = [`/Applications/${name}.app`, `${home}/Applications/${name}.app`];
