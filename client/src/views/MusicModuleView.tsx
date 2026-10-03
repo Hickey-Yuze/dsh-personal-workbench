@@ -605,34 +605,63 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
         </div>
       ) : null}
 
-      {/* 全屏播放器 */}
+      {/* 全屏播放器（图二形态：封面模糊背景+黑胶+歌词+底部控制） */}
       {showFull ? (
         <div className="dsh-pwb-mu-fs">
-          <button type="button" className="dsh-pwb-mu-ctrlbtn dsh-pwb-mu-fs-close" title="关闭" onClick={() => setShowFull(false)}><X className="size-5" /></button>
-          <div className="dsh-pwb-mu-vinyl">
-            <div className="dsh-pwb-mu-vinyl-disc">
-              {current?.coverUrl !== undefined ? <img src={current.coverUrl} alt="" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : <Disc3 className="size-14" style={{ opacity: 0.3 }} />}
-              <span className="dsh-pwb-mu-vinyl-hole"><i /></span>
+          {current?.coverUrl !== undefined ? <div className="dsh-pwb-mu-fs-bg" style={{ backgroundImage: `url(${current.coverUrl})` }} /> : null}
+          <div className="dsh-pwb-mu-fs-shade" />
+          <button type="button" className="dsh-pwb-mu-fs-cbtn dsh-pwb-mu-fs-close" title="关闭" onClick={() => setShowFull(false)}><X className="size-5" /></button>
+          <div className="dsh-pwb-mu-fs-tag">正在播放</div>
+          <div className="dsh-pwb-mu-fs-stage">
+            <div className="dsh-pwb-mu-fs-left">
+              <div className="dsh-pwb-mu-fs-disc">
+                {current?.coverUrl !== undefined ? <img src={current.coverUrl} alt="" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : <span className="dsh-pwb-mu-fs-disc-dummy"><Disc3 className="size-9" /></span>}
+                <i />
+              </div>
+            </div>
+            <div className="dsh-pwb-mu-fs-right">
+              <div className="dsh-pwb-mu-fs-lyrics" ref={lyricsRef}>
+                {lyrics.map((line, i) => (
+                  <div key={i} className={`dsh-pwb-mu-fs-lyric${i === currentLyricIndex ? ' dsh-pwb-mu-now' : ''}`}
+                    title="点击定位到该句"
+                    onClick={() => { const audio = getAudio(); if (audio.readyState > 0) audio.currentTime = line.time; }}>
+                    {line.text}
+                  </div>
+                ))}
+                {lyrics.length === 0 ? <div className="dsh-pwb-mu-fs-lyric-empty">{lyricsLoading ? '正在加载歌词…' : '暂无歌词'}</div> : null}
+              </div>
             </div>
           </div>
-          <div className="dsh-pwb-mu-fs-songinfo">
+          <div className="dsh-pwb-mu-fs-bottom">
             <h2>{current?.title ?? '未在播放'}</h2>
-            <p>{current !== null ? `${current.artist} · ${current.album}` : ''}</p>
-          </div>
-          <div className="dsh-pwb-mu-spec">
-            {Array.from({ length: 48 }).map((_, i) => (
-              <i key={i} style={{ '--h': `${10 + Math.abs(Math.sin(i * 0.7)) * 26}px`, animationDelay: `${(i % 9) * 0.08}s`, animationDuration: `${0.7 + (i % 5) * 0.12}s` } as CSSProperties} />
-            ))}
-          </div>
-          <div className="dsh-pwb-mu-fs-lyrics" ref={lyricsRef}>
-            {lyrics.map((line, i) => (
-              <div key={i} className={`dsh-pwb-mu-fs-lyric${i === currentLyricIndex ? ' dsh-pwb-mu-now' : Math.abs(i - currentLyricIndex) <= 2 ? ' dsh-pwb-mu-near' : ''}`}
-                title="点击定位到该句"
-                onClick={() => { const audio = getAudio(); if (audio.readyState > 0) audio.currentTime = line.time; }}>
-                {line.text}
+            <p>{current !== null ? current.artist : ''}</p>
+            <div className="dsh-pwb-mu-fs-prog">
+              <span className="dsh-pwb-mu-fs-time">{fmtTime(progress)}</span>
+              <div className="dsh-pwb-mu-fs-track" onClick={handleSeek}>
+                <span className="dsh-pwb-mu-fs-track-fill" style={{ width: `${audioDur > 0 ? Math.min(100, (progress / audioDur) * 100) : 0}%` }} />
+                <span className="dsh-pwb-mu-fs-track-knob" style={{ left: `${audioDur > 0 ? Math.min(100, (progress / audioDur) * 100) : 0}%` }} />
               </div>
-            ))}
-            {lyrics.length === 0 ? <div className="dsh-pwb-mu-lyric-empty" style={{ textAlign: 'center' }}>{lyricsLoading ? '正在加载歌词…' : '暂无歌词'}</div> : null}
+              <span className="dsh-pwb-mu-fs-time">{fmtTime(audioDur)}</span>
+            </div>
+            <div className="dsh-pwb-mu-fs-btns">
+              {(() => {
+                const ModeIcon = playMode === 'shuffle' ? Shuffle : playMode === 'one' ? Repeat1 : Repeat;
+                return (
+                  <button type="button" className={`dsh-pwb-mu-fs-cbtn${playMode !== 'order' ? ' dsh-pwb-mu-on' : ''}`} title={playMode === 'order' ? '顺序播放' : playMode === 'all' ? '列表循环' : playMode === 'one' ? '单曲循环' : '随机播放'} onClick={cycleMode}>
+                    <ModeIcon className="size-4.5" />
+                  </button>
+                );
+              })()}
+              <button type="button" className="dsh-pwb-mu-fs-cbtn" title="上一首" onClick={handlePrev}><SkipBack className="size-5" /></button>
+              <button type="button" className="dsh-pwb-mu-fs-play" title={isPlaying ? '暂停' : '播放'} onClick={handlePlayPause}>
+                {isPlaying ? <Pause className="size-6" /> : <Play className="size-6" style={{ marginLeft: 3 }} />}
+              </button>
+              <button type="button" className="dsh-pwb-mu-fs-cbtn" title="下一首" onClick={() => handleNext()}><SkipForward className="size-5" /></button>
+              <button type="button" className={`dsh-pwb-mu-fs-cbtn${isLoved(current) ? ' dsh-pwb-mu-loved' : ''}`} title={isLoved(current) ? '取消收藏' : '收藏'} disabled={current === null}
+                onClick={() => { if (current !== null) toggleLove(current); }}>
+                <Heart className="size-4.5" fill={isLoved(current) ? 'currentColor' : 'none'} />
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
