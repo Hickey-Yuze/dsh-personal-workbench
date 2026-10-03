@@ -565,7 +565,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
               </div>
               <div className="dsh-pwb-mu-btns">
                 {(() => {
-                  const mode: 'order' | 'all' | 'one' | 'shuffle' = isShuffle ? 'shuffle' : repeatMode;
+                  const mode: 'order' | 'all' | 'one' | 'shuffle' = isShuffle ? 'shuffle' : repeatMode === 'off' ? 'order' : repeatMode;
                   const label = mode === 'order' ? '顺序播放' : mode === 'all' ? '列表循环' : mode === 'one' ? '单曲循环' : '随机播放';
                   const cycle = (): void => {
                     const next = mode === 'order' ? 'all' : mode === 'all' ? 'one' : mode === 'one' ? 'shuffle' : 'order';
