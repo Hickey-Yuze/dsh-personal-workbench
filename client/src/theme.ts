@@ -534,7 +534,7 @@ const CSS = `
 .dsh-pwb-day-count { font-size: 12px; color: var(--pwb-dimmer); }
 
 /* ── 音乐平台（1:1 复刻原版 MusicPage：液态玻璃三栏+旋转碟片+歌词+控制条）── */
-.dsh-pwb-mu-root { display: flex; flex-direction: column; gap: 14px; height: 100%; min-height: 0; }
+.dsh-pwb-mu-root { display: flex; flex-direction: column; gap: 14px; height: 100%; min-height: 0; max-width: 1220px; margin: 0 auto; width: 100%; }
 .dsh-pwb-mu-searchwrap { position: relative; display: flex; align-items: center; }
 .dsh-pwb-mu-search {
   width: 100%;

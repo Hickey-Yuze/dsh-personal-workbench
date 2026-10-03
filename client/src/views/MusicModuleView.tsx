@@ -41,6 +41,12 @@ function getAudio(): HTMLAudioElement {
 }
 interface GlobalSession {
   songId: string | null;
+  onlineSong: Song | null;        // 当前在线歌（跨模块恢复 UI 用）
+  onlineQuery: string;            // 搜索词与结果快照（回来自动恢复）
+  onlineResults: Song[];
+  listMode: 'playlist' | 'online';
+  activePlaylistId: string;
+  currentIndex: number;
   isPlaying: boolean;
   progress: number;
   volume: number;
@@ -49,7 +55,7 @@ interface GlobalSession {
   repeatMode: 'off' | 'all' | 'one';
   isShuffle: boolean;
 }
-let gSession: GlobalSession = { songId: null, isPlaying: false, progress: 0, volume: 70, isMuted: false, quality: '128k', repeatMode: 'off', isShuffle: false };
+let gSession: GlobalSession = { songId: null, onlineSong: null, onlineQuery: '', onlineResults: [], listMode: 'playlist', activePlaylistId: 'liked', currentIndex: 0, isPlaying: false, progress: 0, volume: 70, isMuted: false, quality: '128k', repeatMode: 'off', isShuffle: false };
 
 function fmtTime(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) return '0:00';
@@ -74,18 +80,18 @@ function loadPlaylists(): Playlist[] {
 
 export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
   const [playlists, setPlaylists] = useState<Playlist[]>(loadPlaylists);
-  const [activePlaylistId, setActivePlaylistId] = useState<string>('liked');
-  const [listMode, setListMode] = useState<'playlist' | 'online'>('playlist');
-  const [onlineQuery, setOnlineQuery] = useState('');
-  const [onlineResults, setOnlineResults] = useState<Song[]>([]);
+  const [activePlaylistId, setActivePlaylistId] = useState<string>(gSession.activePlaylistId);
+  const [listMode, setListMode] = useState<'playlist' | 'online'>(gSession.listMode);
+  const [onlineQuery, setOnlineQuery] = useState(gSession.onlineQuery);
+  const [onlineResults, setOnlineResults] = useState<Song[]>(gSession.onlineResults);
   const [onlineLoading, setOnlineLoading] = useState(false);
   const [onlinePage, setOnlinePage] = useState(1);
   const [onlineIsEnd, setOnlineIsEnd] = useState(true);
   const [onlineTotal, setOnlineTotal] = useState(0);
   const [onlineError, setOnlineError] = useState('');
 
-  const [onlineCurrent, setOnlineCurrent] = useState<Song | null>(null);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [onlineCurrent, setOnlineCurrent] = useState<Song | null>(gSession.onlineSong);
+  const [currentIndex, setCurrentIndex] = useState(gSession.currentIndex);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [audioDur, setAudioDur] = useState(0);
@@ -94,8 +100,8 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
   const [quality, setQuality] = useState<QualityLevel>(() => {
     try { return (localStorage.getItem(QUALITY_KEY) as QualityLevel | null) ?? '128k'; } catch { return '128k'; }
   });
-  const [repeatMode, setRepeatMode] = useState<'off' | 'all' | 'one'>('off');
-  const [isShuffle, setIsShuffle] = useState(false);
+  const [repeatMode, setRepeatMode] = useState<'off' | 'all' | 'one'>(gSession.repeatMode);
+  const [isShuffle, setIsShuffle] = useState(gSession.isShuffle);
 
   const [lyrics, setLyrics] = useState<LyricLine[]>([]);
   const [lyricsLoading, setLyricsLoading] = useState(false);
@@ -152,6 +158,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
   const playSong = useCallback((song: Song): void => {
     const audio = getAudio();
     gSession.songId = song.id;
+    gSession.onlineSong = song;
     gSession.isPlaying = true;
     setIsPlaying(true);
     setProgress(0);
@@ -185,7 +192,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
   const selectSong = useCallback((song: Song, listOverride?: Song[]): void => {
     const list = listOverride ?? playlistSongs;
     const idx = list.findIndex((s) => s.id === song.id);
-    if (idx >= 0) setCurrentIndex(idx);
+    if (idx >= 0) { setCurrentIndex(idx); gSession.currentIndex = idx; }
     pinnedLocalRef.current = null;
     setOnlineCurrent(song);
     gSession.isPlaying = true;
@@ -234,6 +241,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
       playSong(next);
     } else {
       setCurrentIndex(idx);
+      gSession.currentIndex = idx;
       pinnedLocalRef.current = null;
       setOnlineCurrent(next);
       playSong(next);
@@ -248,7 +256,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     const prevSong = list[idx];
     if (prevSong === undefined) return;
     if (listMode === 'online') { setOnlineCurrent(prevSong); playSong(prevSong); }
-    else { setCurrentIndex(idx); pinnedLocalRef.current = null; setOnlineCurrent(prevSong); playSong(prevSong); }
+    else { setCurrentIndex(idx); gSession.currentIndex = idx; pinnedLocalRef.current = null; setOnlineCurrent(prevSong); playSong(prevSong); }
   }, [onlineCurrent, currentSong, listMode, playSong]);
 
   // 音频事件（模块级单例，mount/unmount 只挂一次）
@@ -279,14 +287,22 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     };
   }, [repeatMode, onlineCurrent, handleNext, playSong]);
 
-  // 回到模块恢复 UI 状态
+  // 回到模块恢复全部 UI 状态（音频是模块级单例，播放从未中断；这里只恢复界面）
   useEffect(() => {
     setIsPlaying(gSession.isPlaying);
     setProgress(gSession.progress);
     setIsMuted(gSession.isMuted);
+    setRepeatMode(gSession.repeatMode);
+    setIsShuffle(gSession.isShuffle);
     const audio = getAudio();
-    audio.volume = volume / 100;
-    audio.muted = isMuted;
+    audio.volume = gSession.volume / 100;
+    audio.muted = gSession.isMuted;
+    // 恢复当前歌与歌词（歌单歌曲经 pinned/index 推导已有；在线歌在 gSession）
+    const song = gSession.onlineSong;
+    if (song !== null && gSession.songId !== null) {
+      setOnlineCurrent(song);
+      if (gSession.songId === song.id) loadLyrics(song);
+    }
   }, []);
 
   // 歌词自动滚动
@@ -317,10 +333,15 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
       if (!out?.ok) { setOnlineError((out?.error as { message?: string })?.message ?? '搜索失败'); return; }
       const v = out.value as { songs: Song[]; isEnd: boolean; total: number };
       setListMode('online');
+      gSession.listMode = 'online';
       setOnlinePage(page);
       setOnlineIsEnd(v.isEnd);
       setOnlineTotal(v.total);
-      setOnlineResults((prev) => (append ? [...prev, ...v.songs] : v.songs));
+      setOnlineResults((prev) => {
+        const next = append ? [...prev, ...v.songs] : v.songs;
+        gSession.onlineResults = next;
+        return next;
+      });
     })();
   }, [onlineQuery, rpc]);
 
@@ -340,7 +361,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
         const pl: Playlist = { id: `pl_${Date.now()}`, name: `导入 ${new Date().toLocaleDateString('zh-CN')}`, songs: v.songs };
         savePlaylists([...playlists, pl]);
         setActivePlaylistId(pl.id);
-        setListMode('playlist');
+        setListMode('playlist'); gSession.listMode = 'playlist';
         setShowImport(false);
         setImportLink('');
         setImportMsg('');
@@ -361,7 +382,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
       const pl: Playlist = { id: `pl_${Date.now()}`, name: `导入 ${new Date().toLocaleDateString('zh-CN')}`, songs: collected };
       savePlaylists([...playlists, pl]);
       setActivePlaylistId(pl.id);
-      setListMode('playlist');
+      setListMode('playlist'); gSession.listMode = 'playlist';
       setShowImport(false);
       setImportLink('');
       setImportMsg('');
@@ -469,7 +490,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
               <div
                 key={pl.id}
                 className={`dsh-pwb-mu-pl-item${activePlaylistId === pl.id && listMode === 'playlist' ? ' dsh-pwb-mu-pl-active' : ''}`}
-                onClick={() => { if (currentSong !== null) pinnedLocalRef.current = currentSong; setActivePlaylistId(pl.id); setListMode('playlist'); }}
+                onClick={() => { if (currentSong !== null) pinnedLocalRef.current = currentSong; setActivePlaylistId(pl.id); setListMode('playlist'); gSession.listMode = 'playlist'; }}
               >
                 <span className="dsh-pwb-mu-pl-ico"><Music className="size-4" /></span>
                 <span style={{ flex: 1, minWidth: 0 }}>
@@ -678,7 +699,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
             <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="歌单名称" onKeyDown={(e) => {
               if (e.key === 'Enter' && newName.trim() !== '') {
                 savePlaylists([...playlists, { id: `pl_${Date.now()}`, name: newName.trim(), songs: [] }]);
-                setActivePlaylistId(`pl_${Date.now()}`); setListMode('playlist'); setShowNew(false);
+                setActivePlaylistId(`pl_${Date.now()}`); setListMode('playlist'); gSession.listMode = 'playlist'; setShowNew(false);
               }
             }} />
             <div className="dsh-pwb-mu-dialog-row">
@@ -687,7 +708,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
                 if (newName.trim() === '') return;
                 const id = `pl_${Date.now()}`;
                 savePlaylists([...playlists, { id, name: newName.trim(), songs: [] }]);
-                setActivePlaylistId(id); setListMode('playlist'); setShowNew(false);
+                setActivePlaylistId(id); setListMode('playlist'); gSession.listMode = 'playlist'; setShowNew(false);
               }}>创建</button>
             </div>
           </div>
