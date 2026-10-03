@@ -686,6 +686,16 @@ html { color-scheme: light !important; }
   padding: 2px 4px;
 }
 .dsh-pwb-mcal-hol.dsh-pwb-mcal-ban { background: var(--pwb-dimmer, #9aa0a6); }
+.dsh-pwb-mcal-weather {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--pwb-dim, #6b7280);
+  white-space: nowrap;
+}
 .dsh-pwb-almanac {
   display: flex;
   align-items: center;

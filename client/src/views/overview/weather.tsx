@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { CloudSun, MapPin, RefreshCw, Loader2, CloudRain, Cloud, Sun, CloudFog, CloudLightning, Snowflake, Wind, Droplets } from 'lucide-react';
 import type { RpcFn } from '../../rpc.js';
+import { wmo } from '../../util/wmo.js';
 
 const CITIES = ['广州', '深圳', '北京', '上海', '杭州', '成都', '武汉', '西安'];
 const CUSTOM_KEY = 'overview_weather_custom_v1';
@@ -35,19 +36,6 @@ function load(): CustomWeather {
 }
 
 /** WMO 天气码 → 描述 + 图标（open-meteo 官方码表）。 */
-function wmo(code: number): { label: string; Icon: typeof Sun } {
-  if (code === 0) return { label: '晴', Icon: Sun };
-  if (code <= 2) return { label: code === 1 ? '大致晴' : '多云', Icon: CloudSun };
-  if (code === 3) return { label: '阴', Icon: Cloud };
-  if (code === 45 || code === 48) return { label: '雾', Icon: CloudFog };
-  if (code >= 51 && code <= 67) return { label: '雨', Icon: CloudRain };
-  if (code >= 71 && code <= 77) return { label: '雪', Icon: Snowflake };
-  if (code >= 80 && code <= 82) return { label: '阵雨', Icon: CloudRain };
-  if (code === 85 || code === 86) return { label: '阵雪', Icon: Snowflake };
-  if (code >= 95) return { label: '雷雨', Icon: CloudLightning };
-  return { label: '未知', Icon: Cloud };
-}
-
 /** US AQI → 等级 + 色（国标观感）。 */
 function aqiLevel(aqi: number): { label: string; cls: string } {
   if (aqi <= 50) return { label: '优', cls: 'bg-green-500/15 text-green-500' };

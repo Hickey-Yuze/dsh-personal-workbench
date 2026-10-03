@@ -10,6 +10,7 @@ import type { RpcFn } from '../rpc.js';
 import { useKv } from '../store.js';
 import { humanDate, nowIso, toDateStr, todayStr, uid } from '../util.js';
 import { lunarOf } from '../util/lunar.js';
+import { loadAutoWeather, wmo } from '../util/wmo.js';
 
 const WEEK = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -33,13 +34,22 @@ function buildMonth(year: number, month: number): Cell[] {
   return cells;
 }
 
-function Almanac({ date }: { date: string }): ReactElement {
+function Almanac({ date, weather }: { date: string; weather: ReturnType<typeof loadAutoWeather> }): ReactElement {
   const l = lunarOf(date);
+  const day = weather?.daily.find((d) => d.date === date);
+  const cur = weather !== null ? wmo(weather.code) : null;
+  const dayW = day !== undefined ? wmo(day.code) : null;
   return (
     <div className="dsh-pwb-almanac">
       <span className="dsh-pwb-almanac-date">{l.festival !== undefined ? `${l.festival} · ` : ''}{l.monthDay} · {l.yearGZ}年 · {l.zodiac}</span>
       <span className="dsh-pwb-almanac-yi">宜 {l.yi.slice(0, 4).join(' · ')}</span>
       <span className="dsh-pwb-almanac-ji">忌 {l.ji.slice(0, 4).join(' · ')}</span>
+      {dayW !== null && day !== undefined ? (
+        <span className="dsh-pwb-almanac-weather" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--pwb-text, #1c1c22)', fontWeight: 600 }}>
+          <dayW.Icon className="size-3.5" /> {dayW.label} {Math.round(day.min)}~{Math.round(day.max)}°
+          {cur !== null && weather !== null ? ` · 现在 ${Math.round(weather.temp)}° ${cur.label}` : ''}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -54,10 +64,37 @@ export function ScheduleView({ rpc }: { rpc: RpcFn }): ReactElement {
   const [selected, setSelected] = useState<string>(today);
   const [title, setTitle] = useState('');
   const [holidays, setHolidays] = useState<Record<string, { holiday: boolean; name: string }>>({});
+  const [weather, setWeather] = useState(loadAutoWeather);
   const [startTime, setStartTime] = useState('');
   const [location, setLocation] = useState('');
 
   const cells = useMemo(() => buildMonth(cursor.y, cursor.m), [cursor]);
+
+  // 天气：复用总览天气卡的共享缓存；无缓存时经 geo/ip 定位静默拉一次
+  useEffect(() => {
+    let dead = false;
+    void (async () => {
+      const cached = loadAutoWeather();
+      const fresh = cached !== null && Date.now() - new Date(cached.updated).getTime() < 30 * 60 * 1000;
+      if (fresh && !dead) { setWeather(cached); return; }
+      try {
+        const geo = await rpc('personal-workbench/geo/ip', {});
+        if (!geo?.ok || dead) { if (cached !== null && !dead) setWeather(cached); return; }
+        const gv = geo.value as { lat: number; lon: number; city: string };
+        const out = await rpc('personal-workbench/weather/fetch', { lat: gv.lat, lon: gv.lon, fallbackPlace: gv.city });
+        if (out?.ok && !dead) {
+          const v = out.value as unknown;
+          setWeather(v as never);
+          try { localStorage.setItem('dsh-pwb:overview_weather_auto_v1', JSON.stringify(v)); } catch { /* 容量满忽略 */ }
+        } else if (cached !== null && !dead) {
+          setWeather(cached);
+        }
+      } catch {
+        if (cached !== null && !dead) setWeather(cached);
+      }
+    })();
+    return () => { dead = true; };
+  }, [rpc]);
 
   // 法定节假日调休（Host 代理 holiday-cn/timor，多源降级）；拉取失败不显示徽章，不造假
   useEffect(() => {
@@ -173,12 +210,23 @@ export function ScheduleView({ rpc }: { rpc: RpcFn }): ReactElement {
                 onClick={() => setSelected(c.date)}
               >
                 <span className="dsh-pwb-mcal-day">{c.day}{c.isToday ? <i className="dsh-pwb-mcal-now">今</i> : null}</span>
-                {(() => { const l = lunarOf(c.date); const hol = holidays[c.date]; return (
-                  <>
-                    <span className={l.festival !== undefined ? (l.festival.includes('节') ? 'dsh-pwb-mcal-lunar dsh-pwb-mcal-festival' : 'dsh-pwb-mcal-lunar dsh-pwb-mcal-jieqi') : 'dsh-pwb-mcal-lunar'}>{l.festival ?? l.short}</span>
-                    {hol !== undefined ? <span className={`dsh-pwb-mcal-hol${hol.holiday ? '' : ' dsh-pwb-mcal-ban'}`}>{hol.holiday ? '休' : '班'}</span> : null}
-                  </>
-                ); })()}
+                {(() => {
+                  const l = lunarOf(c.date);
+                  const hol = holidays[c.date];
+                  const dw = weather?.daily.find((d) => d.date === c.date);
+                  const W = dw !== undefined ? wmo(dw.code).Icon : null;
+                  return (
+                    <>
+                      <span className={l.festival !== undefined ? (l.festival.includes('节') ? 'dsh-pwb-mcal-lunar dsh-pwb-mcal-festival' : 'dsh-pwb-mcal-lunar dsh-pwb-mcal-jieqi') : 'dsh-pwb-mcal-lunar'}>{l.festival ?? l.short}</span>
+                      {hol !== undefined ? <span className={`dsh-pwb-mcal-hol${hol.holiday ? '' : ' dsh-pwb-mcal-ban'}`}>{hol.holiday ? '休' : '班'}</span> : null}
+                      {W !== null && dw !== undefined ? (
+                        <span className="dsh-pwb-mcal-weather" title={`${wmo(dw.code).label} ${Math.round(dw.min)}~${Math.round(dw.max)}°`}>
+                          <W className="size-3" /> {Math.round(dw.max)}°
+                        </span>
+                      ) : null}
+                    </>
+                  );
+                })()}
                 {list.length > 0 ? (
                   <span className="dsh-pwb-mcal-evs">
                     {list.slice(0, 2).map((e) => (
@@ -197,7 +245,7 @@ export function ScheduleView({ rpc }: { rpc: RpcFn }): ReactElement {
             <span className="dsh-pwb-day-title">{humanDate(selected)}</span>
             <span className="dsh-pwb-day-count">{dayItems.length} {t('sched.items')}</span>
           </div>
-          <Almanac date={selected} />
+          <Almanac date={selected} weather={weather} />
 
           <div className="dsh-pwb-toolbar dsh-pwb-toolbar-inline">
             <input
