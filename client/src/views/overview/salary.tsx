@@ -16,17 +16,17 @@ import { Settings2, Loader2, Wallet, ChevronLeft, ChevronRight, X } from 'lucide
 import { SCHEDULE_META, fetchYearHolidays, getManualHolidays, isWorkday, saveManualHolidays, type HolidayEntry, type HolidayMap, type WorkSchedule } from './holidays.js';
 import type { RpcFn } from '../../rpc.js';
 
-interface SalaryConfig { monthly: number; payday: number; start: string; end: string; schedule: WorkSchedule; holidayPay: boolean }
+interface SalaryConfig { monthly: number; payday: number; start: string; end: string; schedule: WorkSchedule }
 
 const CONFIG_KEY = 'overview_salary_config_v1';
-const DEFAULT_CONFIG: SalaryConfig = { monthly: 6000, payday: 15, start: '09:00', end: '18:00', schedule: 'bigsmall', holidayPay: true };
+const DEFAULT_CONFIG: SalaryConfig = { monthly: 6000, payday: 15, start: '09:00', end: '18:00', schedule: 'bigsmall' };
 
 function loadConfig(): SalaryConfig {
   try {
     const raw = localStorage.getItem(`dsh-pwb:${CONFIG_KEY}`);
     if (raw) {
       const c = { ...DEFAULT_CONFIG, ...JSON.parse(raw) } as SalaryConfig;
-      if (c.holidayPay === undefined) c.holidayPay = true;
+      delete (c as { holidayPay?: boolean }).holidayPay; // 旧版开关已废弃：口径统一为「日历标记优先，作息兜底」
       return c;
     }
   } catch { /* ignore */ }
@@ -117,9 +117,8 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
   const holidaysNow = useMemo(() => ({ ...holidays, ...getManualHolidays() }), [holidays]);
   const holiday = holidaysNow[todayIso];
   const working = isWorkday(now, config.schedule, holidaysNow);
-  // 节假日照常计薪（默认开，对齐 iTab 数字一直跳）→ 关闭后假期停跳
-  const counting = working || config.holidayPay;
-  const earned = counting ? perSecEarn * nowSec : 0;
+  // 口径：日历标记优先（班=上班累计 / 休=不上班），未标记的日期按作息判断 —— 所见即所得
+  const earned = working ? perSecEarn * nowSec : 0;
   const earnedStr = earned.toFixed(4); // 元.角分厘秒：239.9132
   const endSec = toSec(config.end);
   const startSec = toSec(config.start);
@@ -190,8 +189,7 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
 
       <div className="flex flex-1 flex-col justify-center gap-1.5 px-5 pb-4">
         <div className="text-center text-[11px] text-white/45">
-          今日已赚{!working && holiday ? ` · ${holiday.name.includes('手动') ? '今天休息' : holiday.name + '放假'}` : ''}{!working && !holiday ? ' · 今日休息' : ''}
-          {working && holiday?.holiday === false && holiday.name.includes('调休') ? ' · 调休班已计入' : ''}
+          今日已赚{!working ? ' · 今日休息（日历标休或作息休息日）' : holiday?.holiday === false ? ' · 调休班已计入' : ''}
         </div>
         {/* ¥239.91³² —— 主数字每秒跳动，厘秒位小号 + pop 动画强化跳动感 */}
         <div className="text-center font-bold tabular-nums text-primary">
@@ -256,7 +254,7 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
                   </button>
                 ))}
               </div>
-              <div className="mt-1 text-[10px] text-white/35">日薪按 {SCHEDULE_META[config.schedule].workdays} 天月薪折算</div>
+              <div className="mt-1 text-[10px] text-white/35">日薪按 {SCHEDULE_META[config.schedule].workdays} 天月薪折算 · 只对日历里「未标记」的日期生效，日历标记（休/班）优先</div>
             </div>
 
             {/* 节假日：可点选迷你月历 */}
@@ -302,9 +300,9 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
                 })}
               </div>
               <div className="mt-1.5 flex items-center gap-2.5 text-[9px] text-white/30">
-                <span><i className="mr-0.5 inline-block size-1.5 rounded-full bg-red-400 align-middle" /> 休</span>
-                <span><i className="mr-0.5 inline-block size-1.5 rounded-full bg-green-500 align-middle" /> 调休班</span>
-                <span>淡色 = 自动获取 · 鲜色 = 手动</span>
+                <span><i className="mr-0.5 inline-block size-1.5 rounded-full bg-red-400 align-middle" /> 休（当天不累计）</span>
+                <span><i className="mr-0.5 inline-block size-1.5 rounded-full bg-green-500 align-middle" /> 班（当天累计）</span>
+                <span>标记优先于作息 · 淡色=自动 鲜色=手动</span>
                 {manualCount > 0 && (
                   <button className="ml-auto text-primary underline" onClick={() => setManualMap({})}>清除手动标记（{manualCount}）</button>
                 )}
@@ -312,11 +310,6 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
             </div>
 
             {/* 计薪开关 */}
-            <label className="flex items-start gap-2 leading-relaxed">
-              <input type="checkbox" checked={config.holidayPay} onChange={(e) => setConfig((c) => ({ ...c, holidayPay: e.target.checked }))} className="mt-0.5 accent-[var(--primary)]" />
-              <span>节假日照常计薪（默认开 = 数字每天跳；关 = 假期停跳，仅工作日累计）</span>
-            </label>
-
             <button
               className="w-full rounded-lg bg-primary py-2.5 text-sm font-semibold text-[var(--primary-foreground,#0c1d14)] transition-opacity hover:opacity-90"
               onClick={saveEditor}
