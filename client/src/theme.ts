@@ -858,14 +858,14 @@ const CSS = `
 .dsh-pwb-vd-backbtn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; margin-bottom: 14px; border-radius: 17px; border: 1px solid var(--pwb-border); background: var(--pwb-card); color: var(--pwb-dim); font-size: 12.5px; font-family: inherit; cursor: pointer; }
 .dsh-pwb-vd-backbtn:hover { color: var(--pwb-text); }
 /* ── 音乐歌手详情页（参考站形态：圆头像+来源标+N首+播放全部/保存到歌单+列表） ── */
-.dsh-pwb-mu-sg-head { display: flex; align-items: center; gap: 18px; }
+.dsh-pwb-mu-sg-head { display: flex; align-items: center; gap: 24px; margin-top: 6px; }
 .dsh-pwb-mu-sg-avatar { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; flex: 0 0 auto; box-shadow: 0 2px 12px rgba(0,0,0,0.12); }
 .dsh-pwb-mu-sg-avatar.dsh-pwb-mu-sg-dummy { display: grid; place-items: center; background: var(--pwb-card-hi, #f2f3f5); color: var(--pwb-dimmer, #9aa0a6); }
 .dsh-pwb-mu-sg-meta h1 { margin: 6px 0 2px; font-size: 26px; font-weight: 750; letter-spacing: -0.2px; }
 .dsh-pwb-mu-sg-meta > span { font-size: 13px; color: var(--pwb-dim, #6b7280); }
 .dsh-pwb-mu-sg-badge { display: inline-block; padding: 2px 8px; border-radius: 5px; background: #e5484d; color: #fff; font-size: 11px; font-weight: 700; font-style: normal; }
-.dsh-pwb-mu-sg-acts { display: flex; align-items: center; gap: 12px; margin: 4px 0 10px; }
-.dsh-pwb-mu-sg-playall { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 18px; border: none; border-radius: 18px; background: var(--pwb-accent, #00b862); color: #fff; font-size: 13.5px; font-weight: 700; font-family: inherit; cursor: pointer; }
+.dsh-pwb-mu-sg-acts { display: flex; align-items: center; gap: 18px; margin: 18px 0 22px; }
+.dsh-pwb-mu-sg-playall { display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 26px; border: none; border-radius: 21px; background: var(--pwb-accent, #00b862); color: #fff; font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer; }
 .dsh-pwb-mu-sg-playall:disabled { opacity: .5; cursor: default; }
 
 

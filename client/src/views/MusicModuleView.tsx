@@ -85,6 +85,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
   const [discoverLoading, setDiscoverLoading] = useState(false);
   const [singerData, setSingerData] = useState<{ name: string; songs: Song[] } | null>(null);
   const [singerLoading, setSingerLoading] = useState(false);
+  const [singerError, setSingerError] = useState('');
   const [onlineLoading, setOnlineLoading] = useState(false);
   const [onlinePage, setOnlinePage] = useState(1);
   const [onlineIsEnd, setOnlineIsEnd] = useState(true);
@@ -446,13 +447,14 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     const name = route.name;
     if (singerData?.name === name) return;
     let disposed = false;
-    setSingerLoading(true);
+    setSingerLoading(true); setSingerError('');
     void Promise.resolve(rpc('personal-workbench/music/singer', { name })).then((out) => {
       if (disposed) return;
       const v = (out?.value ?? null) as { name: string; songs: Song[] } | null;
       if (v !== null && Array.isArray(v.songs)) setSingerData({ name: v.name, songs: v.songs });
+      else setSingerError((out?.error as { message?: string })?.message ?? '歌手歌曲加载失败（若刚更新代码请重启宿主）');
       setSingerLoading(false);
-    }).catch(() => { if (!disposed) setSingerLoading(false); });
+    }).catch(() => { if (!disposed) { setSingerError('歌手歌曲加载失败'); setSingerLoading(false); } });
     return () => { disposed = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route.page, route.page === 'singer' ? route.name : '']);
@@ -544,6 +546,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
               <Plus className="size-4" /> 保存到歌单
             </button>
           </div>
+          {singerError !== '' && songs.length === 0 ? <div className="dsh-pwb-mu-empty">{singerError}</div> : null}
           {songs.map((song, i) => (
             <SongRow key={`${song.id}-${i}`} song={song} idx={i + 1} now={current?.id === song.id} playing={isPlaying} loved={isLoved(song)}
               onPlay={() => playSong(song, songs, `歌手·${route.name}`)} onLove={() => toggleLove(song)} />
