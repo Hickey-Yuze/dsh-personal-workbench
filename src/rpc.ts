@@ -37,6 +37,24 @@ interface WebServerLike {
 }
 
 export const API_PREFIX = '/api/personal-workbench';
+
+/** 文件归档路径安全解析：HOME 相对、禁 ..、realpath 校验防 symlink 逃逸。 */
+function fsResolveSafe(rel: string): string {
+  const home = process.env.HOME ?? '';
+  if (home === '') throw Object.assign(new Error('无法定位主目录'), { code: 'internal' });
+  const parts = rel.split('/').filter((x) => x !== '' && x !== '.');
+  if (parts.includes('..')) throw Object.assign(new Error('路径不允许包含 ..'), { code: 'bad-path' });
+  const abs = [home, ...parts].join('/');
+  if (!abs.startsWith(home)) throw Object.assign(new Error('路径越界'), { code: 'bad-path' });
+  try {
+    const real = fs.realpathSync(abs);
+    if (!real.startsWith(fs.realpathSync(home))) throw Object.assign(new Error('路径越界（符号链接）'), { code: 'bad-path' });
+  } catch (e) {
+    if ((e as { code?: string }).code === 'bad-path') throw e;
+    throw Object.assign(new Error('路径不存在'), { code: 'not-found' });
+  }
+  return abs;
+}
 const BODY_MAX = 2 * 1024 * 1024;
 
 export interface RpcDeps {
@@ -289,6 +307,43 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
           } catch { /* 换下一个源 */ }
         }
         fail('bad-gateway', '节假日数据源均不可达');
+      }
+
+      // ── 文件归档：HOME 下安全浏览/读文本/系统程序打开 ──
+      case 'personal-workbench/fs/list': {
+        const p = asRecord(payload);
+        const rel = typeof p.path === 'string' ? p.path : '';
+        const abs = fsResolveSafe(rel);
+        const dirents = fs.readdirSync(abs, { withFileTypes: true });
+        const entries = dirents
+          .map((d) => ({
+            name: d.name,
+            path: rel === '' ? d.name : `${rel}/${d.name}`,
+            kind: d.isDirectory() ? 'dir' : 'file',
+          }))
+          .sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name, 'zh') : a.kind === 'dir' ? -1 : 1));
+        return { entries, root: '主目录' };
+      }
+      case 'personal-workbench/fs/read': {
+        const p = asRecord(payload);
+        const rel = typeof p.path === 'string' ? p.path : '';
+        const abs = fsResolveSafe(rel);
+        const st = fs.statSync(abs);
+        if (!st.isFile()) fail('bad-request', '不是文件');
+        if (st.size > 2 * 1024 * 1024) fail('too-large', '文件超过 2MB，不支持预览（可用系统程序打开）');
+        const ext = rel.split('.').pop()?.toLowerCase() ?? '';
+        const TEXT_EXT = new Set(['md', 'txt', 'json', 'csv', 'log', 'yaml', 'yml', 'js', 'jsx', 'ts', 'tsx', 'py', 'sh', 'html', 'css', 'xml', 'ini', 'conf', 'env', 'sql']);
+        if (!TEXT_EXT.has(ext)) fail('unsupported', '该类型不支持文本预览（可用系统程序打开）');
+        return { path: rel, content: fs.readFileSync(abs, 'utf8'), bytes: st.size };
+      }
+      case 'personal-workbench/fs/open': {
+        const p = asRecord(payload);
+        const rel = typeof p.path === 'string' ? p.path : '';
+        const abs = fsResolveSafe(rel);
+        await new Promise<void>((resolve, reject) => {
+          execFile('open', [abs], { timeout: 10_000 }, (err) => (err ? reject(err) : resolve()));
+        });
+        return { ok: true, path: rel };
       }
 
       // ── 启动器（本机应用，只列 .app 名称 + open 启动）──

@@ -9,6 +9,7 @@ import { MODULES, moduleById, type ModuleDef } from './modules.js';
 import type { RpcFn } from './rpc.js';
 import { ensureThemeStyle } from './theme.js';
 import { KnowledgeView } from './views/KnowledgeView.js';
+import { ArchiveModuleView } from './views/ArchiveModuleView.js';
 import { OverviewView } from './views/OverviewView.js';
 import { ScheduleView } from './views/ScheduleView.js';
 import { TodoView } from './views/TodoView.js';
@@ -70,6 +71,8 @@ function ModuleBody({
       return <ScheduleView rpc={rpc} />;
     case 'knowledge':
       return <KnowledgeView rpc={rpc} />;
+    case 'archive':
+      return <ArchiveModuleView rpc={rpc} />;
     case 'overview':
       return <OverviewView rpc={rpc} onOpen={onOpen} />;
     default: {
