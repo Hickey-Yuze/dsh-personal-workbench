@@ -247,9 +247,6 @@ export function OverviewView({
       <div className="dsh-pwb-head dsh-pwb-head-ov">
         <div className="dsh-pwb-head-main">
           <div className="dsh-pwb-title-row">
-            <span className="dsh-pwb-title-mark">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z" /></svg>
-            </span>
             <span className="dsh-pwb-title">项目总览</span>
           </div>
           <div className="dsh-pwb-sub">待办、日程与知识库的聚合视图</div>
