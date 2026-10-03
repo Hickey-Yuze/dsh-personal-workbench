@@ -110,39 +110,49 @@ type MusicDiscover = { hot: MusicDiscoverItem[]; douyin: MusicDiscoverItem[]; si
 let discoverCache: MusicDiscover | null = null;
 let discoverCacheAt = 0;
 
-/** B 站公开接口需要基础 cookie（buvid3 等）过风控：启动时领一次，6 小时刷新。 */
-let biliCookie = '';
-let biliCookieAt = 0;
-const BILI_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
-async function biliCookieFresh(): Promise<string> {
-  if (biliCookie !== '' && Date.now() - biliCookieAt < 6 * 3600 * 1000) return biliCookie;
-  const res = await fetch('https://www.bilibili.com/', { headers: { 'User-Agent': BILI_UA } });
-  const parts = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [res.headers.get('set-cookie') ?? ''];
-  biliCookie = parts.map((c) => c.split(';')[0]).filter((c) => /^(buvid3|buvid4|b_nut|b_lsid|_uuid)=/.test(c)).join('; ');
-  biliCookieAt = Date.now();
-  return biliCookie;
+/* ── 影视源：磁力猫橘汁片库（CF adapter 本地索引 + SCF 详情直连） ── */
+const VIDEO_CF = 'https://yuze-yingshi-jiekou.pages.dev/api/yuze';
+const VIDEO_BASES = ['https://1301366908-k5q7ggear7.ap-guangzhou.tencentscf.com', 'http://103.36.167.27:18004', 'http://juziapp.hzhcbkj.cn', 'http://103.45.131.38:40001'];
+type VideoBriefHost = { id: string; name: string; pic?: string; remarks?: string; typeName?: string; year?: string };
+function videoMapList(data: { list?: Array<Record<string, unknown>> }): VideoBriefHost[] {
+  return (data.list ?? []).map((it) => ({
+    id: String(it.vod_id ?? ''),
+    name: String(it.vod_name ?? ''),
+    pic: typeof it.vod_pic === 'string' && it.vod_pic !== '' ? it.vod_pic.replace(/^http:/, 'https:') : undefined,
+    remarks: typeof it.vod_remarks === 'string' ? it.vod_remarks : undefined,
+    typeName: typeof it.type_name === 'string' ? it.type_name : undefined,
+    year: typeof it.vod_year === 'string' ? it.vod_year : undefined,
+  })).filter((x) => x.id !== '' && x.name !== '');
 }
-async function biliSearch(q: string, page: number, rn: number): Promise<Array<{ bvid: string; title: string; author: string; duration: string; pic?: string | undefined; play: number; description?: string | undefined }>> {
-  const cookie = await biliCookieFresh();
-  const url = `https://api.bilibili.com/x/web-interface/search/type?search_type=video&keyword=${encodeURIComponent(q)}&page=${page}&page_size=${rn}`;
-  const res = await fetch(url, { headers: { 'User-Agent': BILI_UA, Referer: 'https://www.bilibili.com/', Cookie: cookie } });
-  const data = (await res.json()) as { code?: number; data?: { result?: Array<Record<string, unknown>>; numResults?: number } };
-  if (data.code !== 0 || !Array.isArray(data.data?.result)) return [];
-  return (data.data?.result ?? [])
-    .filter((it) => it.type === 'video')
-    .map((it) => ({
-      bvid: String(it.bvid ?? ''),
-      title: String(it.title ?? '').replace(/<em class="keyword">|<\/em>/g, ''),
-      author: String(it.author ?? ''),
-      duration: String(it.duration ?? ''),
-      pic: typeof it.pic === 'string' && it.pic !== '' ? it.pic.replace(/^http:/, 'https:') : undefined,
-      play: Number(it.play) || 0,
-      description: typeof it.description === 'string' ? String(it.description).slice(0, 160) : undefined,
-    }))
-    .filter((it) => it.bvid !== '');
+async function videoCmsGet(query: string): Promise<{ code?: number; list?: Array<Record<string, unknown>>; total?: number; pagecount?: number }> {
+  const res = await fetch(`${VIDEO_CF}?${query}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
+  return (await res.json()) as { code?: number; list?: Array<Record<string, unknown>>; total?: number; pagecount?: number };
 }
-type VideoItem = { bvid: string; title: string; author: string; duration: string; pic?: string | undefined; play: number; description?: string | undefined };
-let videoDiscoverCache: Array<{ key: string; title: string; items: VideoItem[] }> | null = null;
+/** 详情：SCF 直连优先（境内出口免风控，实测 2s），失败走磁力猫多入口容灾。 */
+async function videoDetailFetch(id: string): Promise<Record<string, unknown> | null> {
+  for (const base of VIDEO_BASES) {
+    try {
+      const res = await fetch(`${base}/?ac=detail&ids=${encodeURIComponent(id)}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(30000) });
+      const data = (await res.json()) as { code?: number; list?: Array<Record<string, unknown>> };
+      if (data.code === 1 && Array.isArray(data.list) && data.list.length > 0) return data.list[0];
+    } catch { /* 下一个入口 */ }
+  }
+  return null;
+}
+/** 解析播放线路与集数；placeholder.m3u8 占位集全部剔除。 */
+function videoParseLines(v: Record<string, unknown>): Array<{ name: string; episodes: Array<{ name: string; url: string }> }> {
+  const lineNames = String(v.vod_play_from ?? '').split(',').filter(Boolean);
+  const lineGroups = String(v.vod_play_url ?? '').split('$$$');
+  return lineNames.map((name, i) => ({
+    name,
+    episodes: (lineGroups[i] ?? '').split('#').filter(Boolean).map((e) => {
+      const seg = e.split('$');
+      return { name: (seg[0] ?? '').trim(), url: (seg[1] ?? '').trim() };
+    }).filter((ep) => ep.url !== '' && /^https?:\/\//.test(ep.url) && !/placeholder\.m3u8/i.test(ep.url)),
+  })).filter((l) => l.episodes.length > 0);
+}
+type VideoDiscoverBlock = { key: string; title: string; items: VideoBriefHost[] };
+let videoDiscoverCache: VideoDiscoverBlock[] | null = null;
 let videoDiscoverAt = 0;
 
 /** 文件归档根白名单：持久化 ~/.dsh/personal-workbench/roots.json；HOME 永远在列。 */
@@ -503,25 +513,55 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
       case 'personal-workbench/video/search': {
         const p = asRecord(payload);
         const q = typeof p.q === 'string' ? p.q.trim() : '';
-        const page = Math.max(1, Number(p.page) || 1);
         if (q === '') fail('bad-request', '缺少搜索词');
         try {
-          const items = await biliSearch(q, page, 20);
-          return { items, numResults: items.length };
+          const data = await videoCmsGet(`ac=detail&wd=${encodeURIComponent(q)}`);
+          return { items: videoMapList(data) };
         } catch {
-          fail('bad-gateway', 'B 站搜索接口不可达');
+          fail('bad-gateway', '片库索引不可达');
         }
+      }
+      case 'personal-workbench/video/category': {
+        const p = asRecord(payload);
+        const t = typeof p.t === 'string' && p.t !== '' ? p.t : '20';
+        const pg = Math.max(1, Number(p.pg) || 1);
+        try {
+          const data = await videoCmsGet(`ac=detail&t=${encodeURIComponent(t)}&pg=${pg}`);
+          return { items: videoMapList(data), total: Number(data.total) || 0, pagecount: Number(data.pagecount) || 1 };
+        } catch {
+          fail('bad-gateway', '片库索引不可达');
+        }
+      }
+      case 'personal-workbench/video/detail': {
+        const p = asRecord(payload);
+        const id = typeof p.id === 'string' ? p.id.trim() : '';
+        if (id === '') fail('bad-request', '缺少影片 id');
+        const v = await videoDetailFetch(id);
+        if (v === null) fail('bad-gateway', '详情获取失败，稍后再试');
+        const str = (k: string): string | undefined => (typeof v[k] === 'string' && v[k] !== '' ? v[k] as string : undefined);
+        return {
+          name: String(v.vod_name ?? ''),
+          pic: typeof v.vod_pic === 'string' && v.vod_pic !== '' ? (v.vod_pic as string).replace(/^http:/, 'https:') : undefined,
+          year: str('vod_year'), typeName: str('type_name'), actor: str('vod_actor'), director: str('vod_director'),
+          content: str('vod_content'), remarks: str('vod_remarks'),
+          lines: videoParseLines(v),
+        };
       }
       case 'personal-workbench/video/discover': {
         if (videoDiscoverCache !== null && Date.now() - videoDiscoverAt < 30 * 60 * 1000) return videoDiscoverCache;
-        const defs: Array<{ key: string; title: string; q: string }> = [
-          { key: 'movie', title: '热门电影', q: '电影 正片 高分' },
-          { key: 'series', title: '热播剧集', q: '电视剧 正片' },
-          { key: 'anime', title: '动漫正片', q: '动漫 正片' },
-          { key: 'doc', title: '纪录片', q: '纪录片 正片' },
+        const defs: Array<{ key: string; title: string; t: string }> = [
+          { key: 'movie', title: '热门电影', t: '20' },
+          { key: 'series', title: '热播剧集', t: '1' },
         ];
-        const settled = await Promise.all(defs.map(async (d) => ({ ...d, items: await biliSearch(d.q, 1, 12) })));
-        const blocks = settled.map((d) => ({ key: d.key, title: d.title, items: d.items }));
+        const blocks: VideoDiscoverBlock[] = [];
+        for (const d of defs) {
+          try {
+            const data = await videoCmsGet(`ac=detail&t=${d.t}&pg=1`);
+            blocks.push({ key: d.key, title: d.title, items: videoMapList(data).slice(0, 12) });
+          } catch {
+            blocks.push({ key: d.key, title: d.title, items: [] });
+          }
+        }
         videoDiscoverCache = blocks;
         videoDiscoverAt = Date.now();
         return blocks;
