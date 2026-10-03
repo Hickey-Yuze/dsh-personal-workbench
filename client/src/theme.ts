@@ -653,14 +653,15 @@ const CSS = `
 .dsh-pwb-mu-fs-left { flex: 0 0 auto; display: grid; place-items: center; }
 /* 黑胶唱片：同心圆纹理 + 封面贴芯 + 中心孔，播放时整体旋转 */
 .dsh-pwb-mu-fs-disc {
-  position: relative; width: min(340px, 32vw); height: min(340px, 32vw); border-radius: 50%;
+  position: relative; width: 340px !important; height: 340px !important; max-width: 32vw; max-height: 32vw; border-radius: 50% !important;
+  overflow: hidden; flex-shrink: 0;
   background: repeating-radial-gradient(circle at 50% 50%, #17171a 0px, #26262a 1.5px, #17171a 3px);
   box-shadow: 0 30px 90px rgba(0, 0, 0, 0.65), inset 0 0 0 1px rgba(255, 255, 255, 0.09), 0 0 0 1px rgba(255, 255, 255, 0.04);
   display: grid; place-items: center;
   animation: dsh-pwb-disc-spin 20s linear infinite; animation-play-state: paused;
 }
 .dsh-pwb-mu-playing .dsh-pwb-mu-fs-disc { animation-play-state: running; }
-.dsh-pwb-mu-fs-disc img { width: 56%; height: 56%; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 7px rgba(8, 8, 10, 0.75), 0 10px 34px rgba(0, 0, 0, 0.5); }
+.dsh-pwb-mu-fs-disc img { width: 56%; height: 56%; border-radius: 50% !important; object-fit: cover; box-shadow: 0 0 0 7px rgba(8, 8, 10, 0.75), 0 10px 34px rgba(0, 0, 0, 0.5); }
 .dsh-pwb-mu-fs-disc-dummy { width: 56%; height: 56%; border-radius: 50%; background: radial-gradient(circle, #33333a, #1c1c20); box-shadow: 0 0 0 7px rgba(8, 8, 10, 0.75); display: grid; place-items: center; color: rgba(255, 255, 255, 0.35); }
 .dsh-pwb-mu-fs-disc i { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 15px; height: 15px; border-radius: 50%; background: #0a0a0c; box-shadow: inset 0 0 0 3.5px #26262a, 0 0 0 5px rgba(8, 8, 10, 0.75); }
 /* 右侧歌词：垂直居中、当前行品牌绿高亮、上下渐隐遮罩 */
