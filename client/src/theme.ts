@@ -631,7 +631,7 @@ const CSS = `
 }
 .dsh-pwb-mu-playbtn:hover { filter: brightness(1.08); }
 .dsh-pwb-mu-prog { display: flex; align-items: center; gap: 8px; width: min(520px, 90%); }
-.dsh-pwb-mu-prog .dsh-pwb-mu-bar { flex: 1; padding: 0; border: none; background: var(--pwb-card-hi, #f2f3f5); }
+.dsh-pwb-mu-prog .dsh-pwb-mu-bar { position: relative; overflow: hidden; flex: 1; padding: 0; border: none; background: var(--pwb-card-hi, #f2f3f5); }
 .dsh-pwb-mu-time { font-size: 10px; color: var(--pwb-dimmer, #9aa0a6); font-variant-numeric: tabular-nums; width: 34px; }
 .dsh-pwb-mu-time:last-child { text-align: right; }
 .dsh-pwb-mu-bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--pwb-accent); }
