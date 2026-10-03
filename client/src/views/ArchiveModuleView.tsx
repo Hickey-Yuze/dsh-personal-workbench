@@ -53,9 +53,9 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     void (async () => {
       const out = await rpc('personal-workbench/fs/roots/list', {});
       if (out?.ok) {
-        const v = out.value as { roots: string[]; home: string };
-        setRoots(v.roots);
-        setHome(v.home);
+        const v = out.value as { roots?: string[]; home?: string };
+        setRoots(Array.isArray(v?.roots) ? v.roots : []);
+        setHome(typeof v?.home === 'string' ? v.home : '');
       }
     })();
   }, [rpc]);
@@ -101,13 +101,13 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
   const pickRoot = async (): Promise<void> => {
     setErr('');
     const out = await rpc('personal-workbench/fs/roots/pick', {});
-    if (!out?.ok) {
-      const code = (out as { code?: string } | undefined)?.code;
-      if (code !== 'cancelled') setErr('系统选择器不可用，可用下方输入路径方式添加');
+    // 双层结构：信封 ok + 内层 ok（取消时内层为 {ok:false, code:'cancelled'}），两层都要查
+    const v = out?.value as { ok?: boolean; path?: string; roots?: string[]; code?: string } | undefined;
+    if (out?.ok !== true || v?.ok !== true || typeof v.path !== 'string' || v.path === '') {
+      if (v?.code !== 'cancelled') setErr('系统选择器不可用，可用下方输入路径方式添加');
       return;
     }
-    const v = out.value as { path: string; roots: string[] };
-    setRoots(v.roots);
+    setRoots(Array.isArray(v.roots) ? v.roots : []);
     setRoot(v.path);
     setStack(['']);
     setNote(null);
@@ -119,7 +119,7 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     if (path === '') return;
     const out = await rpc('personal-workbench/fs/roots/add', { path });
     if (!out?.ok) { setErr((out?.error as { message?: string })?.message ?? '添加失败'); return; }
-    const added = (out.value as { roots: string[] }).roots;
+    const added = Array.isArray((out.value as { roots?: string[] })?.roots) ? (out.value as { roots: string[] }).roots : [];
     setRoots(added);
     const real = added.find((r) => r.endsWith('/' + path.split('/').pop()) || r === path) ?? path;
     setRoot(real);
