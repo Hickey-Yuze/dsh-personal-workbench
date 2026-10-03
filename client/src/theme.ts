@@ -784,6 +784,8 @@ const CSS = `
 .dsh-pwb-vd-vhitem button { flex: 0 0 auto; display: grid; place-items: center; width: 22px; height: 22px; border: none; border-radius: 50%; background: transparent; color: var(--pwb-dimmer, #9aa0a6); cursor: pointer; opacity: 0; }
 .dsh-pwb-vd-vhitem:hover button { opacity: 1; }
 .dsh-pwb-vd-vhitem button:hover { background: var(--pwb-border, rgba(20,20,30,0.1)); color: #e5484d; }
+/* 启动器网格：格子固定 76px 不拉伸，拉宽自动多列、多余留白 */
+.dsh-pwb-lt-grid { display: grid; grid-template-columns: repeat(auto-fill, 76px); gap: 8px; }
 /* 加载旋转（Loader2 通用类；keyframes 用自有名避免与 tailwind layer 内 spin 冲突） */
 .spin { animation: dsh-pwb-spin 0.9s linear infinite; }
 @keyframes dsh-pwb-spin { to { transform: rotate(360deg); } }
