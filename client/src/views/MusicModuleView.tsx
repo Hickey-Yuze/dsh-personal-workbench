@@ -428,8 +428,10 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     setDiscoverLoading(true);
     void Promise.resolve(rpc('personal-workbench/music/discover', {} as never)).then((res) => {
       if (disposed) return;
-      const d = res as { ok?: boolean; hot?: Song[]; douyin?: Song[]; singers?: Array<{ name: string; coverUrl?: string; sample: { id: string; title: string; artist: string } | null }> };
-      if (d.ok !== false && Array.isArray(d.hot)) setDiscover({ hot: d.hot ?? [], douyin: d.douyin ?? [], singers: d.singers ?? [] });
+      // rpc 统一包装 { ok, value }：discover 数据在 value 里（此前直读 res 导致永远「暂无推荐」）
+      const out = res as { value?: { hot?: Song[]; douyin?: Song[]; singers?: Array<{ name: string; coverUrl?: string; sample: { id: string; title: string; artist: string } | null }> } };
+      const d = out.value ?? {};
+      if (Array.isArray(d.hot)) setDiscover({ hot: d.hot ?? [], douyin: d.douyin ?? [], singers: d.singers ?? [] });
       setDiscoverLoading(false);
     }).catch(() => { if (!disposed) setDiscoverLoading(false); });
     return () => { disposed = true; };
