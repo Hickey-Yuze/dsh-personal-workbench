@@ -146,12 +146,13 @@ export function ScheduleView({ rpc }: { rpc: RpcFn }): ReactElement {
                   .join(' ')}
                 onClick={() => setSelected(c.date)}
               >
-                <span className="dsh-pwb-cal-day">{c.day}</span>
+                <span className="dsh-pwb-cal-day">{c.day}{c.isToday ? <i className="dsh-pwb-cal-now">今</i> : null}</span>
                 {list.length > 0 ? (
-                  <span className="dsh-pwb-cal-dots">
-                    {list.slice(0, 3).map((e) => (
-                      <i key={e.id} className={e.done === true ? 'dsh-pwb-dot-done' : 'dsh-pwb-dot-live'} />
+                  <span className="dsh-pwb-cal-evs">
+                    {list.slice(0, 2).map((e) => (
+                      <span key={e.id} className={`dsh-pwb-cal-ev${e.done === true ? ' dsh-pwb-cal-ev-done' : ''}`}>{e.title}</span>
                     ))}
+                    {list.length > 2 ? <span className="dsh-pwb-cal-more">+{list.length - 2} 更多</span> : null}
                   </span>
                 ) : null}
               </button>

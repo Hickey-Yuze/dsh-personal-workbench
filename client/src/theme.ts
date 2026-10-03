@@ -426,34 +426,68 @@ const CSS = `
 .dsh-pwb-side-date { flex: 0 0 auto; font-variant-numeric: tabular-nums; color: var(--pwb-dim); }
 
 /* ── 月历 ── */
-.dsh-pwb-cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-.dsh-pwb-cal-head { text-align: center; font-size: 11px; font-weight: 600; color: var(--pwb-dimmer); padding-bottom: 3px; }
+.dsh-pwb-cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.dsh-pwb-cal-head { text-align: center; font-size: 12px; font-weight: 650; color: var(--pwb-dimmer); padding-bottom: 5px; }
 .dsh-pwb-cal-cell {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  min-height: 30px;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  background: var(--pwb-card-hi);
+  align-items: stretch;
+  gap: 5px;
+  min-height: 76px;
+  border-radius: 12px;
+  border: 1px solid var(--pwb-border);
+  background: var(--pwb-card);
   font-family: inherit;
-  font-size: 11.5px;
   color: var(--pwb-text);
   cursor: pointer;
-  padding: 2px;
+  padding: 8px 9px;
+  text-align: left;
+  transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
 }
-.dsh-pwb-cal-cell:hover { border-color: var(--pwb-border-hi); }
-.dsh-pwb-cal-out { opacity: 0.35; }
-.dsh-pwb-cal-today { border-color: #00d26a; font-weight: 700; }
-.dsh-pwb-cal-sel { background: #00d26a; color: #04160c; border-color: transparent; }
-.dsh-pwb-cal-sel .dsh-pwb-cal-dots i { background: #04160c; }
-.dsh-pwb-cal-day { font-variant-numeric: tabular-nums; }
-.dsh-pwb-cal-dots { display: inline-flex; gap: 2px; }
-.dsh-pwb-cal-dots i { width: 4px; height: 4px; border-radius: 50%; display: inline-block; }
-.dsh-pwb-dot-live { background: #00d26a; }
-.dsh-pwb-dot-done { background: var(--pwb-dimmer); }
+.dsh-pwb-cal-cell:hover { border-color: var(--pwb-border-hi); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.07); transform: translateY(-1px); }
+.dsh-pwb-cal-out { opacity: 0.38; }
+.dsh-pwb-cal-today { border-color: #00d26a; box-shadow: 0 0 0 1px #00d26a inset; }
+.dsh-pwb-cal-sel { background: #00d26a; color: #ffffff; border-color: transparent; box-shadow: 0 4px 14px rgba(0, 210, 106, 0.35); }
+.dsh-pwb-cal-day {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.dsh-pwb-cal-now {
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  color: #ffffff;
+  background: #00d26a;
+  border-radius: 5px;
+  padding: 2px 4px;
+}
+.dsh-pwb-cal-sel .dsh-pwb-cal-now { color: #00d26a; background: #ffffff; }
+.dsh-pwb-cal-evs { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.dsh-pwb-cal-ev {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 550;
+  line-height: 1.5;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(0, 210, 106, 0.10);
+  color: var(--pwb-text);
+}
+.dsh-pwb-cal-ev::before { content: '● '; font-size: 7px; color: #00b862; vertical-align: 1px; }
+.dsh-pwb-cal-ev-done { opacity: 0.55; text-decoration: line-through; }
+.dsh-pwb-cal-ev-done::before { color: var(--pwb-dimmer); }
+.dsh-pwb-cal-more { font-size: 9.5px; color: var(--pwb-dimmer); padding-left: 2px; }
+.dsh-pwb-cal-sel .dsh-pwb-cal-ev { background: rgba(255, 255, 255, 0.22); color: #ffffff; }
+.dsh-pwb-cal-sel .dsh-pwb-cal-ev::before { color: #ffffff; }
+.dsh-pwb-cal-sel .dsh-pwb-cal-more { color: rgba(255, 255, 255, 0.8); }
 .dsh-pwb-cal-cell-static { pointer-events: none; }
 
 /* ── 当日面板 ── */
