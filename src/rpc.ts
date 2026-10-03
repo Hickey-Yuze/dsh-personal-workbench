@@ -331,13 +331,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         const st = fs.statSync(abs);
         if (!st.isFile()) fail('bad-request', '不是文件');
         const ext = rel.split('.').pop()?.toLowerCase() ?? '';
-        const IMG_MIME = new Map<string, string>([['png', 'image/png'], ['jpg', 'image/jpeg'], ['jpeg', 'image/jpeg'], ['gif', 'image/gif'], ['webp', 'image/webp'], ['bmp', 'image/bmp'], ['svg', 'image/svg+xml']]);
         const TEXT_EXT = new Set(['md', 'txt', 'json', 'csv', 'log', 'yaml', 'yml', 'js', 'jsx', 'ts', 'tsx', 'py', 'sh', 'html', 'css', 'xml', 'ini', 'conf', 'env', 'sql']);
-        if (IMG_MIME.has(ext)) {
-          if (st.size > 10 * 1024 * 1024) fail('too-large', '图片超过 10MB，不支持预览（可用系统程序打开）');
-          const buf = fs.readFileSync(abs);
-          return { path: rel, kind: 'image', dataUrl: `data:${IMG_MIME.get(ext)};base64,${buf.toString('base64')}`, bytes: st.size };
-        }
         if (st.size > 2 * 1024 * 1024) fail('too-large', '文件超过 2MB，不支持预览（可用系统程序打开）');
         if (!TEXT_EXT.has(ext)) fail('unsupported', '该类型不支持文本预览（可用系统程序打开）');
         return { path: rel, kind: 'text', content: fs.readFileSync(abs, 'utf8'), bytes: st.size };
@@ -407,6 +401,52 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
   }
 
   const httpHandler = async (req: HttpRequestLike, res: HttpResponseLike): Promise<void> => {
+    // ── GET /fsfile?path=<HOME相对路径>：图片/视频等媒体流式直读（Range 分段，视频可拖动；图片无大小上限）──
+    if ((req.method ?? 'GET').toUpperCase() === 'GET' && (req.url ?? '').includes('/fsfile?')) {
+      try {
+        const u = new URL(req.url ?? '/', 'http://localhost');
+        const rel = u.searchParams.get('path') ?? '';
+        const abs = fsResolveSafe(rel);
+        const st = fs.statSync(abs);
+        if (!st.isFile()) {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: '不是文件' } });
+          return;
+        }
+        const ext = rel.split('.').pop()?.toLowerCase() ?? '';
+        const MEDIA_MIME = new Map<string, string>([
+          ['png', 'image/png'], ['jpg', 'image/jpeg'], ['jpeg', 'image/jpeg'], ['gif', 'image/gif'],
+          ['webp', 'image/webp'], ['bmp', 'image/bmp'], ['svg', 'image/svg+xml'], ['avif', 'image/avif'],
+          ['mp4', 'video/mp4'], ['m4v', 'video/mp4'], ['webm', 'video/webm'], ['mov', 'video/quicktime'],
+          ['mp3', 'audio/mpeg'], ['m4a', 'audio/mp4'], ['wav', 'audio/wav'], ['flac', 'audio/flac'],
+        ]);
+        const mime = MEDIA_MIME.get(ext);
+        if (mime === undefined) {
+          send(res, 415, { ok: false, error: { code: 'unsupported', message: '该类型不支持在线预览' } });
+          return;
+        }
+        const headers = (req as unknown as { headers: Record<string, string | string[] | undefined> }).headers ?? {};
+        const rangeHeader = typeof headers.range === 'string' ? headers.range : undefined;
+        const baseHeaders: Record<string, string> = { 'content-type': mime, 'accept-ranges': 'bytes', 'cache-control': 'private, max-age=3600' };
+        const rangeMatch = rangeHeader !== undefined ? /bytes=(\d*)-(\d*)/.exec(rangeHeader) : null;
+        if (rangeMatch !== null && (rangeMatch[1] !== '' || rangeMatch[2] !== '')) {
+          const start = rangeMatch[1] !== '' ? Number.parseInt(rangeMatch[1], 10) : Math.max(0, st.size - Number.parseInt(rangeMatch[2] ?? '0', 10));
+          const end = rangeMatch[2] !== '' ? Math.min(Number.parseInt(rangeMatch[2], 10), st.size - 1) : st.size - 1;
+          if (Number.isNaN(start) || Number.isNaN(end) || start > end || start >= st.size) {
+            send(res, 416, { ok: false, error: { code: 'range-error', message: '请求范围无效' } });
+            return;
+          }
+          res.writeHead(206, { ...baseHeaders, 'content-range': `bytes ${start}-${end}/${st.size}`, 'content-length': String(end - start + 1) });
+          fs.createReadStream(abs, { start, end }).pipe(res as unknown as import('node:stream').Writable);
+        } else {
+          res.writeHead(200, { ...baseHeaders, 'content-length': String(st.size) });
+          fs.createReadStream(abs).pipe(res as unknown as import('node:stream').Writable);
+        }
+      } catch {
+        send(res, 500, { ok: false, error: { code: 'internal', message: '媒体读取失败' } });
+      }
+      return;
+    }
+
     // ── GET /appicon?name=<应用名>：提取本机 .app 图标(icns→sips→png)，磁盘缓存，按需生成 ──
     if ((req.method ?? 'GET').toUpperCase() === 'GET' && (req.url ?? '').includes('/appicon?')) {
       try {
