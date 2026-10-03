@@ -570,6 +570,22 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         videoDiscoverAt = Date.now();
         return blocks;
       }
+      case 'personal-workbench/music/singer': {
+        // 歌手热门曲目：酷我搜索该歌手取 30 首（真数据），30 分钟缓存
+        const p = asRecord(payload);
+        const name = typeof p.name === 'string' ? p.name.trim() : '';
+        if (name === '') fail('bad-request', '缺少歌手名');
+        const skey = `singer|${name}`;
+        const sh = singerCache.get(skey);
+        if (sh !== undefined && Date.now() - sh.at < 30 * 60 * 1000) return sh.data;
+        const url = `http://search.kuwo.cn/r.s?client=kt&all=${encodeURIComponent(name)}&pn=0&rn=30&uid=2574109560&ver=kwplayer_ar_8.5.4.2&vipver=1&ft=music&cluster=0&strategy=2012&encoding=utf8&rformat=json&vermerge=1&mobi=1`;
+        const data = musicParseMaybeJsonp(await musicFetchSmart(url));
+        const m = musicMapAbslist(data);
+        const filtered = m.songs.filter((x) => x.artist.includes(name));
+        const result = { name, songs: filtered.length >= 5 ? filtered : m.songs };
+        singerCache.set(skey, { at: Date.now(), data: result });
+        return result;
+      }
       case 'personal-workbench/video/douban': {
         // 豆瓣热门榜单：cmliussss 镜像（原版影视站同款数据源），Host 代理 + 1 小时缓存
         const p = asRecord(payload);
