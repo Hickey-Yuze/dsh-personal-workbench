@@ -215,7 +215,7 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
             <div className="flex flex-wrap gap-x-3 gap-y-2.5 [&>div]:w-[calc(50%-6px)]">
               <div className="flex flex-col gap-1" style={{ display: 'flex', flexDirection: 'column' }}>
                 <span className="text-[10px] text-white/40">月薪(元)</span>
-                <input type="text" inputMode="numeric" value={config.monthly || ''} onChange={(e) => setConfig((c) => ({ ...c, monthly: Number(e.target.value.replace(/\D/g, '')) || 0 }))} placeholder="6000" className="h-9 w-full rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none transition-colors hover:border-white/[0.18]" style={{ width: '100%', display: 'block' }} />
+                <input type="text" inputMode="numeric" value={config.monthly || ''} onChange={(e) => setConfig((c) => ({ ...c, monthly: Number(e.target.value.replace(/\D/g, '')) || 0 }))} placeholder="6000" className="h-9 w-28 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none transition-colors hover:border-white/[0.18]" style={{ width: '7rem', display: 'block' }} />
               </div>
               <div className="flex flex-col gap-1" style={{ display: 'flex', flexDirection: 'column' }}>
                 <span className="text-[10px] text-white/40">发薪日(几号)</span>
