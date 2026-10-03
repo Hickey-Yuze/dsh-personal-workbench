@@ -770,6 +770,7 @@ const CSS = `
 .dsh-pwb-vd-searchbtn:disabled { opacity: .55; cursor: default; }
 /* ── 影视搜索历史下拉 ── */
 .dsh-pwb-vd-vhwrap { position: relative; flex: 1; min-width: 0; }
+.dsh-pwb-vd-vhwrap .dsh-pwb-vd-search { width: 100%; display: block; }
 .dsh-pwb-vd-vhpanel { position: absolute; top: calc(100% + 8px); left: 0; right: 0; z-index: 30; background: var(--pwb-card, #fff); border: 1px solid var(--pwb-border, rgba(20,20,30,0.1)); border-radius: 14px; box-shadow: 0 12px 34px rgba(0,0,0,0.13); overflow: hidden; padding: 6px; }
 .dsh-pwb-vd-vhhead { display: flex; align-items: center; justify-content: space-between; padding: 7px 12px 5px; font-size: 12px; color: var(--pwb-dim, #6b7280); }
 .dsh-pwb-vd-vhhead span { display: inline-flex; align-items: center; gap: 5px; }
