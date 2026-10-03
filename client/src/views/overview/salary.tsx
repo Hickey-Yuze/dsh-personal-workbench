@@ -109,7 +109,18 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
     return () => clearInterval(t);
   }, []);
 
-  const dayEarn = config.monthly / (SCHEDULE_META[config.schedule]?.workdays ?? 24.25);
+  // 本月实际计薪工作日数：每天按「日历标记优先 + 作息兜底」判定（与当天口径一致），标记一变分摊实时变
+  const monthWorkdays = useMemo(() => {
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    const days = new Date(y, m + 1, 0).getDate();
+    let count = 0;
+    for (let d = 1; d <= days; d++) {
+      if (isWorkday(new Date(y, m, d), config.schedule, holidaysNow)) count++;
+    }
+    return count;
+  }, [config.schedule, holidaysNow, now.getFullYear(), now.getMonth()]);
+  const dayEarn = config.monthly / Math.max(1, monthWorkdays);
   const perSecEarn = dayEarn / 86400; // 全天 24h 匀速累计
   const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
   const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -257,7 +268,7 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
                   </button>
                 ))}
               </div>
-              <div className="mt-1 text-[10px] text-white/35">日薪按 {SCHEDULE_META[config.schedule].workdays} 天月薪折算 · 只对日历里「未标记」的日期生效，日历标记（休/班）优先</div>
+              <div className="mt-1 text-[10px] text-white/35">本月计薪 {monthWorkdays} 天 · 日薪 ¥{(config.monthly / Math.max(1, monthWorkdays)).toFixed(2)}（月薪 ÷ 当月计薪天数，日历标记实时改变分摊）</div>
             </div>
 
             {/* 节假日：可点选迷你月历 */}
