@@ -473,11 +473,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
       <div className="dsh-pwb-mu-body">
         {/* 侧边栏 */}
         <div className="dsh-pwb-mu-sidebar">
-          <div className="dsh-pwb-mu-logo">
-            <span className="dsh-pwb-mu-logo-ico"><Music className="size-4" /></span>
-            <span><b>音乐平台</b><span>酷我全网音源</span></span>
-          </div>
-          <div className="dsh-pwb-mu-nav">
+          <div className="dsh-pwb-mu-nav" style={{ paddingTop: 10 }}>
             {navItems.map((item) => (
               <button key={item.key} type="button" className={`dsh-pwb-mu-navitem${item.active ? ' dsh-pwb-mu-nav-active' : ''}`} onClick={item.onClick}>
                 {item.icon} {item.label}
