@@ -756,7 +756,11 @@ const CSS = `
 .dsh-pwb-vd-count { font-size: 12px; font-weight: 500; color: var(--pwb-dim); }
 .dsh-pwb-vd-row { display: flex; gap: 14px; overflow-x: auto; padding: 12px 0 6px; scrollbar-width: none; }
 .dsh-pwb-vd-row::-webkit-scrollbar { display: none; }
-.dsh-pwb-vd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 16px; padding-top: 12px; }
+.dsh-pwb-vd-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 18px; padding-top: 12px; }
+@media (max-width: 1100px) { .dsh-pwb-vd-grid { grid-template-columns: repeat(4, 1fr); } }
+@media (max-width: 760px) { .dsh-pwb-vd-grid { grid-template-columns: repeat(3, 1fr); } }
+.dsh-pwb-vd-grid .dsh-pwb-vd-card { width: auto; }
+.dsh-pwb-vd-grid .dsh-pwb-vd-thumb { width: 100%; }
 .dsh-pwb-vd-card { flex: 0 0 auto; width: 132px; border: none; background: transparent; text-align: left; cursor: pointer; padding: 0; display: flex; flex-direction: column; gap: 2px; border-radius: 10px; font-family: inherit; }
 .dsh-pwb-vd-thumb { position: relative; display: block; width: 132px; aspect-ratio: 2 / 3; border-radius: 10px; overflow: hidden; background: var(--pwb-card-hi); margin-bottom: 7px; }
 .dsh-pwb-vd-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .18s ease; }
