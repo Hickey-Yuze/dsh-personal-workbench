@@ -642,10 +642,9 @@ const CSS = `
 .dsh-pwb-mu-vol input[type='range'] { width: 74px; accent-color: var(--pwb-accent); height: 4px; }
 .dsh-pwb-mu-select { height: 26px; border-radius: 8px; border: 1px solid var(--pwb-border); background: var(--pwb-card-hi, #f2f3f5); color: var(--pwb-text); font-size: 11px; font-family: inherit; padding: 0 6px; outline: none; cursor: pointer; }
 /* ── 全屏播放器（1:1 复刻参考站：封面模糊铺满+左黑胶+右歌词+底部控制，沉浸暗色） ── */
-.dsh-pwb-mu-fs { position: fixed; inset: 0; z-index: 95; background: linear-gradient(160deg, #2b2b30, #17171a); color: #fff; overflow: hidden; animation: dsh-pwb-fadein 0.3s ease; }
+.dsh-pwb-mu-fs { position: fixed; inset: 0; z-index: 95; display: flex; flex-direction: column; align-items: center; background: linear-gradient(160deg, #2b2b30, #17171a); color: #fff; overflow: hidden; animation: dsh-pwb-fadein 0.3s ease; }
 .dsh-pwb-mu-fs-bg { position: absolute; inset: -90px; background-size: cover; background-position: center; filter: blur(90px) brightness(0.55) saturate(1.15); transform: scale(1.08); }
 .dsh-pwb-mu-fs-shade { position: absolute; inset: 0; background: rgba(10, 10, 14, 0.38); }
-.dsh-pwb-mu-fs > * { position: relative; }
 .dsh-pwb-mu-fs-close { position: absolute !important; top: 18px; right: 20px; color: rgba(255, 255, 255, 0.8) !important; }
 .dsh-pwb-mu-fs-close:hover { background: rgba(255, 255, 255, 0.12) !important; color: #fff !important; }
 .dsh-pwb-mu-fs-tag { position: absolute; top: 22px; left: 0; right: 0; text-align: center; font-size: 12.5px; font-weight: 600; letter-spacing: 4px; color: rgba(255, 255, 255, 0.55); }
@@ -654,8 +653,8 @@ const CSS = `
 /* 黑胶唱片：同心圆纹理 + 封面贴芯 + 中心孔，播放时整体旋转 */
 .dsh-pwb-mu-fs-disc {
   position: relative; width: min(360px, 34vw); aspect-ratio: 1; border-radius: 50%;
-  background: repeating-radial-gradient(circle at 50% 50%, #131315 0px, #1e1e21 1.5px, #131315 3px);
-  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.65), inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  background: repeating-radial-gradient(circle at 50% 50%, #17171a 0px, #26262a 1.5px, #17171a 3px);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.65), inset 0 0 0 1px rgba(255, 255, 255, 0.09), 0 0 0 1px rgba(255, 255, 255, 0.04);
   display: grid; place-items: center;
   animation: dsh-pwb-disc-spin 20s linear infinite; animation-play-state: paused;
 }
@@ -665,7 +664,7 @@ const CSS = `
 .dsh-pwb-mu-fs-disc i { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 15px; height: 15px; border-radius: 50%; background: #0a0a0c; box-shadow: inset 0 0 0 3.5px #26262a, 0 0 0 5px rgba(8, 8, 10, 0.75); }
 /* 右侧歌词：垂直居中、当前行品牌绿高亮、上下渐隐遮罩 */
 .dsh-pwb-mu-fs-right { position: relative; flex: 1; min-width: 0; align-self: stretch; display: flex; flex-direction: column; overflow: hidden; }
-.dsh-pwb-mu-fs-lyrics { position: relative; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; text-align: center; padding: 42vh 10px; box-sizing: border-box; }
+.dsh-pwb-mu-fs-lyrics { position: relative; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; text-align: center; padding: 34vh 10px; box-sizing: border-box; }
 .dsh-pwb-mu-fs-lyrics::-webkit-scrollbar { display: none; }
 .dsh-pwb-mu-fs-lyric { font-size: 14.5px; line-height: 2.4; color: rgba(255, 255, 255, 0.52); cursor: pointer; transition: all 0.3s ease; }
 .dsh-pwb-mu-fs-lyric:hover { color: rgba(255, 255, 255, 0.85); }
