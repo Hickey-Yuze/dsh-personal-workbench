@@ -9,6 +9,7 @@ import { MODULES, moduleById, type ModuleDef } from './modules.js';
 import type { RpcFn } from './rpc.js';
 import { ensureThemeStyle } from './theme.js';
 import { KnowledgeView } from './views/KnowledgeView.js';
+import { ModuleBoundary } from './ModuleBoundary.js';
 import { ArchiveModuleView } from './views/ArchiveModuleView.js';
 import { OverviewView } from './views/OverviewView.js';
 import { ScheduleView } from './views/ScheduleView.js';
@@ -56,6 +57,23 @@ function PendingView({ mod }: { mod: ModuleDef }): ReactElement {
 }
 
 function ModuleBody({
+  id,
+  rpc,
+  onOpen,
+}: {
+  id: string;
+  rpc: RpcFn;
+  onOpen: (next: string) => void;
+}): ReactElement {
+  // 单模块崩溃只降级该模块，不再整页白屏
+  return (
+    <ModuleBoundary label={id}>
+      <ModuleSwitch id={id} rpc={rpc} onOpen={onOpen} />
+    </ModuleBoundary>
+  );
+}
+
+function ModuleSwitch({
   id,
   rpc,
   onOpen,
