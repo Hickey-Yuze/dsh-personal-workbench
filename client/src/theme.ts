@@ -647,10 +647,11 @@ const CSS = `
 }
 .dsh-pwb-mu-playbtn:hover { filter: brightness(1.08); }
 .dsh-pwb-mu-prog { display: flex; align-items: center; gap: 8px; width: min(520px, 90%); }
-.dsh-pwb-mu-prog .dsh-pwb-mu-bar { position: relative; overflow: hidden; flex: 1; padding: 0; border: none; background: var(--pwb-card-hi, #f2f3f5); }
+.dsh-pwb-mu-prog .dsh-pwb-mu-bar { position: relative; overflow: hidden; flex: 1; height: 6px; border-radius: 3px; padding: 0; border: none; background: var(--pwb-card-hi, #f2f3f5); cursor: pointer; }
+.dsh-pwb-mu-prog .dsh-pwb-mu-bar:hover { height: 8px; border-radius: 4px; }
 .dsh-pwb-mu-time { font-size: 10px; color: var(--pwb-dimmer, #9aa0a6); font-variant-numeric: tabular-nums; width: 34px; }
 .dsh-pwb-mu-time:last-child { text-align: right; }
-.dsh-pwb-mu-bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--pwb-accent); }
+.dsh-pwb-mu-bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--pwb-accent); }
 .dsh-pwb-mu-bar-knob { position: absolute; top: 50%; width: 11px; height: 11px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); transform: translate(-50%, -50%); opacity: 0; transition: opacity 0.15s ease; }
 .dsh-pwb-mu-bar:hover .dsh-pwb-mu-bar-knob { opacity: 1; }
 .dsh-pwb-mu-bar-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
