@@ -330,11 +330,17 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         const abs = fsResolveSafe(rel);
         const st = fs.statSync(abs);
         if (!st.isFile()) fail('bad-request', '不是文件');
-        if (st.size > 2 * 1024 * 1024) fail('too-large', '文件超过 2MB，不支持预览（可用系统程序打开）');
         const ext = rel.split('.').pop()?.toLowerCase() ?? '';
+        const IMG_MIME = new Map<string, string>([['png', 'image/png'], ['jpg', 'image/jpeg'], ['jpeg', 'image/jpeg'], ['gif', 'image/gif'], ['webp', 'image/webp'], ['bmp', 'image/bmp'], ['svg', 'image/svg+xml']]);
         const TEXT_EXT = new Set(['md', 'txt', 'json', 'csv', 'log', 'yaml', 'yml', 'js', 'jsx', 'ts', 'tsx', 'py', 'sh', 'html', 'css', 'xml', 'ini', 'conf', 'env', 'sql']);
+        if (IMG_MIME.has(ext)) {
+          if (st.size > 10 * 1024 * 1024) fail('too-large', '图片超过 10MB，不支持预览（可用系统程序打开）');
+          const buf = fs.readFileSync(abs);
+          return { path: rel, kind: 'image', dataUrl: `data:${IMG_MIME.get(ext)};base64,${buf.toString('base64')}`, bytes: st.size };
+        }
+        if (st.size > 2 * 1024 * 1024) fail('too-large', '文件超过 2MB，不支持预览（可用系统程序打开）');
         if (!TEXT_EXT.has(ext)) fail('unsupported', '该类型不支持文本预览（可用系统程序打开）');
-        return { path: rel, content: fs.readFileSync(abs, 'utf8'), bytes: st.size };
+        return { path: rel, kind: 'text', content: fs.readFileSync(abs, 'utf8'), bytes: st.size };
       }
       case 'personal-workbench/fs/open': {
         const p = asRecord(payload);

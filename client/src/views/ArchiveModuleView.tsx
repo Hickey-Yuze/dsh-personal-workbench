@@ -16,7 +16,7 @@ interface Node { name: string; path: string; kind: 'dir' | 'file' }
 export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
   const [stack, setStack] = useState<string[]>(['']);
   const [entries, setEntries] = useState<Node[]>([]);
-  const [note, setNote] = useState<{ path: string; content: string } | null>(null);
+  const [note, setNote] = useState<{ path: string; kind: 'text' | 'image'; content?: string; dataUrl?: string } | null>(null);
   const [unsupported, setUnsupported] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [reading, setReading] = useState(false);
@@ -56,8 +56,8 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
           if (code === 'unsupported' || code === 'too-large') setUnsupported(msg);
           else throw new Error(msg);
         } else {
-          const v = out.value as { path: string; content: string };
-          setNote({ path: v.path, content: v.content });
+          const v = out.value as { path: string; kind: 'text' | 'image'; content?: string; dataUrl?: string };
+          setNote({ path: v.path, kind: v.kind ?? 'text', content: v.content, dataUrl: v.dataUrl });
         }
       } catch (e) {
         setErr(e instanceof Error ? e.message : '读取失败');
@@ -145,7 +145,13 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
                   <ExternalLink className="size-3.5" /> 用系统程序打开
                 </button>
               </div>
-              <pre className="dsh-pwb-pre">{note.content}</pre>
+              {note.kind === 'image' && note.dataUrl ? (
+                <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto', background: 'var(--pwb-card-hi, #f2f3f5)', borderRadius: 10 }}>
+                  <img src={note.dataUrl} alt={note.path} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                </div>
+              ) : (
+                <pre className="dsh-pwb-pre">{note.content}</pre>
+              )}
             </>
           ) : unsupported !== null ? (
             <div className="grid h-full place-items-center px-6 text-center">
@@ -159,7 +165,7 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
               <div>
                 <Archive className="size-10" style={{ margin: '0 auto', color: 'var(--pwb-dimmer, #9aa0a6)', opacity: 0.6 }} />
                 <div style={{ marginTop: 12, fontSize: 12, color: 'var(--pwb-dim, #6b7280)' }}>从左侧选择目录或文件</div>
-                <div style={{ marginTop: 4, fontSize: 10, color: 'var(--pwb-dimmer, #9aa0a6)' }}>文本文件可直接预览 · 其他类型用系统程序打开</div>
+                <div style={{ marginTop: 4, fontSize: 10, color: 'var(--pwb-dimmer, #9aa0a6)' }}>文本与图片可直接预览 · 其他类型用系统程序打开</div>
               </div>
             </div>
           )}

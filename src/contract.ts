@@ -82,7 +82,7 @@ export interface PersonalWorkbenchResponseMap {
   'personal-workbench/kb/read': { path: string; content: string; bytes: number };
   'personal-workbench/kb/write': { path: string; bytes: number };
   'personal-workbench/fs/list': { entries: Array<{ name: string; path: string; kind: 'dir' | 'file' }>; root: string };
-  'personal-workbench/fs/read': { path: string; content: string; bytes: number };
+  'personal-workbench/fs/read': { path: string; kind: 'text'; content: string; bytes: number } | { path: string; kind: 'image'; dataUrl: string; bytes: number };
   'personal-workbench/fs/open': { ok: boolean; path: string };
   'personal-workbench/kb/search': { hits: KbSearchHit[]; total: number };
 }
