@@ -650,7 +650,7 @@ const CSS = `
 .dsh-pwb-mu-fs-collapse:active { transform: scale(0.94); }
 .dsh-pwb-mu-fs-tag { position: absolute; top: 22px; left: 0; right: 0; text-align: center; font-size: 12.5px; font-weight: 600; letter-spacing: 4px; color: rgba(255, 255, 255, 0.55); }
 .dsh-pwb-mu-fs-stage { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; gap: 56px; width: min(1060px, 92%); margin: 0 auto; }
-.dsh-pwb-mu-fs-left { flex: 0 0 auto; display: grid; place-items: center; background: rgba(16, 16, 20, 0.38); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 44px; padding: 46px; }
+.dsh-pwb-mu-fs-left { flex: 0 0 auto; display: grid; place-items: center; background: rgba(16, 16, 20, 0.38); border-radius: 44px; padding: 46px; }
 /* 黑胶唱片：同心圆纹理 + 封面贴芯 + 中心孔，播放时整体旋转 */
 .dsh-pwb-mu-fs-disc {
   position: relative; width: min(360px, 34vw); aspect-ratio: 1; border-radius: 50%;
@@ -664,7 +664,7 @@ const CSS = `
 .dsh-pwb-mu-fs-disc-dummy { width: 56%; height: 56%; border-radius: 50%; background: radial-gradient(circle, #33333a, #1c1c20); box-shadow: 0 0 0 7px rgba(8, 8, 10, 0.75); display: grid; place-items: center; color: rgba(255, 255, 255, 0.35); }
 .dsh-pwb-mu-fs-disc i { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 15px; height: 15px; border-radius: 50%; background: #0a0a0c; box-shadow: inset 0 0 0 3.5px #26262a, 0 0 0 5px rgba(8, 8, 10, 0.75); }
 /* 右侧歌词：垂直居中、当前行品牌绿高亮、上下渐隐遮罩 */
-.dsh-pwb-mu-fs-right { position: relative; flex: 1; min-width: 0; align-self: center; height: min(460px, 78%); display: flex; flex-direction: column; overflow: hidden; background: rgba(16, 16, 20, 0.38); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 20px; padding: 26px 10px; }
+.dsh-pwb-mu-fs-right { position: relative; flex: 1; min-width: 0; align-self: center; height: min(460px, 78%); display: flex; flex-direction: column; overflow: hidden; background: rgba(16, 16, 20, 0.38); border-radius: 20px; padding: 26px 10px; }
 .dsh-pwb-mu-fs-lyrics { position: relative; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; text-align: center; padding: 40vh 12px; box-sizing: border-box; }
 .dsh-pwb-mu-fs-lyrics::-webkit-scrollbar { display: none; }
 .dsh-pwb-mu-fs-lyric { font-size: 14.5px; line-height: 2.4; color: rgba(255, 255, 255, 0.52); cursor: pointer; transition: all 0.3s ease; }
@@ -672,7 +672,7 @@ const CSS = `
 .dsh-pwb-mu-fs-lyric.dsh-pwb-mu-now { font-size: 17px; font-weight: 700; color: var(--pwb-accent, #34c759); }
 .dsh-pwb-mu-fs-lyric-empty { text-align: center; color: rgba(255, 255, 255, 0.4); font-size: 13px; padding: 40px 0; }
 /* 底部：歌名/歌手/进度/控制 */
-.dsh-pwb-mu-fs-bottom { position: relative; width: min(700px, 90%); margin: 0 auto 34px; text-align: center; padding: 20px 34px 22px; background: rgba(16, 16, 20, 0.42); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 20px; }
+.dsh-pwb-mu-fs-bottom { position: relative; width: min(700px, 90%); margin: 0 auto 34px; text-align: center; padding: 20px 34px 22px; background: rgba(16, 16, 20, 0.42); border-radius: 20px; }
 .dsh-pwb-mu-fs-bottom h2 { margin: 0; font-size: 23px; font-weight: 800; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dsh-pwb-mu-fs-bottom > p { margin: 5px 0 16px; font-size: 13px; color: rgba(255, 255, 255, 0.6); }
 .dsh-pwb-mu-fs-prog { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
