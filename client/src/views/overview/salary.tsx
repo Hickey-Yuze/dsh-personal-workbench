@@ -51,7 +51,7 @@ function TimeStepper({ value, onStep, onChange, ariaLabel }: { value: string; on
       <button type="button" className="grid size-7 shrink-0 place-items-center rounded-md bg-transparent text-white/45 transition-colors hover:bg-white/[0.08] hover:text-white" style={{ appearance: 'none' }} onPointerDown={() => onStep(-1)} title="减 30 分钟">
         <ChevronLeft className="size-4" />
       </button>
-      <input type="time" value={value} onChange={(e) => e.target.value && onChange(e.target.value)} className="h-7 min-w-0 flex-1 rounded-md bg-transparent px-1 text-center text-sm tabular-nums text-white outline-none" style={{ appearance: 'none' }} />
+      <input type="time" value={value} onChange={(e) => e.target.value && onChange(e.target.value)} onClick={(e) => { try { (e.target as HTMLInputElement).showPicker?.(); } catch { /* 已打开等情况静默 */ } }} className="h-7 min-w-0 flex-1 cursor-pointer rounded-md bg-transparent px-1 text-center text-sm tabular-nums text-white outline-none" style={{ appearance: 'none' }} />
       <button type="button" className="grid size-7 shrink-0 place-items-center rounded-md bg-transparent text-white/45 transition-colors hover:bg-white/[0.08] hover:text-white" style={{ appearance: 'none' }} onPointerDown={() => onStep(1)} title="加 30 分钟">
         <ChevronRight className="size-4" />
       </button>
