@@ -491,28 +491,6 @@ function StackCardsSection() {
                 ></div>
               ))}
 
-              {/* 地面轨道（椭圆光圈） */}
-              <div
-                className="absolute left-1/2 top-1/2 rounded-[50%] border border-white/[0.08] pointer-events-none"
-                style={{
-                  width: cardRadius * 2 + 36,
-                  height: (cardRadius * 2 + 36) * 0.4,
-                  marginLeft: -(cardRadius * 2 + 36) / 2,
-                  marginTop: -((cardRadius * 2 + 36) * 0.4) / 2,
-                  transform: `rotateX(90deg) translateY(${BOOK_H / 2 + 20}px)`,
-                  boxShadow: 'inset 0 0 40px rgba(0,210,106,0.04)',
-                }}
-              ></div>
-              <div
-                className="absolute left-1/2 top-1/2 rounded-[50%] border border-primary/[0.06] pointer-events-none"
-                style={{
-                  width: cardRadius * 2 + 8,
-                  height: (cardRadius * 2 + 8) * 0.4,
-                  marginLeft: -(cardRadius * 2 + 8) / 2,
-                  marginTop: -((cardRadius * 2 + 8) * 0.4) / 2,
-                  transform: `rotateX(90deg) translateY(${BOOK_H / 2 + 20}px)`,
-                }}
-              ></div>
             </div>
           </div>
 
