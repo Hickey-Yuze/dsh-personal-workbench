@@ -12,6 +12,7 @@ import { KnowledgeView } from './views/KnowledgeView.js';
 import { ModuleBoundary } from './ModuleBoundary.js';
 import { ArchiveModuleView } from './views/ArchiveModuleView.js';
 import { MusicModuleView } from './views/MusicModuleView.js';
+import { VideoModuleView } from './views/VideoModuleView.js';
 import { OverviewView } from './views/OverviewView.js';
 import { ScheduleView } from './views/ScheduleView.js';
 import { TodoView } from './views/TodoView.js';
@@ -94,6 +95,8 @@ function ModuleSwitch({
       return <ArchiveModuleView rpc={rpc} />;
     case 'music':
       return <MusicModuleView rpc={rpc} />;
+    case 'film':
+      return <VideoModuleView rpc={rpc} />;
     case 'overview':
       return <OverviewView rpc={rpc} onOpen={onOpen} />;
     default: {

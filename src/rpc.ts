@@ -110,6 +110,41 @@ type MusicDiscover = { hot: MusicDiscoverItem[]; douyin: MusicDiscoverItem[]; si
 let discoverCache: MusicDiscover | null = null;
 let discoverCacheAt = 0;
 
+/** B 站公开接口需要基础 cookie（buvid3 等）过风控：启动时领一次，6 小时刷新。 */
+let biliCookie = '';
+let biliCookieAt = 0;
+const BILI_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+async function biliCookieFresh(): Promise<string> {
+  if (biliCookie !== '' && Date.now() - biliCookieAt < 6 * 3600 * 1000) return biliCookie;
+  const res = await fetch('https://www.bilibili.com/', { headers: { 'User-Agent': BILI_UA } });
+  const parts = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [res.headers.get('set-cookie') ?? ''];
+  biliCookie = parts.map((c) => c.split(';')[0]).filter((c) => /^(buvid3|buvid4|b_nut|b_lsid|_uuid)=/.test(c)).join('; ');
+  biliCookieAt = Date.now();
+  return biliCookie;
+}
+async function biliSearch(q: string, page: number, rn: number): Promise<Array<{ bvid: string; title: string; author: string; duration: string; pic?: string | undefined; play: number; description?: string | undefined }>> {
+  const cookie = await biliCookieFresh();
+  const url = `https://api.bilibili.com/x/web-interface/search/type?search_type=video&keyword=${encodeURIComponent(q)}&page=${page}&page_size=${rn}`;
+  const res = await fetch(url, { headers: { 'User-Agent': BILI_UA, Referer: 'https://www.bilibili.com/', Cookie: cookie } });
+  const data = (await res.json()) as { code?: number; data?: { result?: Array<Record<string, unknown>>; numResults?: number } };
+  if (data.code !== 0 || !Array.isArray(data.data?.result)) return [];
+  return (data.data?.result ?? [])
+    .filter((it) => it.type === 'video')
+    .map((it) => ({
+      bvid: String(it.bvid ?? ''),
+      title: String(it.title ?? '').replace(/<em class="keyword">|<\/em>/g, ''),
+      author: String(it.author ?? ''),
+      duration: String(it.duration ?? ''),
+      pic: typeof it.pic === 'string' && it.pic !== '' ? it.pic.replace(/^http:/, 'https:') : undefined,
+      play: Number(it.play) || 0,
+      description: typeof it.description === 'string' ? String(it.description).slice(0, 160) : undefined,
+    }))
+    .filter((it) => it.bvid !== '');
+}
+type VideoItem = { bvid: string; title: string; author: string; duration: string; pic?: string | undefined; play: number; description?: string | undefined };
+let videoDiscoverCache: Array<{ key: string; title: string; items: VideoItem[] }> | null = null;
+let videoDiscoverAt = 0;
+
 /** 文件归档根白名单：持久化 ~/.dsh/personal-workbench/roots.json；HOME 永远在列。 */
 const ROOTS_FILE = `${process.env.HOME ?? ''}/.dsh/personal-workbench/roots.json`;
 function loadRoots(): string[] {
@@ -464,6 +499,32 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         const out = { hot, douyin, singers };
         discoverCache = out; discoverCacheAt = Date.now();
         return out;
+      }
+      case 'personal-workbench/video/search': {
+        const p = asRecord(payload);
+        const q = typeof p.q === 'string' ? p.q.trim() : '';
+        const page = Math.max(1, Number(p.page) || 1);
+        if (q === '') fail('bad-request', '缺少搜索词');
+        try {
+          const items = await biliSearch(q, page, 20);
+          return { items, numResults: items.length };
+        } catch {
+          fail('bad-gateway', 'B 站搜索接口不可达');
+        }
+      }
+      case 'personal-workbench/video/discover': {
+        if (videoDiscoverCache !== null && Date.now() - videoDiscoverAt < 30 * 60 * 1000) return videoDiscoverCache;
+        const defs: Array<{ key: string; title: string; q: string }> = [
+          { key: 'movie', title: '热门电影', q: '电影 正片 高分' },
+          { key: 'series', title: '热播剧集', q: '电视剧 正片' },
+          { key: 'anime', title: '动漫正片', q: '动漫 正片' },
+          { key: 'doc', title: '纪录片', q: '纪录片 正片' },
+        ];
+        const settled = await Promise.all(defs.map(async (d) => ({ ...d, items: await biliSearch(d.q, 1, 12) })));
+        const blocks = settled.map((d) => ({ key: d.key, title: d.title, items: d.items }));
+        videoDiscoverCache = blocks;
+        videoDiscoverAt = Date.now();
+        return blocks;
       }
       case 'personal-workbench/music/source': {
         // 酷我官方直链（碳酸插件同源）：antiserver convert_url；带 iPhone UA + kuwo Referer
