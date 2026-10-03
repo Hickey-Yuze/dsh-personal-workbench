@@ -27,7 +27,7 @@ const zh: Record<string, string> = {
   'mod.archive.desc': '本地文件的整理与检索',
   'mod.daily.label': '日常管理',
   'mod.daily.desc': '月历日程与当天清单',
-  'mod.music.label': 'Yuze Music',
+  'mod.music.label': 'Yuze 音乐平台',
   'mod.music.desc': '',
   'mod.film.label': '影视平台',
   'mod.film.desc': '影片检索与播放',
