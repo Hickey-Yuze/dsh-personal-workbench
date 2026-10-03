@@ -750,7 +750,7 @@ const CSS = `
 .dsh-pwb-vd-searchbtn { height: 38px; padding: 0 18px; border-radius: 19px; border: none; background: var(--pwb-accent); color: color-mix(in srgb, var(--pwb-accent) 12%, black); font-size: 13px; font-weight: 650; font-family: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
 .dsh-pwb-vd-searchbtn:disabled { opacity: .55; cursor: default; }
 .dsh-pwb-vd-page { flex: 1; min-height: 0; overflow-y: auto; }
-.dsh-pwb-vd-dv { padding: 18px 24px 30px; }
+.dsh-pwb-vd-dv { padding: 18px 24px 30px; max-width: 1040px; margin: 0 auto; }
 .dsh-pwb-vd-block { margin-bottom: 26px; }
 .dsh-pwb-vd-block h2, .dsh-pwb-vd-dv > h2 { margin: 0; font-size: 15.5px; font-weight: 750; }
 .dsh-pwb-vd-count { font-size: 12px; font-weight: 500; color: var(--pwb-dim); }
@@ -771,7 +771,7 @@ const CSS = `
 .dsh-pwb-vd-meta { font-size: 11.5px; color: var(--pwb-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dsh-pwb-vd-empty { color: var(--pwb-dim); font-size: 13px; padding: 28px 0; display: flex; align-items: center; gap: 8px; white-space: pre-line; }
 .dsh-pwb-vd-more { display: grid; place-items: center; padding: 18px 0 6px; }
-.dsh-pwb-vd-play { padding: 18px 24px 30px; }
+.dsh-pwb-vd-play { padding: 18px 24px 30px; max-width: 1040px; margin: 0 auto; }
 .dsh-pwb-vd-player { position: relative; width: min(920px, 100%); aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; background: #000; box-shadow: 0 10px 34px rgba(20,20,30,.16); }
 .dsh-pwb-vd-player video { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: #000; }
 .dsh-pwb-vd-playinfo { width: min(920px, 100%); margin-top: 14px; }
