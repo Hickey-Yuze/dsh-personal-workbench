@@ -127,15 +127,19 @@ export function WorkbenchPanel({ rpc }: WorkbenchPanelProps): ReactElement {
           <div className="dsh-pwb-head-main">
             <div className="dsh-pwb-title-row">
               <span className="dsh-pwb-title-mark">
-                <ModIcon path={current === undefined ? MARK_ICON : current.icon} />
+                {current !== undefined && current.image !== undefined
+                  ? <img src={current.image} alt="" style={{ width: 34, height: 34, borderRadius: 9, objectFit: 'cover', boxShadow: '0 2px 8px rgba(0,0,0,0.18)' }} />
+                  : <ModIcon path={current === undefined ? MARK_ICON : current.icon} />}
               </span>
-              <span className="dsh-pwb-title">
+              <span className="dsh-pwb-title" style={current !== undefined && current.id === 'music' ? { color: '#34a853', fontWeight: 800 } : undefined}>
                 {current === undefined ? t('panel.title') : t(`mod.${current.id}.label`)}
               </span>
             </div>
-            <div className="dsh-pwb-sub">
-              {current === undefined ? t('panel.subtitle') : t(`mod.${current.id}.desc`)}
-            </div>
+            {current === undefined || current.id !== 'music' ? (
+              <div className="dsh-pwb-sub">
+                {current === undefined ? t('panel.subtitle') : t(`mod.${current.id}.desc`)}
+              </div>
+            ) : null}
           </div>
           {active !== null ? (
             <button type="button" className="dsh-pwb-btn" onClick={() => setActive(null)}>
