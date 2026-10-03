@@ -435,7 +435,14 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         if (discoverCache !== null && Date.now() - discoverCacheAt < 30 * 60 * 1000) return discoverCache;
         const searchOnce = async (q: string): Promise<ReturnType<typeof musicMapAbslist>['songs']> => {
           const url = `http://search.kuwo.cn/r.s?client=kt&all=${encodeURIComponent(q)}&pn=0&rn=3&uid=2574109560&ver=kwplayer_ar_8.5.4.2&vipver=1&ft=music&cluster=0&strategy=2012&encoding=utf8&rformat=json&vermerge=1&mobi=1`;
-          try { return musicMapAbslist(musicParseMaybeJsonp(await musicFetchSmart(url))).songs; } catch { return []; }
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              const songs = musicMapAbslist(musicParseMaybeJsonp(await musicFetchSmart(url))).songs;
+              if (songs.length > 0) return songs;
+            } catch { /* 酷我偶发 403/超时，退避重试 */ }
+            await musicSleep(300 * (attempt + 1));
+          }
+          return [];
         };
         const HOT_ARTISTS = ['周杰伦', '林俊杰', '薛之谦', '陈奕迅', '邓紫棋', '汪苏泷', '周深', '毛不易'];
         const DOUYIN_ARTISTS = ['任然', '王贰浪', '花僮', '海伦', '程响', '白小白', '小阿七', '半吨兄弟'];
