@@ -206,8 +206,8 @@ export function KnowledgeView({ rpc }: { rpc: RpcFn }): ReactElement {
           {note === null ? (
             <div className="dsh-pwb-empty">{t('kb.pick')}</div>
           ) : editing ? (
-            <>
-              <div className="dsh-pwb-note-head">
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8 }}>
+              <div className="dsh-pwb-note-head" style={{ flexShrink: 0 }}>
                 <span>编辑中：{note.path}</span>
                 <span className="ml-auto flex gap-1.5">
                   <button type="button" className="dsh-pwb-btn" disabled={saving} onClick={() => { setDraft(note.content); setEditing(false); }}>取消</button>
@@ -216,13 +216,13 @@ export function KnowledgeView({ rpc }: { rpc: RpcFn }): ReactElement {
               </div>
               <textarea
                 className="dsh-pwb-pre"
-                style={{ width: '100%', flex: 1, resize: 'none', whiteSpace: 'pre-wrap', outline: 'none' }}
+                style={{ flex: 1, minHeight: 0, width: '100%', resize: 'none', whiteSpace: 'pre-wrap', outline: 'none', border: '1px solid var(--pwb-border, rgba(0,0,0,0.08))', borderRadius: 8, padding: 10, background: 'var(--pwb-card-hi, #f5f6f8)' }}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); void saveNote(); } }}
                 autoFocus
               />
-            </>
+            </div>
           ) : (
             <>
               <div className="dsh-pwb-note-head">
