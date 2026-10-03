@@ -360,8 +360,12 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         const p = asRecord(payload);
         const rel = typeof p.path === 'string' ? p.path : '';
         const abs = fsResolveSafe(rel);
+        // 先按默认应用打开；无关联应用（如 .py，-10810）→ 回退默认文本编辑器
         await new Promise<void>((resolve, reject) => {
-          execFile('open', [abs], { timeout: 10_000 }, (err) => (err ? reject(err) : resolve()));
+          execFile('open', [abs], { timeout: 10_000 }, (err) => {
+            if (!err) return resolve();
+            execFile('open', ['-t', abs], { timeout: 10_000 }, (err2) => (err2 ? reject(err2) : resolve()));
+          });
         });
         return { ok: true, path: rel };
       }
