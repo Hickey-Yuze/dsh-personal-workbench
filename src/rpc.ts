@@ -111,6 +111,8 @@ let discoverCache: MusicDiscover | null = null;
 let discoverCacheAt = 0;
 /** 歌手热门曲目缓存（30 分钟，按歌手名分键）。 */
 const singerCache = new Map<string, { at: number; data: { name: string; songs: Array<{ id: string; title: string; artist: string; album: string; duration: number; audioUrl: string; coverUrl?: string }> } }>();
+/** 影视搜索结果缓存（10 分钟，键=片名；值已含补图后的海报）。 */
+const videoSearchCache = new Map<string, { at: number; data: { items: VideoBriefHost[] } }>();
 
 /* ── 影视源：磁力猫橘汁片库（CF adapter 本地索引 + SCF 详情直连） ── */
 const VIDEO_CF = 'https://yuze-yingshi-jiekou.pages.dev/api/yuze';
@@ -518,9 +520,30 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         const p = asRecord(payload);
         const q = typeof p.q === 'string' ? p.q.trim() : '';
         if (q === '') fail('bad-request', '缺少搜索词');
+        const skey = `vsearch|${q}`;
+        const sh = videoSearchCache.get(skey);
+        if (sh !== undefined && Date.now() - sh.at < 10 * 60 * 1000) return sh.data;
         try {
           const data = await videoCmsGet(`ac=detail&wd=${encodeURIComponent(q)}`);
-          return { items: videoMapList(data) };
+          let items = videoMapList(data);
+          // 片库搜索接口不回海报（vod_pic 空）：逐个走多源详情补图（图床无防盗链，直链可显），4 并发防压源
+          const need = items.filter((x) => x.pic === undefined);
+          if (need.length > 0) {
+            const picMap = new Map<string, string>();
+            for (let i = 0; i < need.length; i += 4) {
+              await Promise.all(need.slice(i, i + 4).map(async (x) => {
+                const v = await videoDetailFetch(x.id);
+                const pic = v !== null && typeof v.vod_pic === 'string' && (v.vod_pic as string) !== ''
+                  ? (v.vod_pic as string).replace(/^http:\/\//, 'https://')
+                  : undefined;
+                if (pic !== undefined) picMap.set(x.id, pic);
+              }));
+            }
+            if (picMap.size > 0) items = items.map((x) => (picMap.has(x.id) ? { ...x, pic: picMap.get(x.id) } : x));
+          }
+          const result = { items };
+          videoSearchCache.set(skey, { at: Date.now(), data: result });
+          return result;
         } catch {
           fail('bad-gateway', '片库索引不可达');
         }
