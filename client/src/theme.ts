@@ -642,7 +642,7 @@ const CSS = `
 .dsh-pwb-mu-vol input[type='range'] { width: 74px; accent-color: var(--pwb-accent); height: 4px; }
 .dsh-pwb-mu-select { height: 26px; border-radius: 8px; border: 1px solid var(--pwb-border); background: var(--pwb-card-hi, #f2f3f5); color: var(--pwb-text); font-size: 11px; font-family: inherit; padding: 0 6px; outline: none; cursor: pointer; }
 /* ── 全屏播放器 ── */
-.dsh-pwb-mu-fs { position: fixed; inset: 0; z-index: 95; background: var(--pwb-bg, #f5f5f7); display: flex; flex-direction: column; align-items: center; padding: 42px 20px 30px; animation: dsh-pwb-fadein 0.3s ease; }
+.dsh-pwb-mu-fs { position: fixed; inset: 0; z-index: 95; background: var(--pwb-card, #ffffff); display: flex; flex-direction: column; align-items: center; padding: 42px 20px 30px; animation: dsh-pwb-fadein 0.3s ease; }
 @keyframes dsh-pwb-fadein { from { opacity: 0; } to { opacity: 1; } }
 .dsh-pwb-mu-fs-close { position: absolute; top: 16px; right: 18px; }
 .dsh-pwb-mu-vinyl { position: relative; width: 240px; height: 240px; margin: 6px 0 18px; }
@@ -656,7 +656,7 @@ const CSS = `
 }
 .dsh-pwb-mu-playing .dsh-pwb-mu-vinyl-disc { animation-play-state: running; }
 .dsh-pwb-mu-vinyl-disc img { width: 62%; height: 62%; border-radius: 50%; object-fit: cover; }
-.dsh-pwb-mu-vinyl-hole { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 26px; height: 26px; border-radius: 50%; background: var(--pwb-bg, #f5f5f7); border: 1px solid var(--pwb-border); display: grid; place-items: center; }
+.dsh-pwb-mu-vinyl-hole { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 26px; height: 26px; border-radius: 50%; background: var(--pwb-card, #ffffff); border: 1px solid var(--pwb-border); display: grid; place-items: center; }
 .dsh-pwb-mu-vinyl-hole i { width: 5px; height: 5px; border-radius: 50%; background: var(--pwb-dimmer, #9aa0a6); }
 .dsh-pwb-mu-fs-songinfo { text-align: center; margin-bottom: 16px; }
 .dsh-pwb-mu-fs-songinfo h2 { margin: 0; font-size: 22px; font-weight: 800; color: var(--pwb-text); }
