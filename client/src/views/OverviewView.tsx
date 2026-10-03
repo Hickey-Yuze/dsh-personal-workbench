@@ -241,7 +241,7 @@ export function OverviewView({
       {/* 标题块放在总览容器内部：与下方网格共用同一条缩进链，天然左对齐 */}
       {onBack !== undefined ? (
         <div className="dsh-pwb-head dsh-pwb-head-slim">
-          <button type="button" className="dsh-pwb-btn" onClick={onBack}>← 返回工作台</button>
+          <button type="button" className="dsh-pwb-btn" style={{ background: 'var(--pwb-card, #fff)', border: '1px solid var(--pwb-border, rgba(20,20,30,0.1))' }} onClick={onBack}>← 返回工作台</button>
         </div>
       ) : null}
       <div className="dsh-pwb-head dsh-pwb-head-ov">
