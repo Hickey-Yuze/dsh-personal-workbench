@@ -670,7 +670,7 @@ const CSS = `
 .dsh-pwb-mu-fs-left { flex: 0 0 auto; display: grid; place-items: center; }
 /* 黑胶唱片：同心圆纹理 + 封面贴芯 + 中心孔，播放时整体旋转 */
 .dsh-pwb-mu-fs-disc {
-  position: relative; width: 340px !important; height: 340px !important; max-width: 32vw; max-height: 32vw; border-radius: 50% !important;
+  corner-shape: round; position: relative; width: 340px !important; height: 340px !important; max-width: 32vw; max-height: 32vw; border-radius: 50% !important;
   overflow: hidden; flex-shrink: 0;
   background: repeating-radial-gradient(circle at 50% 50%, #17171a 0px, #26262a 1.5px, #17171a 3px);
   box-shadow: 0 30px 90px rgba(0, 0, 0, 0.65), inset 0 0 0 1px rgba(255, 255, 255, 0.09), 0 0 0 1px rgba(255, 255, 255, 0.04);

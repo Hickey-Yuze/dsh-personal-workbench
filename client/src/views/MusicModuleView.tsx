@@ -93,6 +93,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     el.style.setProperty('border-radius', '50%', 'important');
     el.style.setProperty('width', '340px', 'important');
     el.style.setProperty('height', '340px', 'important');
+    el.style.setProperty('corner-shape', 'round', 'important');
   }, []);
   const [singerError, setSingerError] = useState('');
   const [onlineLoading, setOnlineLoading] = useState(false);
