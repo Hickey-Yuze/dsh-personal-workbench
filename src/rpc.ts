@@ -9,6 +9,7 @@
  */
 import * as fs from 'node:fs';
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import type { Context } from '@deepseek-ai/cordis';
 import type { PersonalWorkbenchConfig } from './config.js';
 import type { JsonStore } from './store.js';
@@ -327,6 +328,53 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
   }
 
   const httpHandler = async (req: HttpRequestLike, res: HttpResponseLike): Promise<void> => {
+    // ── GET /appicon?name=<应用名>：提取本机 .app 图标(icns→sips→png)，磁盘缓存，按需生成 ──
+    if ((req.method ?? 'GET').toUpperCase() === 'GET' && (req.url ?? '').includes('/appicon?')) {
+      try {
+        const u = new URL(req.url ?? '/', 'http://localhost');
+        const name = u.searchParams.get('name') ?? '';
+        if (name.trim() === '' || /[/\\\u0000]|\.\./.test(name)) {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: '应用名含非法字符' } });
+          return;
+        }
+        const home = process.env.HOME ?? '';
+        const appDir = [`/Applications/${name}.app`, `${home}/Applications/${name}.app`].find((c) => fs.existsSync(c));
+        if (appDir === undefined) {
+          send(res, 404, { ok: false, error: { code: 'not-found', message: '应用不存在' } });
+          return;
+        }
+        const cacheDir = `${home}/.dsh/personal-workbench/appicons`;
+        fs.mkdirSync(cacheDir, { recursive: true });
+        const cachePath = `${cacheDir}/${createHash('sha1').update(name).digest('hex')}.png`;
+        const exists = fs.existsSync(cachePath);
+        if (!exists) {
+          // 取 Resources 下最大的 .icns（通常即主图标），sips 转 png；无 icns → 404（前端回退色块）
+          let icns = '';
+          try {
+            const res2 = fs.readdirSync(`${appDir}/Contents/Resources`).filter((f) => f.endsWith('.icns'));
+            let best = 0;
+            for (const f of res2) {
+              const full = `${appDir}/Contents/Resources/${f}`;
+              const sz = fs.statSync(full).size;
+              if (sz > best) { best = sz; icns = full; }
+            }
+          } catch { /* 无 Resources */ }
+          if (icns === '') {
+            send(res, 404, { ok: false, error: { code: 'not-found', message: '无可用图标' } });
+            return;
+          }
+          await new Promise<void>((resolve, reject) => {
+            execFile('sips', ['-s', 'format', 'png', icns, '--out', cachePath], { timeout: 8000 }, (err) => (err ? reject(err) : resolve()));
+          });
+        }
+        const png = fs.readFileSync(cachePath);
+        res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400' });
+        res.end(png as unknown as string);
+      } catch {
+        send(res, 500, { ok: false, error: { code: 'internal', message: '图标提取失败' } });
+      }
+      return;
+    }
     if ((req.method ?? 'GET').toUpperCase() !== 'POST') {
       send(res, 405, { ok: false, error: { code: 'method-not-allowed', message: '仅支持 POST' } });
       return;

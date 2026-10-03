@@ -10,6 +10,28 @@
 import { useCallback, useEffect, useState } from 'react';
 import { LayoutGrid, Plus, Trash2, X } from 'lucide-react';
 import type { RpcFn } from '../../rpc.js';
+import { API_PREFIX } from '../../rpc.js';
+
+/** 应用图标：Host 按需从 .app 提取（icns→png，磁盘缓存）；失败回退首字色块 */
+function AppIcon({ label }: { label: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <span className="grid size-9 shrink-0 place-items-center rounded-xl text-[11px] font-bold text-white" style={{ background: colorOf(label) }}>
+        {[...label][0]?.toUpperCase() ?? '?'}
+      </span>
+    );
+  }
+  return (
+    <img
+      src={`${API_PREFIX}/appicon?name=${encodeURIComponent(label)}`}
+      alt={label}
+      className="size-9 shrink-0 rounded-xl object-contain"
+      onError={() => setFailed(true)}
+      loading="lazy"
+    />
+  );
+}
 
 interface DockItem { label: string; path: string }
 
@@ -67,7 +89,7 @@ export function DockWidget({ rpc }: { rpc: RpcFn }) {
     ...apps.map((a) => ({ label: a, path: a })),
     ...custom.filter((c) => !apps.some((a) => a === c.label)),
   ].slice(0, 80);
-  const shown = items.slice(0, 8);
+  const shown = items;
 
   return (
     <div className="dsh-pwb-widget relative flex h-full flex-col">
@@ -114,11 +136,8 @@ export function DockWidget({ rpc }: { rpc: RpcFn }) {
               onClick={() => void launch(it.label)}
               title={`启动 ${it.label}`}
             >
-              <span
-                className="grid size-11 place-items-center rounded-xl text-sm font-bold text-white shadow-sm"
-                style={{ background: `linear-gradient(135deg, ${colorOf(it.label)}, ${colorOf(it.label)}cc)` }}
-              >
-                {it.label.slice(0, 2)}
+              <span className="grid size-11 place-items-center rounded-xl">
+                <AppIcon label={it.label} />
               </span>
               <span className="w-full truncate text-center text-[10px] text-white/60">{it.label}</span>
             </button>
