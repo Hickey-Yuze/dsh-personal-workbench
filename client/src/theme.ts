@@ -691,6 +691,21 @@ const CSS = `
 .dsh-pwb-mu-fs-play:hover { transform: scale(1.05); }
 .dsh-pwb-mu-fs-play:active { transform: scale(0.96); }
 
+/* ── 发现页（发现音乐：三板块横排卡） ── */
+.dsh-pwb-mu-dv { padding: 22px 26px 30px; }
+.dsh-pwb-mu-dv-title { margin: 0 0 4px; font-size: 20px; font-weight: 800; color: var(--pwb-text); }
+.dsh-pwb-mu-dv-block { margin-top: 20px; }
+.dsh-pwb-mu-dv-block h2 { margin: 0 0 12px; font-size: 15.5px; font-weight: 750; color: var(--pwb-text); }
+.dsh-pwb-mu-dv-row { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: none; }
+.dsh-pwb-mu-dv-row::-webkit-scrollbar { display: none; }
+.dsh-pwb-mu-dv-card { flex: 0 0 auto; width: 158px; border: none; background: transparent; text-align: left; cursor: pointer; padding: 0; display: flex; flex-direction: column; gap: 2px; border-radius: 12px; }
+.dsh-pwb-mu-dv-card img { width: 158px; height: 158px; border-radius: 12px; object-fit: cover; display: block; margin-bottom: 7px; box-shadow: 0 6px 18px rgba(20, 20, 30, 0.12); transition: transform 0.15s ease; }
+.dsh-pwb-mu-dv-card:hover img { transform: scale(1.03); }
+.dsh-pwb-mu-dv-dummy { width: 158px; height: 158px; border-radius: 12px; display: grid; place-items: center; background: var(--pwb-card-hi, #f2f3f5); color: var(--pwb-dimmer, #9aa0a6); margin-bottom: 7px; }
+.dsh-pwb-mu-dv-card b { font-size: 13px; font-weight: 650; color: var(--pwb-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dsh-pwb-mu-dv-card span { font-size: 12px; color: var(--pwb-dim, #6b7280); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dsh-pwb-mu-dv-empty { color: var(--pwb-dim, #6b7280); font-size: 13px; padding: 26px 0; display: flex; align-items: center; gap: 8px; }
+
 /* ── 队列浮层 ── */
 .dsh-pwb-mu-queue {
   position: fixed; right: 16px; bottom: 86px; z-index: 60;

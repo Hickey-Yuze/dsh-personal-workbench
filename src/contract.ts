@@ -62,6 +62,7 @@ export interface PersonalWorkbenchRequestMap {
   'personal-workbench/fs/roots/list': Record<string, never>;
   'personal-workbench/music/search': { q: string; page?: number; proxy?: string };
   'personal-workbench/music/source': { id: string; quality?: string };
+  'personal-workbench/music/discover': Record<string, never>;
   'personal-workbench/music/detail': { id: string; proxy?: string };
   'personal-workbench/music/import': { link: string; proxy?: string };
   'personal-workbench/fs/roots/pick': Record<string, never>;
@@ -94,6 +95,7 @@ export interface PersonalWorkbenchResponseMap {
   'personal-workbench/fs/roots/list': { roots: string[]; home: string };
   'personal-workbench/music/search': { songs: Array<{ id: string; title: string; artist: string; album: string; duration: number; audioUrl: string; coverUrl?: string }>; isEnd: boolean; total: number };
   'personal-workbench/music/source': { url: string };
+  'personal-workbench/music/discover': { hot: Array<{ id: string; title: string; artist: string; album: string; duration: number; coverUrl?: string | undefined }>; douyin: Array<{ id: string; title: string; artist: string; album: string; duration: number; coverUrl?: string | undefined }>; singers: Array<{ name: string; coverUrl: string | undefined; sample: { id: string; title: string; artist: string } | null }> };
   'personal-workbench/music/detail': { lyrics: Array<{ time: number; text: string }>; coverUrl?: string };
   'personal-workbench/music/import': { queries: string[]; songs: Array<{ id: string; title: string; artist: string; album: string; duration: number; audioUrl: string; coverUrl?: string }> };
   'personal-workbench/fs/roots/pick': { ok: boolean; path: string; roots: string[] } | { ok: false; code: 'cancelled' };

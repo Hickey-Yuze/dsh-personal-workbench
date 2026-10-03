@@ -104,6 +104,11 @@ function musicMapAbslist(data: Record<string, unknown>): { songs: MusicSong[]; i
   return { songs, isEnd: total > 0 && (pn + 1) * rn >= total, total };
 }
 const musicSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+/** 发现页缓存（30 分钟）：避免每次进页重复打 16 次搜索。 */
+type MusicDiscoverItem = { id: string; title: string; artist: string; album: string; duration: number; coverUrl?: string | undefined };
+type MusicDiscover = { hot: MusicDiscoverItem[]; douyin: MusicDiscoverItem[]; singers: Array<{ name: string; coverUrl: string | undefined; sample: { id: string; title: string; artist: string } | null }> };
+let discoverCache: MusicDiscover | null = null;
+let discoverCacheAt = 0;
 
 /** 文件归档根白名单：持久化 ~/.dsh/personal-workbench/roots.json；HOME 永远在列。 */
 const ROOTS_FILE = `${process.env.HOME ?? ''}/.dsh/personal-workbench/roots.json`;
@@ -423,6 +428,35 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         }
         const m = musicMapAbslist(data);
         return { songs: m.songs, isEnd: m.isEnd, total: m.total };
+      }
+      case 'personal-workbench/music/discover': {
+        // 发现页：策展歌手名单逐个搜索取代表曲（全部真数据，酷我搜索接口）；
+        // 结果内存缓存 30 分钟，避免每次进页都打 16 次搜索。
+        if (discoverCache !== null && Date.now() - discoverCacheAt < 30 * 60 * 1000) return discoverCache;
+        const searchOnce = async (q: string): Promise<ReturnType<typeof musicMapAbslist>['songs']> => {
+          const url = `http://search.kuwo.cn/r.s?client=kt&all=${encodeURIComponent(q)}&pn=0&rn=3&uid=2574109560&ver=kwplayer_ar_8.5.4.2&vipver=1&ft=music&cluster=0&strategy=2012&encoding=utf8&rformat=json&vermerge=1&mobi=1`;
+          try { return musicMapAbslist(musicParseMaybeJsonp(await musicFetchSmart(url))).songs; } catch { return []; }
+        };
+        const HOT_ARTISTS = ['周杰伦', '林俊杰', '薛之谦', '陈奕迅', '邓紫棋', '汪苏泷', '周深', '毛不易'];
+        const DOUYIN_ARTISTS = ['任然', '王贰浪', '花僮', '海伦', '程响', '白小白', '小阿七', '半吨兄弟'];
+        const results = await Promise.all([...HOT_ARTISTS.map(searchOnce), ...DOUYIN_ARTISTS.map(searchOnce)]);
+        const hot: MusicDiscoverItem[] = [];
+        const douyin: typeof hot = [];
+        const singers: Array<{ name: string; coverUrl: string | undefined; sample: { id: string; title: string; artist: string } | null }> = [];
+        results.forEach((songs, i) => {
+          const first = songs.find((x) => x.id !== '');
+          if (first === undefined) return;
+          const brief = { id: first.id, title: first.title, artist: first.artist };
+          if (i < HOT_ARTISTS.length) {
+            hot.push(first);
+            singers.push({ name: HOT_ARTISTS[i], coverUrl: first.coverUrl, sample: brief });
+          } else {
+            douyin.push(first);
+          }
+        });
+        const out = { hot, douyin, singers };
+        discoverCache = out; discoverCacheAt = Date.now();
+        return out;
       }
       case 'personal-workbench/music/source': {
         // 酷我官方直链（碳酸插件同源）：antiserver convert_url；带 iPhone UA + kuwo Referer
