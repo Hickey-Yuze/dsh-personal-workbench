@@ -570,7 +570,7 @@ const CSS = `
   cursor: pointer;
 }
 .dsh-pwb-mu-search-btn:disabled { opacity: 0.6; cursor: default; }
-.dsh-pwb-mu-grid { display: grid; grid-template-columns: minmax(190px, 2fr) minmax(0, 5fr) minmax(0, 5fr); gap: 14px; flex: 1; min-height: 0; }
+.dsh-pwb-mu-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr); gap: 14px; flex: 1; min-height: 0; }
 .dsh-pwb-mu-panel {
   display: flex;
   flex-direction: column;
