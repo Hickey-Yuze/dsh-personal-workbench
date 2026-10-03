@@ -162,8 +162,8 @@ export function DockWidget({ rpc }: { rpc: RpcFn }) {
       )}
       {error && <div className="mx-4 mt-1 text-[10px] text-red-400">{error}</div>}
 
-      <div className="grid flex-1 grid-cols-[repeat(auto-fill,minmax(76px,1fr))] content-start gap-x-1 gap-y-2 overflow-y-auto p-4 pt-3">
-        {shown.length === 0 && <div className="col-span-full grid place-items-center py-6 text-xs text-white/30">正在读取本机应用列表…（需重启宿主后生效）</div>}
+      <div className="grid flex-1 grid-cols-4 content-start gap-2 overflow-y-auto p-4 pt-3">
+        {shown.length === 0 && <div className="col-span-4 grid place-items-center py-6 text-xs text-white/30">正在读取本机应用列表…（需重启宿主后生效）</div>}
         {shown.map((it, idx) => (
           <div
             key={it.label}
