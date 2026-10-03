@@ -81,8 +81,8 @@ const CSS = `
   color: #04160c;
   flex: 0 0 auto;
 }
-.dsh-pwb-title { font-size: 17px; font-weight: 650; letter-spacing: 0.2px; }
-.dsh-pwb-sub { margin-top: 4px; font-size: 12px; color: var(--pwb-dim); }
+.dsh-pwb-title { font-size: 28px; font-weight: 750; letter-spacing: -0.3px; line-height: 1.2; }
+.dsh-pwb-sub { margin-top: 7px; font-size: 13px; color: var(--pwb-dim); }
 .dsh-pwb-chip {
   display: inline-flex;
   align-items: center;
