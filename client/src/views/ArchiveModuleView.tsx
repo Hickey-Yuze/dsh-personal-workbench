@@ -7,16 +7,17 @@
 // @ts-nocheck —— 移植自 Yuze Workbench（原项目自带类型检查），此处不重复校验
 
 import { useCallback, useEffect, useState } from 'react';
-import { Archive, Folder, FileText, ChevronRight, ExternalLink, Loader2 } from 'lucide-react';
+import { Archive, Folder, FileText, ChevronRight, ExternalLink, Loader2, Video } from 'lucide-react';
 import type { ReactElement } from 'react';
 import type { RpcFn } from '../rpc.js';
+import { API_PREFIX } from '../rpc.js';
 
 interface Node { name: string; path: string; kind: 'dir' | 'file' }
 
 export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
   const [stack, setStack] = useState<string[]>(['']);
   const [entries, setEntries] = useState<Node[]>([]);
-  const [note, setNote] = useState<{ path: string; kind: 'text' | 'image'; content?: string; dataUrl?: string } | null>(null);
+  const [note, setNote] = useState<{ path: string; kind: 'text' | 'image' | 'video'; content?: string; url?: string } | null>(null);
   const [unsupported, setUnsupported] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -47,6 +48,14 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     setUnsupported(null);
     setEditing(false);
     if (n.kind === 'dir') { setNote(null); setStack((s) => [...s, n.path]); return; }
+    const ext = n.path.split('.').pop()?.toLowerCase() ?? '';
+    const mediaKind = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif'].includes(ext) ? 'image'
+      : ['mp4', 'm4v', 'webm', 'mov'].includes(ext) ? 'video' : null;
+    if (mediaKind !== null) {
+      // 图片/视频走流式 GET（无大小上限；视频 Range 分段可拖进度条）
+      setNote({ path: n.path, kind: mediaKind, url: `${API_PREFIX}/fsfile?path=${encodeURIComponent(n.path)}` });
+      return;
+    }
     void (async () => {
       setReading(true);
       setErr('');
@@ -60,8 +69,8 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
           if (code === 'unsupported' || code === 'too-large') setUnsupported(msg);
           else throw new Error(msg);
         } else {
-          const v = out.value as { path: string; kind: 'text' | 'image'; content?: string; dataUrl?: string };
-          setNote({ path: v.path, kind: v.kind ?? 'text', content: v.content, dataUrl: v.dataUrl });
+          const v = out.value as { path: string; kind: 'text'; content: string };
+          setNote({ path: v.path, kind: 'text', content: v.content });
         }
       } catch (e) {
         setErr(e instanceof Error ? e.message : '读取失败');
@@ -145,7 +154,9 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
               onClick={() => enter(n)}
               title={n.kind === 'dir' ? '打开文件夹' : n.name}
             >
-              {n.kind === 'dir' ? <Folder className="size-4 dsh-pwb-fs-dir" /> : <FileText className="size-4 dsh-pwb-fs-file" />}
+              {n.kind === 'dir' ? <Folder className="size-4 dsh-pwb-fs-dir" />
+                : ['mp4', 'm4v', 'webm', 'mov'].includes((n.name.split('.').pop() ?? '').toLowerCase()) ? <Video className="size-4 dsh-pwb-fs-file" />
+                : <FileText className="size-4 dsh-pwb-fs-file" />}
               <span className="dsh-pwb-fs-name">{n.name}</span>
               {n.kind === 'dir' && <ChevronRight className="size-3.5 dsh-pwb-fs-arrow" />}
             </button>
@@ -188,9 +199,13 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
                   </button>
                 </span>
               </div>
-              {note.kind === 'image' && note.dataUrl ? (
+              {note.kind === 'image' && note.url ? (
                 <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto', background: 'var(--pwb-card-hi, #f2f3f5)', borderRadius: 10 }}>
-                  <img src={note.dataUrl} alt={note.path} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                  <img src={note.url} alt={note.path} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                </div>
+              ) : note.kind === 'video' && note.url ? (
+                <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--pwb-card-hi, #f2f3f5)', borderRadius: 10 }}>
+                  <video src={note.url} controls style={{ maxWidth: '100%', maxHeight: '100%' }} />
                 </div>
               ) : (
                 <pre className="dsh-pwb-pre">{note.content}</pre>
