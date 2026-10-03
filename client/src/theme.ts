@@ -653,7 +653,7 @@ const CSS = `
 .dsh-pwb-mu-fs-left { flex: 0 0 auto; display: grid; place-items: center; }
 /* 黑胶唱片：同心圆纹理 + 封面贴芯 + 中心孔，播放时整体旋转 */
 .dsh-pwb-mu-fs-disc {
-  position: relative; width: min(360px, 34vw); aspect-ratio: 1; border-radius: 50%;
+  position: relative; width: min(340px, 32vw); height: min(340px, 32vw); border-radius: 50%;
   background: repeating-radial-gradient(circle at 50% 50%, #17171a 0px, #26262a 1.5px, #17171a 3px);
   box-shadow: 0 30px 90px rgba(0, 0, 0, 0.65), inset 0 0 0 1px rgba(255, 255, 255, 0.09), 0 0 0 1px rgba(255, 255, 255, 0.04);
   display: grid; place-items: center;
@@ -665,7 +665,7 @@ const CSS = `
 .dsh-pwb-mu-fs-disc i { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 15px; height: 15px; border-radius: 50%; background: #0a0a0c; box-shadow: inset 0 0 0 3.5px #26262a, 0 0 0 5px rgba(8, 8, 10, 0.75); }
 /* 右侧歌词：垂直居中、当前行品牌绿高亮、上下渐隐遮罩 */
 .dsh-pwb-mu-fs-right { position: relative; flex: 1; min-width: 0; align-self: center; height: min(460px, 78%); display: flex; flex-direction: column; overflow: hidden; }
-.dsh-pwb-mu-fs-lyrics { position: relative; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; text-align: center; padding: 40vh 12px; box-sizing: border-box; }
+.dsh-pwb-mu-fs-lyrics { position: relative; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; text-align: center; padding: 190px 12px; box-sizing: border-box; }
 .dsh-pwb-mu-fs-lyrics::-webkit-scrollbar { display: none; }
 .dsh-pwb-mu-fs-lyric { font-size: 14.5px; line-height: 2.4; color: rgba(255, 255, 255, 0.52); cursor: pointer; transition: all 0.3s ease; }
 .dsh-pwb-mu-fs-lyric:hover { color: rgba(255, 255, 255, 0.85); }
