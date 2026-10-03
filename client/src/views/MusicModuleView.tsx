@@ -267,7 +267,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     if (el === null || currentLyricIndex < 0) return;
     const active = el.children[currentLyricIndex] as HTMLElement | undefined;
     if (active !== undefined) el.scrollTo({ top: active.offsetTop - el.clientHeight / 2, behavior: 'smooth' });
-  }, [currentLyricIndex]);
+  }, [currentLyricIndex, showFull]);
 
   // ── 搜索 ──
   const doSearch = useCallback((page: number, append: boolean): void => {
