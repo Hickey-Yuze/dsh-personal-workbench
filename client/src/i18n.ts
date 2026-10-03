@@ -40,6 +40,7 @@ const zh: Record<string, string> = {
   'mod.wip.label': '开发中…',
   'mod.wip.desc': '更多模块，敬请期待',
   'pending.wip': '这个模块正在开发中，敬请期待。',
+  'state.wip': '开发中',
   'pending.media': '音乐与影视需要内容源。你现在用的是自己的接口（pages.dev / 酷我解析等）——这些算外部服务，按你「不要外链」的要求需要先确认是否允许调用。',
   'pending.fun': '娱乐平台打算做几个纯本地的小工具（无网络请求）。告诉我你想要哪几个，我直接做。',
 
@@ -168,6 +169,7 @@ const en: Record<string, string> = {
   'mod.wip.label': 'In Progress…',
   'mod.wip.desc': 'More modules coming soon',
   'pending.wip': 'This module is under development. Stay tuned.',
+  'state.wip': 'WIP',
   'pending.media': 'Music and films need a content source. Yours currently point at external services.',
   'pending.fun': 'Fun module will host small fully-offline tools. Tell me which ones you want.',
 

@@ -177,7 +177,7 @@ export function WorkbenchPanel({ rpc }: WorkbenchPanelProps): ReactElement {
                 <span className="dsh-pwb-card-desc">{t(`mod.${mod.id}.desc`)}</span>
                 <span className="dsh-pwb-card-foot">
                   <span className={`dsh-pwb-badge${mod.ready ? ' dsh-pwb-badge-ready' : ''}`}>
-                    {mod.ready ? t('state.ready') : t('state.pending')}
+                    {mod.ready ? t('state.ready') : mod.id === 'wip' ? t('state.wip') : t('state.pending')}
                   </span>
                   <span className="dsh-pwb-card-arrow">→</span>
                 </span>
