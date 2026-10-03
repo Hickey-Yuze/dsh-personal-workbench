@@ -462,6 +462,30 @@ const CSS = `
 .dsh-pwb-day-title { font-size: 13.5px; font-weight: 650; }
 .dsh-pwb-day-count { font-size: 12px; color: var(--pwb-dimmer); }
 
+/* ── 文件归档：全局类（不依赖 dsh-pwb-dark 作用域，避免 Tailwind 作用域化失效与变量环境污染）── */
+.dsh-pwb-fs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border: none;
+  border-radius: 9px;
+  background: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--pwb-text, #1c1c22);
+}
+.dsh-pwb-fs-row:hover { background: var(--pwb-card-hi, #f2f3f5); }
+.dsh-pwb-fs-dir { color: var(--pwb-accent, #00b862); }
+.dsh-pwb-fs-file { color: var(--pwb-dim, #6b7280); }
+.dsh-pwb-fs-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dsh-pwb-fs-arrow { flex-shrink: 0; color: var(--pwb-dimmer, #9aa0a6); }
+.dsh-pwb-fs-back { color: var(--pwb-dim, #6b7280); }
+.dsh-pwb-fs-back:hover { color: var(--pwb-text, #1c1c22); background: var(--pwb-card-hi, #f2f3f5); }
+
 /* ── 知识库分栏 ── */
 .dsh-pwb-split { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(200px, 33%) 1fr; gap: 13px; }
 .dsh-pwb-split-list, .dsh-pwb-split-main {

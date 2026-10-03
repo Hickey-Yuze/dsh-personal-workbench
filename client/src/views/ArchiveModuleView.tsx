@@ -76,8 +76,8 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
   const jump = (idx: number) => setStack((s) => s.slice(0, idx + 1));
 
   return (
-    // dsh-pwb-dark：Tailwind 工具类被构建作用域化为 .dsh-pwb-dark 前缀，根容器必须挂上才生效
-    <div className="dsh-pwb-dark dsh-pwb-view">
+    // 不挂 dsh-pwb-dark：本视图全部用 theme.ts 全局类（同知识库机制），避免 Tailwind 作用域化与变量污染
+    <div className="dsh-pwb-view">
       <div className="dsh-pwb-toolbar">
         <span className="grid size-7 place-items-center rounded-lg bg-primary/15 text-primary"><Archive className="size-4" /></span>
         <span className="text-sm font-semibold text-white">主目录</span>
@@ -107,27 +107,27 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
 
       <div className="dsh-pwb-split">
         {/* 左：目录列表 */}
-        <div className="dsh-pwb-split-list px-2.5 py-2">
+        <div className="dsh-pwb-split-list" style={{ padding: '8px 10px' }}>
           {dir !== '' ? (
             <button
               type="button"
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-white/50 transition-colors hover:bg-white/[0.05] hover:text-white"
+              className="dsh-pwb-fs-row dsh-pwb-fs-back"
               onClick={() => setStack((s) => s.slice(0, -1))}
             >
-              <ChevronRight className="size-4 shrink-0 rotate-180" /> 返回上级
+              <ChevronRight className="size-4" style={{ transform: 'rotate(180deg)' }} /> 返回上级
             </button>
           ) : null}
           {entries.map((n) => (
             <button
               key={n.path}
               type="button"
-              className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-white/[0.05]"
+              className="dsh-pwb-fs-row"
               onClick={() => enter(n)}
               title={n.kind === 'dir' ? '打开文件夹' : n.name}
             >
-              {n.kind === 'dir' ? <Folder className="size-4 shrink-0 text-primary/80" /> : <FileText className="size-4 shrink-0 text-white/40" />}
-              <span className="min-w-0 flex-1 truncate text-xs text-white/75">{n.name}</span>
-              {n.kind === 'dir' && <ChevronRight className="size-3.5 shrink-0 text-white/20 transition-colors group-hover:text-white/50" />}
+              {n.kind === 'dir' ? <Folder className="size-4 dsh-pwb-fs-dir" /> : <FileText className="size-4 dsh-pwb-fs-file" />}
+              <span className="dsh-pwb-fs-name">{n.name}</span>
+              {n.kind === 'dir' && <ChevronRight className="size-3.5 dsh-pwb-fs-arrow" />}
             </button>
           ))}
           {!loading && entries.length === 0 ? <div className="dsh-pwb-empty">该目录暂无内容</div> : null}
@@ -155,11 +155,11 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
               </div>
             </div>
           ) : (
-            <div className="grid h-full place-items-center px-6 text-center">
+            <div style={{ display: 'grid', placeItems: 'center', height: '100%', padding: '0 24px', textAlign: 'center' }}>
               <div>
-                <Archive className="mx-auto size-10 text-white/15" />
-                <div className="mt-3 text-xs text-white/40">从左侧选择目录或文件</div>
-                <div className="mt-1 text-[10px] text-white/25">文本文件可直接预览 · 其他类型用系统程序打开</div>
+                <Archive className="size-10" style={{ margin: '0 auto', color: 'var(--pwb-dimmer, #9aa0a6)', opacity: 0.6 }} />
+                <div style={{ marginTop: 12, fontSize: 12, color: 'var(--pwb-dim, #6b7280)' }}>从左侧选择目录或文件</div>
+                <div style={{ marginTop: 4, fontSize: 10, color: 'var(--pwb-dimmer, #9aa0a6)' }}>文本文件可直接预览 · 其他类型用系统程序打开</div>
               </div>
             </div>
           )}
