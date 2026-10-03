@@ -706,7 +706,7 @@ const CSS = `
 .dsh-pwb-mu-dialog h4 { margin: 0; font-size: 14px; font-weight: 700; color: var(--pwb-text); }
 .dsh-pwb-mu-dialog textarea, .dsh-pwb-mu-dialog input {
   width: 100%; border-radius: 10px; border: 1px solid var(--pwb-border); background: var(--pwb-card-hi, #f2f3f5);
-  color: var(--pwb-text); font-size: 12.5px; font-family: inherit; padding: 9px 11px; outline: none; resize: vertical;
+  color: var(--pwb-text); font-size: 12.5px; font-family: inherit; padding: 9px 11px; outline: none; resize: none;
 }
 .dsh-pwb-mu-dialog textarea:focus, .dsh-pwb-mu-dialog input:focus { border-color: color-mix(in srgb, var(--pwb-accent) 50%, transparent); }
 .dsh-pwb-mu-dialog-row { display: flex; gap: 8px; justify-content: flex-end; }
