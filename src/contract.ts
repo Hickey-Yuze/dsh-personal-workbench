@@ -60,6 +60,7 @@ export interface PersonalWorkbenchRequestMap {
   'personal-workbench/kb/write': { path: string; content: string };
   'personal-workbench/fs/list': { path?: string; root?: string };
   'personal-workbench/fs/roots/list': Record<string, never>;
+  'personal-workbench/fs/roots/pick': Record<string, never>;
   'personal-workbench/fs/roots/add': { path: string };
   'personal-workbench/fs/roots/remove': { path: string };
   'personal-workbench/fs/read': { path: string; root?: string };
@@ -87,6 +88,7 @@ export interface PersonalWorkbenchResponseMap {
   'personal-workbench/kb/write': { path: string; bytes: number };
   'personal-workbench/fs/list': { entries: Array<{ name: string; path: string; kind: 'dir' | 'file' }>; root: string };
   'personal-workbench/fs/roots/list': { roots: string[]; home: string };
+  'personal-workbench/fs/roots/pick': { ok: boolean; path: string; roots: string[] } | { ok: false; code: 'cancelled' };
   'personal-workbench/fs/roots/add': { ok: boolean; roots: string[] };
   'personal-workbench/fs/roots/remove': { ok: boolean };
   'personal-workbench/fs/read': { path: string; kind: 'text'; content: string; bytes: number };

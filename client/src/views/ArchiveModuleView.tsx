@@ -98,6 +98,22 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     })();
   };
 
+  const pickRoot = async (): Promise<void> => {
+    setErr('');
+    const out = await rpc('personal-workbench/fs/roots/pick', {});
+    if (!out?.ok) {
+      const code = (out as { code?: string } | undefined)?.code;
+      if (code !== 'cancelled') setErr('系统选择器不可用，可用下方输入路径方式添加');
+      return;
+    }
+    const v = out.value as { path: string; roots: string[] };
+    setRoots(v.roots);
+    setRoot(v.path);
+    setStack(['']);
+    setNote(null);
+    setPickerOpen(false);
+  };
+
   const addRoot = async (): Promise<void> => {
     const path = rootInput.trim();
     if (path === '') return;
@@ -149,8 +165,11 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
       <div className="dsh-pwb-toolbar">
         <span className="grid size-7 place-items-center rounded-lg bg-primary/15 text-primary"><Archive className="size-4" /></span>
         <span className="text-sm font-semibold text-white">{root === '' ? '主目录' : (root.split('/').pop() || root)}</span>
-        <button type="button" className="dsh-pwb-btn" onClick={() => setPickerOpen((v) => !v)} title="选择或添加根目录">
+        <button type="button" className="dsh-pwb-btn dsh-pwb-btn-primary" onClick={() => void pickRoot()} title="弹出系统选择文件夹对话框">
           <FolderOpen className="size-3.5" /> {root === '' ? '选择文件夹' : '切换根目录'}
+        </button>
+        <button type="button" className="dsh-pwb-btn" onClick={() => setPickerOpen((v) => !v)} title="输入路径或管理已授权目录">
+          管理目录
         </button>
         {root !== '' ? (
           <button type="button" className="dsh-pwb-btn" onClick={() => { setRoot(''); setStack(['']); setNote(null); }} title="回到主目录">
@@ -176,7 +195,7 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
               style={{ flex: 1 }}
               value={rootInput}
               onChange={(e) => setRootInput(e.target.value)}
-              placeholder="输入本机目录的绝对路径，如 /Users/yuze/Documents"
+              placeholder="或直接输入绝对路径，如 /Users/yuze/Documents（点上方按钮可弹系统选择框）"
               onKeyDown={(e) => { if (e.key === 'Enter') void addRoot(); }}
             />
             <button type="button" className="dsh-pwb-btn dsh-pwb-btn-primary" onClick={() => void addRoot()}>添加并切换</button>

@@ -337,6 +337,27 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
       // ── 文件归档：HOME 下安全浏览/读文本/系统程序打开 ──
       case 'personal-workbench/fs/roots/list':
         return { roots: loadRoots(), home: process.env.HOME ?? '' };
+      case 'personal-workbench/fs/roots/pick': {
+        // macOS 原生「选择文件夹」对话框（osascript）；Windows 宿主无此路由，走输入路径
+        let picked = '';
+        try {
+          picked = await new Promise<string>((resolve, reject) => {
+            execFile('osascript', ['-e', 'POSIX path of (choose folder with prompt "选择文件归档根目录")'], { timeout: 120_000 }, (err, stdout) => (err !== null ? reject(err) : resolve(String(stdout).trim())));
+          });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (msg.includes('-128') || msg.includes('canceled')) return { ok: false, code: 'cancelled' };
+          fail('internal', '系统选择器不可用');
+        }
+        if (picked === '') return { ok: false, code: 'cancelled' };
+        const real = fs.realpathSync(picked.endsWith('/') && picked !== '/' ? picked.slice(0, -1) : picked);
+        const st = fs.statSync(real);
+        if (!st.isDirectory()) fail('bad-request', '不是目录');
+        const roots = loadRoots();
+        if (!roots.includes(real)) { roots.push(real); saveRoots(roots); }
+        return { ok: true, path: real, roots };
+      }
+
       case 'personal-workbench/fs/roots/add': {
         const p = asRecord(payload);
         const raw = typeof p.path === 'string' ? p.path.trim() : '';
