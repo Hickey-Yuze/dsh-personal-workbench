@@ -312,20 +312,6 @@ export function VideoModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     const hasNext = douban !== null && douban.length >= PAGE_SIZE;
     return (
       <div className="dsh-pwb-vd-home">
-        {/* 继续观看（原版 ContinueWatching） */}
-        {history.length > 0 ? (
-          <div className="dsh-pwb-vd-block">
-            <h2><span className="dsh-pwb-vd-bar" /> 继续观看</h2>
-            <div className="dsh-pwb-vd-row">
-              {history.slice(0, 12).map((rec) => (
-                <span key={rec.id} className="dsh-pwb-vd-cardwrap">
-                  <PosterCard name={rec.name} pic={rec.pic} sub={rec.epName !== '' ? `${rec.lineName} · ${rec.epName}` : undefined} onClick={() => go({ page: 'play', id: rec.id, lineIdx: rec.lineIdx, epIdx: rec.epIdx })} />
-                </span>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
         {/* 标签 chips（原版分类横条） */}
         <div className="dsh-pwb-vd-tags">
           {tags.map((tg) => (
@@ -353,6 +339,21 @@ export function VideoModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
             ))}
           </div>
         )}
+
+        {/* 继续观看（原版 ContinueWatching） */}
+        {history.length > 0 ? (
+          <div className="dsh-pwb-vd-block">
+            <h2><span className="dsh-pwb-vd-bar" /> 继续观看</h2>
+            <div className="dsh-pwb-vd-row">
+              {history.slice(0, 12).map((rec) => (
+                <span key={rec.id} className="dsh-pwb-vd-cardwrap">
+                  <PosterCard name={rec.name} pic={rec.pic} sub={rec.epName !== '' ? `${rec.lineName} · ${rec.epName}` : undefined} onClick={() => go({ page: 'play', id: rec.id, lineIdx: rec.lineIdx, epIdx: rec.epIdx })} />
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
       </div>
     );
   };

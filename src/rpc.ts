@@ -587,8 +587,19 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
             rate: String(it.rate ?? '0'),
             cover: typeof it.cover === 'string' && it.cover !== '' ? it.cover.replace(/^http:/, 'https:') : undefined,
           })).filter((x) => x.title !== '');
-          doubanCache.set(key, { at: Date.now(), data: subjects });
-          return { subjects };
+          // 豆瓣图防盗链：UA+Referer 双头才放行（仅 UA/裸连 418），浏览器 img 直连必裂 —— Host 抓图转 base64 data URL
+          const withPics = await Promise.all(subjects.map(async (sub) => {
+            if (sub.cover === undefined) return sub;
+            try {
+              const imgRes = await fetch(sub.cover, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', Referer: 'https://movie.douban.com/' }, signal: AbortSignal.timeout(8000) });
+              if (!imgRes.ok) return { ...sub, cover: undefined };
+              const buf = Buffer.from(await imgRes.arrayBuffer());
+              const mime = imgRes.headers.get('content-type') ?? 'image/jpeg';
+              return { ...sub, cover: `data:${mime};base64,${buf.toString('base64')}` };
+            } catch { return { ...sub, cover: undefined }; }
+          }));
+          doubanCache.set(key, { at: Date.now(), data: withPics });
+          return { subjects: withPics };
         } catch {
           fail('bad-gateway', '豆瓣榜单不可达');
         }
