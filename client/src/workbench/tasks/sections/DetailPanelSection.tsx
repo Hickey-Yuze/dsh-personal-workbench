@@ -96,6 +96,13 @@ function DetailPanelComponent({
     setEditingKey(null);
   };
 
+  /** 截止时间：自绘选择器带值提交（不走 editValue state，避免闭包旧值） */
+  const commitDeadline = (finalValue: string) => {
+    if (!currentTask) return;
+    onSave?.({ ...currentTask, deadline: toDisplay(finalValue) });
+    setEditingKey(null);
+  };
+
   // 底部「编辑任务」按钮：只切换编辑态，界面布局保持不变，点击字段即可就地编辑
   const handleToggleEdit = () => {
     if (!currentTask) return;
@@ -256,9 +263,8 @@ function DetailPanelComponent({
                     </button>
                     <DeadlinePicker
                       value={editValue}
-                      onChange={(v) => setEditValue(v)}
-                      onDone={() => { handleFieldSave(); }}
-                      onClose={() => setEditingKey(null)}
+                      onCommit={(finalValue) => commitDeadline(finalValue)}
+                      onCancel={() => setEditingKey(null)}
                     />
                   </span>
                 ) : (
@@ -460,7 +466,7 @@ export default memo(DetailPanelComponent);
 
 const DP_PAD = (n: number) => String(n).padStart(2, '0');
 
-function DeadlinePicker({ value, onChange, onDone, onClose }: { value: string; onChange: (v: string) => void; onDone: () => void; onClose: () => void }) {
+function DeadlinePicker({ value, onCommit, onCancel }: { value: string; onCommit: (finalValue: string) => void; onCancel: () => void }) {
   const init = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value || '');
   const [y, setY] = useState(init ? Number(init[1]) : new Date().getFullYear());
   const [m, setM] = useState(init ? Number(init[2]) - 1 : new Date().getMonth());
@@ -478,15 +484,11 @@ function DeadlinePicker({ value, onChange, onDone, onClose }: { value: string; o
     });
   }, [y, m]);
 
-  const emit = (day: number) => {
-    setD(day);
-    onChange(`${y}-${DP_PAD(m + 1)}-${DP_PAD(day)}T${DP_PAD(hh)}:${DP_PAD(mm)}`);
-  };
+  const finalValue = (day: number, h: number, min: number) => `${y}-${DP_PAD(m + 1)}-${DP_PAD(day)}T${DP_PAD(h)}:${DP_PAD(min)}`;
+  const emit = (day: number) => setD(day);
   const emitTime = (nh: number, nm: number) => {
-    const H = ((nh % 24) + 24) % 24;
-    const M = ((nm % 60) + 60) % 60;
-    setHh(H); setMm(M);
-    if (d > 0) onChange(`${y}-${DP_PAD(m + 1)}-${DP_PAD(d)}T${DP_PAD(H)}:${DP_PAD(M)}`);
+    setHh(((nh % 24) + 24) % 24);
+    setMm(((nm % 60) + 60) % 60);
   };
 
   return (
@@ -507,6 +509,7 @@ function DeadlinePicker({ value, onChange, onDone, onClose }: { value: string; o
             key={c.iso}
             type="button"
             onClick={() => emit(c.day)}
+            title={c.iso}
             className={`grid h-6 place-items-center rounded text-[10px] tabular-nums transition-colors ${c.day === d && c.inMonth ? 'bg-primary font-semibold text-[var(--primary-foreground,#0c1d14)]' : c.iso === today ? 'bg-primary/15 font-semibold text-primary' : c.inMonth ? 'text-white/65 hover:bg-white/[0.08]' : 'text-white/25'}`}
           >
             {c.day}
@@ -526,9 +529,9 @@ function DeadlinePicker({ value, onChange, onDone, onClose }: { value: string; o
         </div>
       </div>
       <div className="mt-2 flex items-center gap-1.5">
-        <button type="button" className="flex-1 rounded-md bg-white/[0.06] py-1 text-[10px] text-white/60 hover:bg-white/[0.1]" onClick={() => { onChange(''); onDone(); }}>清除</button>
-        <button type="button" className="flex-1 rounded-md bg-primary py-1 text-[10px] font-semibold text-[var(--primary-foreground,#0c1d14)]" onClick={() => onDone()}>确定</button>
-        <button type="button" className="rounded-md px-2 py-1 text-[10px] text-white/40 hover:text-white" onClick={onClose}>取消</button>
+        <button type="button" className="flex-1 rounded-md bg-white/[0.06] py-1 text-[10px] text-white/60 hover:bg-white/[0.1]" onClick={() => onCommit('')}>清除</button>
+        <button type="button" className="flex-1 rounded-md bg-primary py-1 text-[10px] font-semibold text-[var(--primary-foreground,#0c1d14)]" onClick={() => onCommit(d > 0 ? finalValue(d, hh, mm) : value)}>确定</button>
+        <button type="button" className="rounded-md px-2 py-1 text-[10px] text-white/40 hover:text-white" onClick={onCancel}>取消</button>
       </div>
     </div>
   );
