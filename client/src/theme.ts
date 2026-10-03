@@ -704,6 +704,7 @@ const CSS = `
 .dsh-pwb-mu-mask { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); display: grid; place-items: center; z-index: 90; }
 .dsh-pwb-mu-dialog { width: min(420px, calc(100vw - 48px)); border-radius: 16px; border: 1px solid var(--pwb-border); background: var(--pwb-card); padding: 18px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.2); }
 .dsh-pwb-mu-dialog h4 { margin: 0; font-size: 14px; font-weight: 700; color: var(--pwb-text); }
+.dsh-pwb-mu-dialog * { box-sizing: border-box; }
 .dsh-pwb-mu-dialog textarea, .dsh-pwb-mu-dialog input {
   width: 100%; border-radius: 10px; border: 1px solid var(--pwb-border); background: var(--pwb-card-hi, #f2f3f5);
   color: var(--pwb-text); font-size: 12.5px; font-family: inherit; padding: 9px 11px; outline: none; resize: none;
