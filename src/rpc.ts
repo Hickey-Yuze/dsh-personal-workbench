@@ -212,13 +212,38 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         return { aqi: round1(cur.us_aqi), pm10: round1(cur.pm10), pm25: round1(cur.pm2_5) };
       }
 
-      // ── IP 定位兜底（geolocation 被宿主拒绝时用；ip-api.com 免费无 key，中文）──
+      // ── IP 定位兜底（geolocation 被宿主拒绝时用；三源顺序 fallback，任一成功即返回）──
       case 'personal-workbench/geo/ip': {
-        const res = await fetch('http://ip-api.com/json/?lang=zh-CN&fields=status,lat,lon,city,regionName');
-        if (!res.ok) fail('bad-gateway', '定位服务不可达');
-        const geo = (await res.json()) as { status?: string; lat?: number; lon?: number; city?: string; regionName?: string };
-        if (geo.status !== 'success' || typeof geo.lat !== 'number' || typeof geo.lon !== 'number') fail('bad-gateway', '定位失败');
-        return { lat: geo.lat, lon: geo.lon, city: [geo.regionName, geo.city].filter(Boolean).join(' ') };
+        const sources: Array<() => Promise<{ lat: number; lon: number; city: string } | null>> = [
+          async () => {
+            const r = await fetch('https://ipwho.is/', { headers: { 'user-agent': 'dsh-personal-workbench/1.0' } });
+            if (!r.ok) return null;
+            const g = (await r.json()) as { success?: boolean; city?: string; region?: string; latitude?: number; longitude?: number };
+            if (g.success !== true || typeof g.latitude !== 'number' || typeof g.longitude !== 'number') return null;
+            return { lat: g.latitude, lon: g.longitude, city: [g.region, g.city].filter(Boolean).join(' ') };
+          },
+          async () => {
+            const r = await fetch('http://ip-api.com/json/?lang=zh-CN&fields=status,lat,lon,city,regionName', { headers: { 'user-agent': 'dsh-personal-workbench/1.0' } });
+            if (!r.ok) return null;
+            const g = (await r.json()) as { status?: string; lat?: number; lon?: number; city?: string; regionName?: string };
+            if (g.status !== 'success' || typeof g.lat !== 'number' || typeof g.lon !== 'number') return null;
+            return { lat: g.lat, lon: g.lon, city: [g.regionName, g.city].filter(Boolean).join(' ') };
+          },
+          async () => {
+            const r = await fetch('https://ipapi.co/json/', { headers: { 'user-agent': 'dsh-personal-workbench/1.0' } });
+            if (!r.ok) return null;
+            const g = (await r.json()) as { latitude?: number; longitude?: number; city?: string; region?: string; error?: boolean };
+            if (g.error || typeof g.latitude !== 'number' || typeof g.longitude !== 'number') return null;
+            return { lat: g.latitude, lon: g.longitude, city: [g.region, g.city].filter(Boolean).join(' ') };
+          },
+        ];
+        for (const get of sources) {
+          try {
+            const v = await get();
+            if (v) return v;
+          } catch { /* 单源失败继续下一源 */ }
+        }
+        fail('bad-gateway', '定位源均不可达');
       }
 
       // ── 法定节假日（外联代理：国务院安排镜像 holiday-cn 走 jsdelivr，timor 兜底）──

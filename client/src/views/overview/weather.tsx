@@ -121,7 +121,7 @@ export function WeatherWidget({ rpc }: { rpc: RpcFn }) {
           void fetchByCoords(pos.coords.latitude, pos.coords.longitude).catch(() => void tryIp('精确定位后获取天气失败')).finally(() => setLoading(false));
         },
         (err) => { void tryIp(err.code === err.PERMISSION_DENIED ? '定位权限被拒' : '精确定位失败'); },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 5 * 60_000 },
+        { enableHighAccuracy: true, timeout: 4000, maximumAge: 5 * 60_000 },
       );
     } else {
       void tryIp('当前环境不支持定位');
