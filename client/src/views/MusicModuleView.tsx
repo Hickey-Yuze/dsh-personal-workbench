@@ -12,7 +12,7 @@ import type { CSSProperties, ReactElement } from 'react';
 import {
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Heart,
   ListMusic, Music, Plus, Trash2, Search, Loader2, Download, Volume2, VolumeX,
-  Maximize2, X, ListEnd, Disc3, Pencil, Import,
+  Maximize2, X, ListEnd, Disc3, Pencil, Import, ChevronDown,
 } from 'lucide-react';
 import type { RpcFn } from '../rpc.js';
 
@@ -610,7 +610,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
         <div className="dsh-pwb-mu-fs">
           {current?.coverUrl !== undefined ? <div className="dsh-pwb-mu-fs-bg" style={{ backgroundImage: `url(${current.coverUrl})` }} /> : null}
           <div className="dsh-pwb-mu-fs-shade" />
-          <button type="button" className="dsh-pwb-mu-fs-cbtn dsh-pwb-mu-fs-close" title="关闭" onClick={() => setShowFull(false)}><X className="size-5" /></button>
+          <button type="button" className="dsh-pwb-mu-fs-collapse" title="收起" onClick={() => setShowFull(false)}><ChevronDown className="size-5" /></button>
           <div className="dsh-pwb-mu-fs-tag">正在播放</div>
           <div className="dsh-pwb-mu-fs-stage">
             <div className="dsh-pwb-mu-fs-left">
