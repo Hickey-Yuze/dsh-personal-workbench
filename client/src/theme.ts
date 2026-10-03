@@ -708,6 +708,8 @@ const CSS = `
   width: 100%; border-radius: 10px; border: 1px solid var(--pwb-border); background: var(--pwb-card-hi, #f2f3f5);
   color: var(--pwb-text); font-size: 12.5px; font-family: inherit; padding: 9px 11px; outline: none; resize: none;
 }
+.dsh-pwb-mu-dialog textarea { scrollbar-width: none; }
+.dsh-pwb-mu-dialog textarea::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .dsh-pwb-mu-dialog textarea:focus, .dsh-pwb-mu-dialog input:focus { border-color: color-mix(in srgb, var(--pwb-accent) 50%, transparent); }
 .dsh-pwb-mu-dialog-row { display: flex; gap: 8px; justify-content: flex-end; }
 .dsh-pwb-mu-hint { font-size: 11px; color: var(--pwb-dimmer, #9aa0a6); line-height: 1.7; }

@@ -667,7 +667,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
         <div className="dsh-pwb-mu-mask" onClick={() => { if (!importing) setShowImport(false); }}>
           <div className="dsh-pwb-mu-dialog" onClick={(e) => e.stopPropagation()}>
             <h4>导入歌单</h4>
-            <textarea rows={3} value={importLink} onChange={(e) => setImportLink(e.target.value)} placeholder="粘贴歌单分享链接" style={{ overflowY: 'auto' }} />
+            <textarea rows={4} value={importLink} onChange={(e) => setImportLink(e.target.value)} placeholder="粘贴歌单分享链接" style={{ overflowY: 'auto' }} />
             <div className="dsh-pwb-mu-hint">网易云/QQ/酷狗歌单按歌名自动匹配酷我曲库；酷我/波点歌单直接导入可播放歌曲。解析经 Host 代理，可能需要十几秒。</div>
             {importMsg !== '' ? <div className="dsh-pwb-mu-hint" style={{ color: 'var(--pwb-accent)' }}>{importMsg}</div> : null}
             <div className="dsh-pwb-mu-dialog-row">
