@@ -767,7 +767,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
           <div className="dsh-pwb-mu-fs-tag">正在播放</div>
           <div className="dsh-pwb-mu-fs-stage">
             <div className="dsh-pwb-mu-fs-left">
-              <div className="dsh-pwb-mu-fs-disc">
+              <div className="dsh-pwb-mu-fs-disc" style={{ borderRadius: "50%", aspectRatio: "1 / 1", width: 340, height: "auto" }}>
                 {current?.coverUrl ? <img src={current.coverUrl} alt="" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : <span className="dsh-pwb-mu-fs-disc-dummy"><Disc3 className="size-9" /></span>}
                 <i />
               </div>
