@@ -110,6 +110,7 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
   }, []);
 
   // 本月实际计薪工作日数：每天按「日历标记优先 + 作息兜底」判定（与当天口径一致），标记一变分摊实时变
+  const holidaysNow = useMemo(() => ({ ...holidays, ...getManualHolidays() }), [holidays]);
   const monthWorkdays = useMemo(() => {
     const y = now.getFullYear();
     const m = now.getMonth();
@@ -125,7 +126,6 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
   const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
   const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   // 生效表：手动标记最高优先级（保存即落 localStorage，这里每次重算都并入，确保标班/标休立刻生效）
-  const holidaysNow = useMemo(() => ({ ...holidays, ...getManualHolidays() }), [holidays]);
   const holiday = holidaysNow[todayIso];
   const working = isWorkday(now, config.schedule, holidaysNow);
   // 口径：日历标记优先（班=上班累计 / 休=不上班），未标记的日期按作息判断 —— 所见即所得
