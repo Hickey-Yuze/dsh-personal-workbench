@@ -76,7 +76,8 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
   const jump = (idx: number) => setStack((s) => s.slice(0, idx + 1));
 
   return (
-    <div className="dsh-pwb-view">
+    // dsh-pwb-dark：Tailwind 工具类被构建作用域化为 .dsh-pwb-dark 前缀，根容器必须挂上才生效
+    <div className="dsh-pwb-dark dsh-pwb-view">
       <div className="dsh-pwb-toolbar">
         <span className="grid size-7 place-items-center rounded-lg bg-primary/15 text-primary"><Archive className="size-4" /></span>
         <span className="text-sm font-semibold text-white">主目录</span>
