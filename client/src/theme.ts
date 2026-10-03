@@ -185,6 +185,10 @@ const CSS = `
 .dsh-pwb-input-time { width: 104px; }
 .dsh-pwb-input-mid { width: 152px; }
 .dsh-pwb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   height: 32px;
   padding: 0 13px;
   border-radius: 9px;
@@ -196,7 +200,9 @@ const CSS = `
   font-family: inherit;
   cursor: pointer;
   white-space: nowrap;
+  vertical-align: middle;
 }
+.dsh-pwb-btn svg { display: block; flex-shrink: 0; }
 .dsh-pwb-btn:hover { background: var(--pwb-card-hi); border-color: var(--pwb-border-hi); }
 .dsh-pwb-btn-primary { border-color: transparent; background: #00d26a; color: #04160c; }
 .dsh-pwb-btn-primary:hover { filter: brightness(1.06); background: #00d26a; }
