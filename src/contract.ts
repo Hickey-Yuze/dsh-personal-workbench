@@ -61,6 +61,7 @@ export interface PersonalWorkbenchRequestMap {
   'personal-workbench/fs/list': { path?: string; root?: string };
   'personal-workbench/fs/roots/list': Record<string, never>;
   'personal-workbench/music/search': { q: string; page?: number; proxy?: string };
+  'personal-workbench/music/singer': { name: string };
   'personal-workbench/music/source': { id: string; quality?: string };
   'personal-workbench/music/discover': Record<string, never>;
   'personal-workbench/video/search': { q: string };
@@ -101,6 +102,7 @@ export interface PersonalWorkbenchResponseMap {
   'personal-workbench/fs/list': { entries: Array<{ name: string; path: string; kind: 'dir' | 'file' }>; root: string };
   'personal-workbench/fs/roots/list': { roots: string[]; home: string };
   'personal-workbench/music/search': { songs: Array<{ id: string; title: string; artist: string; album: string; duration: number; audioUrl: string; coverUrl?: string }>; isEnd: boolean; total: number };
+  'personal-workbench/music/singer': { name: string; songs: Array<{ id: string; title: string; artist: string; album: string; duration: number; audioUrl: string; coverUrl?: string }> };
   'personal-workbench/music/source': { url: string };
   'personal-workbench/music/discover': { hot: Array<{ id: string; title: string; artist: string; album: string; duration: number; coverUrl?: string | undefined }>; douyin: Array<{ id: string; title: string; artist: string; album: string; duration: number; coverUrl?: string | undefined }>; singers: Array<{ name: string; coverUrl: string | undefined; sample: { id: string; title: string; artist: string } | null }> };
   'personal-workbench/video/search': { items: VideoBrief[] };

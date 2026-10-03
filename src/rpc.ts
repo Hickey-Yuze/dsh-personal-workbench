@@ -109,6 +109,8 @@ type MusicDiscoverItem = { id: string; title: string; artist: string; album: str
 type MusicDiscover = { hot: MusicDiscoverItem[]; douyin: MusicDiscoverItem[]; singers: Array<{ name: string; coverUrl: string | undefined; sample: { id: string; title: string; artist: string } | null }> };
 let discoverCache: MusicDiscover | null = null;
 let discoverCacheAt = 0;
+/** 歌手热门曲目缓存（30 分钟，按歌手名分键）。 */
+const singerCache = new Map<string, { at: number; data: { name: string; songs: Array<{ id: string; title: string; artist: string; album: string; duration: number; audioUrl: string; coverUrl?: string }> } }>();
 
 /* ── 影视源：磁力猫橘汁片库（CF adapter 本地索引 + SCF 详情直连） ── */
 const VIDEO_CF = 'https://yuze-yingshi-jiekou.pages.dev/api/yuze';

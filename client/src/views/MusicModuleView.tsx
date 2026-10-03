@@ -12,7 +12,7 @@ import type { CSSProperties, ReactElement } from 'react';
 import {
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Heart,
   ListMusic, Music, Plus, Trash2, Search, Loader2, Download, Volume2, VolumeX,
-  Maximize2, X, ListEnd, Disc3, Pencil, Import, ChevronDown, Home,
+  Maximize2, X, ListEnd, Disc3, Pencil, Import, ChevronDown, Home, ChevronLeft,
 } from 'lucide-react';
 import type { RpcFn } from '../rpc.js';
 
@@ -20,7 +20,7 @@ interface Song { id: string; title: string; artist: string; album: string; durat
 interface Playlist { id: string; name: string; songs: Song[] }
 interface LyricLine { time: number; text: string }
 type QualityLevel = '128k' | '320k' | 'flac';
-type Route = { page: 'discover' } | { page: 'search' } | { page: 'favorites' } | { page: 'history' } | { page: 'playlist'; id: string };
+type Route = { page: 'discover' } | { page: 'singer'; name: string; coverUrl?: string | undefined } | { page: 'search' } | { page: 'favorites' } | { page: 'history' } | { page: 'playlist'; id: string };
 
 const PLAYLISTS_KEY = 'dsh-pwb:music_playlists_v3';
 const QUALITY_KEY = 'dsh-pwb:music_quality_v1';
@@ -83,6 +83,8 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
   // 发现页数据（Host 端点打包三板块；30 分钟内存缓存，前端仅存 state）
   const [discover, setDiscover] = useState<{ hot: Song[]; douyin: Song[]; singers: Array<{ name: string; coverUrl?: string; sample: { id: string; title: string; artist: string } | null }> } | null>(null);
   const [discoverLoading, setDiscoverLoading] = useState(false);
+  const [singerData, setSingerData] = useState<{ name: string; songs: Song[] } | null>(null);
+  const [singerLoading, setSingerLoading] = useState(false);
   const [onlineLoading, setOnlineLoading] = useState(false);
   const [onlinePage, setOnlinePage] = useState(1);
   const [onlineIsEnd, setOnlineIsEnd] = useState(true);
@@ -369,7 +371,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
   }, [importLink, playlists, rpc, savePlaylists]);
 
   const exportCurrent = useCallback((): void => {
-    const list = route.page === 'search' ? onlineResults : route.page === 'favorites' ? lovedSongs : route.page === 'history' ? recentSongs : route.page === 'discover' ? gSession.list : playlists.find((p) => p.id === route.id)?.songs ?? [];
+    const list = route.page === 'search' ? onlineResults : route.page === 'favorites' ? lovedSongs : route.page === 'history' ? recentSongs : route.page === 'discover' ? gSession.list : playlists.find((p) => p.id === (route.page === 'playlist' ? route.id : ''))?.songs ?? [];
     if (list.length === 0) return;
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([list.map((s) => `${s.title} - ${s.artist}`).join('\n')], { type: 'text/plain;charset=utf-8' }));
@@ -438,6 +440,23 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 歌手页取数（酷我 30 首，Host 缓存 30 分钟）
+  useEffect(() => {
+    if (route.page !== 'singer') return;
+    const name = route.name;
+    if (singerData?.name === name) return;
+    let disposed = false;
+    setSingerLoading(true);
+    void Promise.resolve(rpc('personal-workbench/music/singer', { name })).then((out) => {
+      if (disposed) return;
+      const v = (out?.value ?? null) as { name: string; songs: Song[] } | null;
+      if (v !== null && Array.isArray(v.songs)) setSingerData({ name: v.name, songs: v.songs });
+      setSingerLoading(false);
+    }).catch(() => { if (!disposed) setSingerLoading(false); });
+    return () => { disposed = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.page, route.page === 'singer' ? route.name : '']);
+
   const renderPage = (): ReactElement => {
     if (route.page === 'discover') {
       const dvCards = (title: string, songs: Song[], label: string) => (
@@ -472,7 +491,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
               <div className="dsh-pwb-mu-dv-row">
                 {list.map((sg) => (
                   <button key={sg.name} type="button" className="dsh-pwb-mu-dv-card" title={`搜索 ${sg.name}`}
-                    onClick={() => { setOnlineQuery(sg.name); setTimeout(() => { doSearch(1, false); }, 0); }}>
+                    onClick={() => { setRoute({ page: 'singer', name: sg.name, coverUrl: sg.coverUrl }); gSession.route = { page: 'singer', name: sg.name, coverUrl: sg.coverUrl }; }}>
                     {sg.coverUrl !== undefined && sg.coverUrl !== '' ? (
                       <img src={sg.coverUrl} alt="" loading="lazy" />
                     ) : <span className="dsh-pwb-mu-dv-dummy"><Music className="size-6" /></span>}
@@ -493,6 +512,43 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
           {dvCards('热门推荐', discover?.hot ?? [], '发现·热门推荐')}
           {dvCards('抖音推荐', discover?.douyin ?? [], '发现·抖音推荐')}
         </div>
+      );
+    }
+    if (route.page === 'singer') {
+      const songs = singerData?.songs ?? [];
+      const cover = route.coverUrl;
+      return (
+        <>
+          <button type="button" className="dsh-pwb-mu-btn" style={{ alignSelf: 'flex-start' }} onClick={() => { setRoute({ page: 'discover' }); gSession.route = { page: 'discover' }; }}>
+            <ChevronLeft className="size-4" /> 返回
+          </button>
+          <div className="dsh-pwb-mu-sg-head">
+            {cover !== undefined && cover !== '' ? <img className="dsh-pwb-mu-sg-avatar" src={cover} alt="" /> : <span className="dsh-pwb-mu-sg-avatar dsh-pwb-mu-sg-dummy"><Music className="size-8" /></span>}
+            <div className="dsh-pwb-mu-sg-meta">
+              <i className="dsh-pwb-mu-sg-badge">酷我</i>
+              <h1>{route.name}</h1>
+              <span>{singerLoading && singerData === null ? '加载中…' : `${songs.length} 首歌曲`}</span>
+            </div>
+          </div>
+          <div className="dsh-pwb-mu-sg-acts">
+            <button type="button" className="dsh-pwb-mu-sg-playall" disabled={songs.length === 0}
+              onClick={() => { const first = songs[0]; if (first !== undefined) playSong(first, songs, `歌手·${route.name}`); }}>
+              <Play className="size-4" /> 播放全部
+            </button>
+            <button type="button" className="dsh-pwb-mu-btn" disabled={songs.length === 0}
+              onClick={() => {
+                const pl: Playlist = { id: `pl_${Date.now()}`, name: `${route.name}·热门${songs.length}首`, songs };
+                savePlaylists([...playlists, pl]);
+                setRoute({ page: 'playlist', id: pl.id }); gSession.route = { page: 'playlist', id: pl.id };
+              }}>
+              <Plus className="size-4" /> 保存到歌单
+            </button>
+          </div>
+          {songs.map((song, i) => (
+            <SongRow key={`${song.id}-${i}`} song={song} idx={i + 1} now={current?.id === song.id} playing={isPlaying} loved={isLoved(song)}
+              onPlay={() => playSong(song, songs, `歌手·${route.name}`)} onLove={() => toggleLove(song)} />
+          ))}
+        </>
       );
     }
     if (route.page === 'search') {
