@@ -29,7 +29,7 @@ const zh: Record<string, string> = {
   'mod.daily.desc': '月历日程与当天清单',
   'mod.music.label': 'Yuze 音乐平台',
   'mod.music.desc': '',
-  'mod.film.label': '影视平台',
+  'mod.film.label': 'Yuze 影视平台',
   'mod.film.desc': '影片检索与播放',
   'mod.entertainment.label': '娱乐平台',
   'mod.entertainment.desc': '摸鱼小工具',
@@ -37,6 +37,9 @@ const zh: Record<string, string> = {
   'mod.knowledge.desc': '浏览与搜索本机 Obsidian 笔记',
 
   'pending.archive': '文件归档需要选定归档根目录（本机路径）。等你确认要浏览哪个目录，我接上 Host 侧的文件读取。',
+  'mod.wip.label': '开发中…',
+  'mod.wip.desc': '更多模块，敬请期待',
+  'pending.wip': '这个模块正在开发中，敬请期待。',
   'pending.media': '音乐与影视需要内容源。你现在用的是自己的接口（pages.dev / 酷我解析等）——这些算外部服务，按你「不要外链」的要求需要先确认是否允许调用。',
   'pending.fun': '娱乐平台打算做几个纯本地的小工具（无网络请求）。告诉我你想要哪几个，我直接做。',
 
@@ -154,7 +157,7 @@ const en: Record<string, string> = {
   'mod.daily.desc': 'Month calendar and daily agenda',
   'mod.music.label': 'Music',
   'mod.music.desc': 'Search and play',
-  'mod.film.label': 'Films',
+  'mod.film.label': 'Yuze Films',
   'mod.film.desc': 'Find and play videos',
   'mod.entertainment.label': 'Fun',
   'mod.entertainment.desc': 'Small offline toys',
@@ -162,6 +165,9 @@ const en: Record<string, string> = {
   'mod.knowledge.desc': 'Browse and search local Obsidian notes',
 
   'pending.archive': 'File archive needs an archive root directory on this machine.',
+  'mod.wip.label': 'In Progress…',
+  'mod.wip.desc': 'More modules coming soon',
+  'pending.wip': 'This module is under development. Stay tuned.',
   'pending.media': 'Music and films need a content source. Yours currently point at external services.',
   'pending.fun': 'Fun module will host small fully-offline tools. Tell me which ones you want.',
 

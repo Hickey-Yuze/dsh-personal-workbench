@@ -71,6 +71,13 @@ export const MODULES: ModuleDef[] = [
     ready: true,
     icon: 'M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4Zm3 0v16M11 8h5M11 11.5h5',
   },
+  {
+    id: 'wip',
+    accent: '#94A3B8',
+    ready: false,
+    pendingKey: 'pending.wip',
+    icon: 'M14.7 6.3a4.5 4.5 0 0 0-6.4 6.4L3 18l3 3 5.3-5.3a4.5 4.5 0 0 0 6.4-6.4l-3.2 3.2-2.8-2.8 3.2-3.2Z',
+  },
 ];
 
 export function moduleById(id: string): ModuleDef | undefined {
