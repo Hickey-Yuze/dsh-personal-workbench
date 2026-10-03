@@ -618,7 +618,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
       <div className="dsh-pwb-mu-bar">
         <div className="dsh-pwb-mu-bar-song" title="打开全屏播放" onClick={() => setShowFull(true)}>
           <span className="dsh-pwb-mu-cover">
-            {current?.coverUrl !== undefined ? <img src={current.coverUrl} alt="" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : <Disc3 className="size-5" />}
+            {current?.coverUrl ? <img src={current.coverUrl} alt="" onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} /> : <Disc3 className="size-5" />}
           </span>
           <span className="dsh-pwb-mu-meta">
             <b>{current?.title ?? '未在播放'}</b>
@@ -700,14 +700,14 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
       {/* 全屏播放器（图二形态：封面模糊背景+黑胶+歌词+底部控制） */}
       {showFull ? (
         <div className="dsh-pwb-mu-fs">
-          {current?.coverUrl !== undefined ? <div className="dsh-pwb-mu-fs-bg" style={{ backgroundImage: `url(${current.coverUrl})` }} /> : null}
+          {current?.coverUrl ? <div className="dsh-pwb-mu-fs-bg" style={{ backgroundImage: `url(${current.coverUrl})` }} /> : null}
           <div className="dsh-pwb-mu-fs-shade" />
           <button type="button" className="dsh-pwb-mu-fs-collapse" title="收起" onClick={() => setShowFull(false)}><ChevronDown className="size-5" /></button>
           <div className="dsh-pwb-mu-fs-tag">正在播放</div>
           <div className="dsh-pwb-mu-fs-stage">
             <div className="dsh-pwb-mu-fs-left">
               <div className="dsh-pwb-mu-fs-disc">
-                {current?.coverUrl !== undefined ? <img src={current.coverUrl} alt="" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : <span className="dsh-pwb-mu-fs-disc-dummy"><Disc3 className="size-9" /></span>}
+                {current?.coverUrl ? <img src={current.coverUrl} alt="" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : <span className="dsh-pwb-mu-fs-disc-dummy"><Disc3 className="size-9" /></span>}
                 <i />
               </div>
             </div>
@@ -838,7 +838,7 @@ function SongRow({ song, idx, now, playing, loved, onPlay, onLove, onRemove }: {
     <div className={`dsh-pwb-mu-row${now ? ' dsh-pwb-mu-row-now' : ''}`} onClick={onPlay}>
       {idx !== undefined ? <span className="dsh-pwb-mu-rowidx">{now && playing ? '♪' : idx}</span> : null}
       <span className="dsh-pwb-mu-cover">
-        {song.coverUrl !== undefined ? <img src={song.coverUrl} alt="" loading="lazy" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : <Music className="size-4" />}
+        {song.coverUrl ? <img src={song.coverUrl} alt="" loading="lazy" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : <Music className="size-4" />}
       </span>
       <span className="dsh-pwb-mu-meta">
         <b>{song.title}</b>
