@@ -768,6 +768,9 @@ const CSS = `
 .dsh-pwb-vd-search:focus { border-color: color-mix(in srgb, var(--pwb-accent) 50%, transparent); }
 .dsh-pwb-vd-searchbtn { height: 38px; padding: 0 18px; border-radius: 19px; border: none; background: var(--pwb-accent); color: color-mix(in srgb, var(--pwb-accent) 12%, black); font-size: 13px; font-weight: 650; font-family: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
 .dsh-pwb-vd-searchbtn:disabled { opacity: .55; cursor: default; }
+/* 加载旋转（Loader2 通用类；keyframes 用自有名避免与 tailwind layer 内 spin 冲突） */
+.spin { animation: dsh-pwb-spin 0.9s linear infinite; }
+@keyframes dsh-pwb-spin { to { transform: rotate(360deg); } }
 .dsh-pwb-vd-page { flex: 1; min-height: 0; overflow-y: auto; }
 .dsh-pwb-vd-dv { padding: 18px 24px 30px; max-width: 1040px; margin: 0 auto; }
 .dsh-pwb-vd-block { margin-bottom: 26px; }
