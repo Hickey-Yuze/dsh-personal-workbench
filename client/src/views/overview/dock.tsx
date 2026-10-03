@@ -7,7 +7,7 @@
  */
 // @ts-nocheck —— 移植自 Yuze Workbench（原项目自带类型检查），此处不重复校验
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutGrid, Plus, Trash2, X } from 'lucide-react';
 import type { RpcFn } from '../../rpc.js';
 import { API_PREFIX } from '../../rpc.js';
@@ -46,16 +46,29 @@ function loadCustom(): DockItem[] {
   } catch { /* ignore */ }
   return [];
 }
+const HIDDEN_KEY = 'overview_dock_hidden_v1';
+const ORDER_KEY = 'overview_dock_order_v1';
+const loadList = (key: string): string[] => {
+  try {
+    const raw = localStorage.getItem(`dsh-pwb:${key}`);
+    return raw ? (JSON.parse(raw) as string[]) : [];
+  } catch { return []; }
+};
 
 export function DockWidget({ rpc }: { rpc: RpcFn }) {
   const [apps, setApps] = useState<string[]>([]);
   const [custom, setCustom] = useState<DockItem[]>(loadCustom);
+  const [hidden, setHidden] = useState<string[]>(() => loadList(HIDDEN_KEY));
+  const [order, setOrder] = useState<string[]>(() => loadList(ORDER_KEY));
+  const dragIdx = useRef<number | null>(null);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [running, setRunning] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => { localStorage.setItem(`dsh-pwb:${DOCK_KEY}`, JSON.stringify(custom)); }, [custom]);
+  useEffect(() => { localStorage.setItem(`dsh-pwb:${HIDDEN_KEY}`, JSON.stringify(hidden)); }, [hidden]);
+  useEffect(() => { localStorage.setItem(`dsh-pwb:${ORDER_KEY}`, JSON.stringify(order)); }, [order]);
 
   useEffect(() => {
     let alive = true;
@@ -72,6 +85,11 @@ export function DockWidget({ rpc }: { rpc: RpcFn }) {
     return () => { alive = false; };
   }, [rpc]);
 
+  const removeItem = (label: string) => {
+    if (custom.some((c) => c.label === label)) setCustom((c) => c.filter((x) => x.label !== label));
+    else setHidden((h) => [...h, label]);
+  };
+
   const launch = useCallback(async (label: string) => {
     setRunning(label);
     setError('');
@@ -85,10 +103,22 @@ export function DockWidget({ rpc }: { rpc: RpcFn }) {
     }
   }, [rpc]);
 
-  const items: DockItem[] = [
-    ...apps.map((a) => ({ label: a, path: a })),
-    ...custom.filter((c) => !apps.some((a) => a === c.label)),
-  ].slice(0, 80);
+  const items: DockItem[] = useMemo(() => {
+    const all = [
+      ...apps.map((a) => ({ label: a, path: a })),
+      ...custom.filter((c) => !apps.some((a) => a === c.label)),
+    ].filter((x) => !hidden.includes(x.label));
+    // 拖拽顺序持久化：order 里的按下标排前面，新项排尾部
+    all.sort((a, b) => {
+      const ia = order.indexOf(a.label);
+      const ib = order.indexOf(b.label);
+      if (ia === -1 && ib === -1) return 0;
+      if (ia === -1) return 1;
+      if (ib === -1) return -1;
+      return ia - ib;
+    });
+    return all.slice(0, 80);
+  }, [apps, custom, hidden, order]);
   const shown = items;
 
   return (
@@ -114,7 +144,12 @@ export function DockWidget({ rpc }: { rpc: RpcFn }) {
             placeholder="输入 /Applications 里的应用名…"
             className="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-white/[0.05] px-2.5 py-1.5 text-xs text-white outline-none placeholder:text-white/30"
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && name.trim()) { setCustom((c) => [...c, { label: name.trim(), path: name.trim() }]); setName(''); }
+              if (e.key === 'Enter' && name.trim()) {
+                const label = name.trim();
+                setHidden((h) => h.filter((x) => x !== label));
+                setCustom((c) => (c.some((x) => x.label === label) ? c : [...c, { label, path: label }]));
+                setName('');
+              }
             }}
           />
           <button
@@ -129,12 +164,29 @@ export function DockWidget({ rpc }: { rpc: RpcFn }) {
 
       <div className="grid flex-1 grid-cols-4 content-start gap-2 overflow-y-auto p-4 pt-3">
         {shown.length === 0 && <div className="col-span-4 grid place-items-center py-6 text-xs text-white/30">正在读取本机应用列表…（需重启宿主后生效）</div>}
-        {shown.map((it) => (
-          <div key={it.label} className="group relative">
+        {shown.map((it, idx) => (
+          <div
+            key={it.label}
+            className="group relative"
+            draggable
+            onDragStart={(e) => { dragIdx.current = idx; e.dataTransfer.effectAllowed = 'move'; }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              const from = dragIdx.current;
+              dragIdx.current = null;
+              if (from === null || from === idx) return;
+              const next = [...shown];
+              const [moved] = next.splice(from, 1);
+              next.splice(idx, 0, moved);
+              setOrder(next.map((x) => x.label));
+            }}
+            onDragEnd={() => { dragIdx.current = null; }}
+          >
             <button
               className="flex w-full flex-col items-center gap-1.5 rounded-xl p-2 transition-colors hover:bg-white/[0.05]"
               onClick={() => void launch(it.label)}
-              title={`启动 ${it.label}`}
+              title={`启动 ${it.label}（拖动可换位置）`}
             >
               <span className="grid size-11 place-items-center rounded-xl">
                 <AppIcon label={it.label} />
@@ -143,8 +195,8 @@ export function DockWidget({ rpc }: { rpc: RpcFn }) {
             </button>
             <button
               className="absolute right-0.5 top-0.5 hidden size-5 place-items-center rounded-md bg-white/[0.08] text-white/50 hover:text-red-400 group-hover:grid"
-              onClick={() => setCustom((c) => c.filter((x) => x.label !== it.label))}
-              title="从启动器移除"
+              onClick={() => removeItem(it.label)}
+              title="从启动器移除（隐藏，添加同名可恢复）"
             >
               <Trash2 className="size-3" />
             </button>
