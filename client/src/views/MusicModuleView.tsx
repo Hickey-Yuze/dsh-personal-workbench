@@ -170,7 +170,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
       }
       if (gSession.songId !== song.id) return;
       audio.src = url;
-      audio.play().catch(() => setErr('播放被浏览器拦截或地址失效，再点一次试试'));
+      audio.play().catch(() => { /* src 加载失败由 error 事件(onErr)统一降级/报错 */ });
     })();
     // 最近播放前插
     setPlaylists((prev) => {
@@ -223,7 +223,30 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     const onEnd = (): void => handleNext(true);
     const onPlay = (): void => { gSession.isPlaying = true; setIsPlaying(true); };
     const onPause = (): void => { gSession.isPlaying = false; setIsPlaying(false); };
-    const onErr = (): void => { if (audio.src !== '') setErr('当前歌曲播放失败，试试下一首或换音质'); };
+    const onErr = (): void => {
+      if (audio.src === '') return;
+      const q = gSession.quality;
+      if (q === 'flac' || q === '320k') {
+        const next: QualityLevel = q === 'flac' ? '320k' : '128k';
+        gSession.quality = next;
+        try { localStorage.setItem(QUALITY_KEY, next); } catch { /* 忽略 */ }
+        setQuality(next);
+        setErr(next === '320k' ? '无损音源不可用，已自动切换 320K' : '320K 音源不可用，已切换标准音质');
+        void (async () => {
+          let url = kuwoPlayUrl(gSession.songId ?? '', QUALITY_MAP[next]);
+          const out = await rpc('personal-workbench/music/source', { id: gSession.songId ?? '', quality: next });
+          if (out?.ok) {
+            const d = (out.value as { url?: string }).url;
+            if (typeof d === 'string' && d.startsWith('http')) url = d;
+          }
+          if (gSession.songId === null) return;
+          audio.src = url;
+          audio.play().catch(() => { /* 最终失败交给下一次 onErr 报错 */ });
+        })();
+      } else {
+        setErr('当前歌曲播放失败，试试下一首或换音质');
+      }
+    };
     audio.addEventListener('timeupdate', onTime);
     audio.addEventListener('loadedmetadata', onDur);
     audio.addEventListener('ended', onEnd);
