@@ -42,7 +42,9 @@ export function KnowledgeView({ rpc }: { rpc: RpcFn }): ReactElement {
 
   useEffect(() => {
     void loadDir('');
-  }, [loadDir]);
+    // 进入模块加载一次；loadDir 引用已随 kb 稳定，无需纳入依赖
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const openNote = async (path: string): Promise<void> => {
     setBusy(true);
