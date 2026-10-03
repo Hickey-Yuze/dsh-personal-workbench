@@ -137,7 +137,7 @@ export function WorkbenchPanel({ rpc }: WorkbenchPanelProps): ReactElement {
           <div className="dsh-pwb-head">
             <div className="dsh-pwb-head-main">
               <div className="dsh-pwb-title-row">
-                <span className="dsh-pwb-title" style={current !== undefined && current.id === 'music' ? { color: '#34a853', fontWeight: 800 } : undefined}>
+                <span className="dsh-pwb-title">
                   {current === undefined ? t('panel.title') : t(`mod.${current.id}.label`)}
                 </span>
               </div>
