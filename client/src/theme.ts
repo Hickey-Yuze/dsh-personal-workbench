@@ -689,6 +689,8 @@ const CSS = `
 .dsh-pwb-mu-fs-lyric:hover { color: rgba(255, 255, 255, 0.85); }
 .dsh-pwb-mu-fs-lyric.dsh-pwb-mu-now { font-size: 17px; font-weight: 700; color: var(--pwb-accent, #34c759); }
 .dsh-pwb-mu-fs-lyric-empty { text-align: center; color: rgba(255, 255, 255, 0.4); font-size: 13px; padding: 40px 0; }
+.dsh-pwb-mu-fs-lrc-retry { display: inline-block; margin: 14px auto 0; padding: 7px 18px; border: 1px solid rgba(255,255,255,0.28); border-radius: 16px; background: transparent; color: rgba(255,255,255,0.72); font-size: 12.5px; font-family: inherit; cursor: pointer; }
+.dsh-pwb-mu-fs-lrc-retry:hover { color: #fff; border-color: rgba(255,255,255,0.55); background: rgba(255,255,255,0.06); }
 /* 底部：歌名/歌手/进度/控制 */
 .dsh-pwb-mu-fs-bottom { position: relative; width: min(700px, 90%); margin: 0 auto 34px; text-align: center; padding: 6px 0 22px; }
 .dsh-pwb-mu-fs-bottom h2 { margin: 0; font-size: 23px; font-weight: 800; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -792,7 +792,18 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
                     {line.text}
                   </div>
                 ))}
-                {lyrics.length === 0 ? <div className="dsh-pwb-mu-fs-lyric-empty">{lyricsLoading ? '正在加载歌词…' : '暂无歌词'}</div> : null}
+                {lyrics.length === 0 ? (
+                  <div className="dsh-pwb-mu-fs-lyric-empty">
+                    {lyricsLoading ? '正在加载歌词…' : (
+                      <>
+                        暂无歌词
+                        {current !== null ? (
+                          <button type="button" className="dsh-pwb-mu-fs-lrc-retry" onClick={() => loadLyrics(current)}>↻ 重新搜索歌词</button>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
