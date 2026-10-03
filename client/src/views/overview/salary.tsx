@@ -155,23 +155,26 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
     setEditing(true);
   };
 
-  // 点日期三态循环：休 → 班 → 无（覆盖自动数据）→ 休 —— 「无」是显式状态，压掉国务院安排
+  /** 手动表落盘 + 即时生效（不等保存按钮，点日历立刻反映到时薪/日历卡） */
+  const applyManual = (m: Record<string, HolidayEntry>) => {
+    setManualMap(m);
+    const text = Object.values(m).map((h) => `${h.date} ${h.holiday === null ? '无' : h.holiday ? '休' : '班'}`).sort().join('\n');
+    setHolidays((h) => ({ ...h, ...saveManualHolidays(text) }));
+    window.dispatchEvent(new CustomEvent('dsh-pwb-holidays-changed'));
+  };
+
+  // 点日期三态循环：休 → 班 → 无（覆盖自动数据）→ 休 —— 即点即存，所见即所得
   const toggleDay = (date: string) => {
     const shown = manualMap[date] ?? holidays[date];
     const cur = shown ? (shown.holiday === null ? '无' : shown.holiday ? '休' : '班') : '无';
     const next = cur === '休' ? '班' : cur === '班' ? '无' : '休';
-    setManualMap((m) => {
-      const n = { ...m };
-      n[date] = { holiday: next === '休' ? true : next === '班' ? false : null, name: next === '休' ? '手动节假日' : next === '班' ? '调休上班' : '手动覆盖为无', date };
-      return n;
-    });
+    const n = { ...manualMap };
+    n[date] = { holiday: next === '休' ? true : next === '班' ? false : null, name: next === '休' ? '手动节假日' : next === '班' ? '调休上班' : '手动覆盖为无', date };
+    applyManual(n);
   };
 
   const saveEditor = () => {
-    const text = Object.values(manualMap).map((h) => `${h.date} ${h.holiday === null ? '无' : h.holiday ? '休' : '班'}`).sort().join('\n');
-    setHolidays((h) => ({ ...h, ...saveManualHolidays(text) }));
-    // 广播给日历卡等（它们重读手动表，保持口径一致）
-    window.dispatchEvent(new CustomEvent('dsh-pwb-holidays-changed'));
+    // 节假日标记在点选时已即时落盘，这里只关弹窗（月薪等字段经 config useEffect 自动保存）
     setEditing(false);
   };
 
@@ -304,7 +307,7 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
                 <span><i className="mr-0.5 inline-block size-1.5 rounded-full bg-green-500 align-middle" /> 班（当天累计）</span>
                 <span>标记优先于作息 · 淡色=自动 鲜色=手动</span>
                 {manualCount > 0 && (
-                  <button className="ml-auto text-primary underline" onClick={() => setManualMap({})}>清除手动标记（{manualCount}）</button>
+                  <button className="ml-auto text-primary underline" onClick={() => applyManual({})}>清除手动标记（{manualCount}）</button>
                 )}
               </div>
             </div>
