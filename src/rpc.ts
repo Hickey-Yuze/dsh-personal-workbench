@@ -118,32 +118,98 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         return await deps.knowledge.search(query);
       }
 
-      // ── 天气（外联代理：Nominatim 街道级反查 + open-meteo 实况；无 key 免费服务）──
+      // ── 天气（外联代理：三源逆地理并行 fallback + open-meteo 实况/逐时/每日；无 key 免费服务）──
       case 'personal-workbench/weather/fetch': {
         const p = asRecord(payload);
         const lat = Number(p.lat);
         const lon = Number(p.lon);
         if (!Number.isFinite(lat) || !Number.isFinite(lon)) fail('bad-request', '坐标不合法');
         const ua = 'dsh-personal-workbench/1.0 (local harness plugin)';
-        const [geoRes, wxRes] = await Promise.all([
-          fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&zoom=18&accept-language=zh-CN&format=json`, { headers: { 'user-agent': ua } }),
-          fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m`, { headers: { 'user-agent': ua } }),
+        const fmtZh = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) ? Math.round(n) : null);
+        // 逆地理三源并行：Nominatim（街道级中文）→ BigDataCloud → Open-Meteo Geocoding，取第一个有效结果
+        const geoTasks = [
+          async (): Promise<string | null> => {
+            const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&addressdetails=1&accept-language=zh-CN,zh,en&zoom=18`, { headers: { 'user-agent': ua } });
+            if (!r.ok) return null;
+            const g = (await r.json()) as { display_name?: string; address?: Record<string, string> };
+            const a = g.address ?? {};
+            const place = [a.house_number, a.road, a.neighbourhood, a.suburb, a.city ?? a.town ?? a.county].filter(Boolean).join(' ');
+            return place || g.display_name || null;
+          },
+          async (): Promise<string | null> => {
+            const r = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=zh`, { headers: { 'user-agent': ua } });
+            if (!r.ok) return null;
+            const g = (await r.json()) as { locality?: string; city?: string; principalSubdivision?: string };
+            return [g.city ?? g.locality, g.principalSubdivision].filter(Boolean).join(' · ') || null;
+          },
+          async (): Promise<string | null> => {
+            const r = await fetch(`https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&count=1&language=zh&format=json`, { headers: { 'user-agent': ua } });
+            if (!r.ok) return null;
+            const g = (await r.json()) as { results?: Array<{ name?: string; admin1?: string }> };
+            const first = g.results?.[0];
+            return first ? [first.name, first.admin1].filter(Boolean).join(' · ') : null;
+          },
+        ];
+        const wxUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&timezone=auto&current=temperature_2m,weather_code,relative_humidity_2m,apparent_temperature,wind_speed_10m&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=5`;
+        const [geoSettled, wxRes] = await Promise.all([
+          Promise.allSettled(geoTasks.map((t) => t())),
+          fetch(wxUrl, { headers: { 'user-agent': ua } }),
         ]);
-        if (!geoRes.ok || !wxRes.ok) fail('bad-gateway', '气象服务不可达');
-        const geo = (await geoRes.json()) as { display_name?: string; address?: Record<string, string> };
-        const wx = (await wxRes.json()) as { current?: { temperature_2m?: number; weather_code?: number; relative_humidity_2m?: number; wind_speed_10m?: number } };
-        const a = geo.address ?? {};
-        // 具体到街巷：门牌/道路 → 街区 → 区 → 市
-        const place = [a.house_number, a.road, a.neighbourhood, a.suburb, a.city ?? a.town ?? a.county].filter(Boolean).join(' ');
-        const c = wx.current ?? {};
-        return {
-          place: place || geo.display_name || '当前位置',
-          temp: Math.round(c.temperature_2m ?? 0),
-          code: c.weather_code ?? 0,
-          humidity: Math.round(c.relative_humidity_2m ?? 0),
-          wind: Math.round(c.wind_speed_10m ?? 0),
-          updated: new Date().toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+        if (!wxRes.ok) fail('bad-gateway', '气象服务不可达');
+        const wx = (await wxRes.json()) as {
+          current?: { temperature_2m?: number; weather_code?: number; relative_humidity_2m?: number; apparent_temperature?: number; wind_speed_10m?: number; time?: string };
+          hourly?: { time?: string[]; temperature_2m?: number[]; weather_code?: number[] };
+          daily?: { time?: string[]; weather_code?: number[]; temperature_2m_max?: number[]; temperature_2m_min?: number[] };
         };
+        let place: string | null = null;
+        for (const r of geoSettled) { if (r.status === 'fulfilled' && r.value) { place = r.value; break; } }
+        // 三源全不可达（网络受限常见）→ 用 IP 定位带来的城市名兜底
+        const fallbackPlace = typeof p.fallbackPlace === 'string' && p.fallbackPlace.trim() ? p.fallbackPlace.trim() : null;
+        const c = wx.current ?? {};
+        // 逐时：取当前时刻起的 10 个整点
+        const hourly: Array<{ time: string; temp: number; code: number }> = [];
+        const ht = wx.hourly?.time ?? []; const htemp = wx.hourly?.temperature_2m ?? []; const hcode = wx.hourly?.weather_code ?? [];
+        const nowIso = (c.time ?? new Date().toISOString()).slice(0, 13);
+        let startIdx = ht.findIndex((t) => (t ?? '').slice(0, 13) >= nowIso);
+        if (startIdx < 0) startIdx = 0;
+        for (let k = startIdx; k < Math.min(ht.length, startIdx + 10); k++) {
+          const temp = fmtZh(htemp[k]); const code = hcode[k];
+          if (temp === null || typeof code !== 'number') continue;
+          hourly.push({ time: (ht[k] ?? '').slice(11, 13), temp, code });
+        }
+        // 每日：5 天概况
+        const daily: Array<{ date: string; code: number; max: number; min: number }> = [];
+        const dt = wx.daily?.time ?? []; const dcode = wx.daily?.weather_code ?? []; const dmax = wx.daily?.temperature_2m_max ?? []; const dmin = wx.daily?.temperature_2m_min ?? [];
+        for (let k = 0; k < Math.min(dt.length, 5); k++) {
+          const max = fmtZh(dmax[k]); const min = fmtZh(dmin[k]); const code = dcode[k];
+          if (max === null || min === null || typeof code !== 'number') continue;
+          daily.push({ date: dt[k] ?? '', code, max, min });
+        }
+        return {
+          place: place || fallbackPlace || '当前位置',
+          temp: fmtZh(c.temperature_2m) ?? 0,
+          code: c.weather_code ?? 0,
+          humidity: fmtZh(c.relative_humidity_2m) ?? 0,
+          feels: fmtZh(c.apparent_temperature) ?? 0,
+          wind: fmtZh(c.wind_speed_10m) ?? 0,
+          updated: new Date().toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+          hourly,
+          daily,
+        };
+      }
+
+      // ── 空气质量（外联代理：open-meteo air-quality，US AQI + PM10/PM2.5）──
+      case 'personal-workbench/weather/air': {
+        const p = asRecord(payload);
+        const lat = Number(p.lat);
+        const lon = Number(p.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) fail('bad-request', '坐标不合法');
+        const res = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&timezone=auto&current=us_aqi,pm10,pm2_5`, { headers: { 'user-agent': 'dsh-personal-workbench/1.0' } });
+        if (!res.ok) fail('bad-gateway', '空气质量服务不可达');
+        const a = (await res.json()) as { current?: { us_aqi?: number | null; pm10?: number | null; pm2_5?: number | null } };
+        const cur = a.current ?? {};
+        const round1 = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) ? Math.round(n) : 0);
+        return { aqi: round1(cur.us_aqi), pm10: round1(cur.pm10), pm25: round1(cur.pm2_5) };
       }
 
       // ── IP 定位兜底（geolocation 被宿主拒绝时用；ip-api.com 免费无 key，中文）──

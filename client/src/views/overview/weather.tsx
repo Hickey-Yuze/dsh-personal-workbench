@@ -1,14 +1,16 @@
 /**
- * 天气卡 —— 自动模式上线（用户要求自动获取精确位置与实况）：
- * · 定位：浏览器 navigator.geolocation（GPS/WiFi 级，可精确到街巷）
- * · 地名：Host 代理 Nominatim 反向地理编码（街道级，中文）
- * · 实况：Host 代理 open-meteo（免费无 key）：温度 / 天气码 / 湿度 / 风速
- * · 手动模式保留（原版交互），自动定位不可用（拒权/非安全上下文）时给出说明
+ * 天气卡 —— 按用户给定接口规格全面升级：
+ * · 实况：open-meteo forecast（温度/天气码/湿度/体感/风速）—— Host 代理
+ * · 逐时预报：hourly temperature_2m + weather_code（未来 10 个整点，横向滑动）
+ * · 每日概况：daily weather_code + 最高/最低温（未来 5 天）
+ * · 空气质量：air-quality-api（US AQI + PM10/PM2.5），独立请求失败不阻塞主数据
+ * · 地名：三源逆地理并行 fallback（Nominatim → BigDataCloud → Open-Meteo），Host 侧完成
+ * · 定位链：浏览器 geolocation → IP 定位兜底；手动记录模式保留
  */
 // @ts-nocheck —— 移植自 Yuze Workbench（原项目自带类型检查），此处不重复校验
 
 import { useCallback, useEffect, useState } from 'react';
-import { CloudSun, MapPin, RefreshCw, Loader2, CloudRain, Cloud, Sun, CloudFog, CloudLightning, Snowflake } from 'lucide-react';
+import { CloudSun, MapPin, RefreshCw, Loader2, CloudRain, Cloud, Sun, CloudFog, CloudLightning, Snowflake, Wind, Droplets } from 'lucide-react';
 import type { RpcFn } from '../../rpc.js';
 
 const CITIES = ['广州', '深圳', '北京', '上海', '杭州', '成都', '武汉', '西安'];
@@ -16,7 +18,13 @@ const CUSTOM_KEY = 'overview_weather_custom_v1';
 const AUTO_KEY = 'overview_weather_auto_v1';
 
 interface CustomWeather { city: string; temp: number; condition: string; updatedAt: string }
-interface AutoWeather { place: string; temp: number; code: number; humidity: number; wind: number; updated: string }
+interface AirInfo { aqi: number; pm10: number; pm25: number }
+interface AutoWeather {
+  place: string; temp: number; code: number; humidity: number; feels: number; wind: number; updated: string;
+  hourly: Array<{ time: string; temp: number; code: number }>;
+  daily: Array<{ date: string; code: number; max: number; min: number }>;
+  air?: AirInfo | null;
+}
 
 function load(): CustomWeather {
   try {
@@ -40,11 +48,31 @@ function wmo(code: number): { label: string; Icon: typeof Sun } {
   return { label: '未知', Icon: Cloud };
 }
 
+/** US AQI → 等级 + 色（国标观感）。 */
+function aqiLevel(aqi: number): { label: string; cls: string } {
+  if (aqi <= 50) return { label: '优', cls: 'bg-green-500/15 text-green-500' };
+  if (aqi <= 100) return { label: '良', cls: 'bg-yellow-500/15 text-yellow-500' };
+  if (aqi <= 150) return { label: '轻度污染', cls: 'bg-orange-500/15 text-orange-500' };
+  if (aqi <= 200) return { label: '中度污染', cls: 'bg-red-500/15 text-red-500' };
+  return { label: '重度污染', cls: 'bg-red-600/20 text-red-600' };
+}
+
 function loadAuto(): AutoWeather | null {
   try {
     const raw = localStorage.getItem(`dsh-pwb:${AUTO_KEY}`);
     return raw ? (JSON.parse(raw) as AutoWeather) : null;
   } catch { return null; }
+}
+
+/** daily.date（YYYY-MM-DD）→ 今天/明天/周X */
+function dayLabel(date: string): string {
+  const d = new Date(`${date}T00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diff = Math.round((d.getTime() - today.getTime()) / 86400000);
+  if (diff === 0) return '今天';
+  if (diff === 1) return '明天';
+  return `周${['日', '一', '二', '三', '四', '五', '六'][d.getDay()]}`;
 }
 
 export function WeatherWidget({ rpc }: { rpc: RpcFn }) {
@@ -56,13 +84,15 @@ export function WeatherWidget({ rpc }: { rpc: RpcFn }) {
 
   useEffect(() => { localStorage.setItem(`dsh-pwb:${CUSTOM_KEY}`, JSON.stringify(custom)); }, [custom]);
 
-  // 经纬度 → 地名+实况（Host 代理）
-  const fetchByCoords = useCallback(async (lat: number, lon: number) => {
-    const out = await rpc('personal-workbench/weather/fetch', { lat, lon });
+  // 经纬度 → 地名+实况+预报（Host 代理）；空气质量独立请求，失败静默
+  const fetchByCoords = useCallback(async (lat: number, lon: number, fallbackPlace?: string) => {
+    const out = await rpc('personal-workbench/weather/fetch', { lat, lon, fallbackPlace });
     if (!out.ok || !out.value) throw new Error((out.error as { message?: string })?.message ?? '获取失败');
     const v = out.value as AutoWeather;
-    setAuto(v);
-    localStorage.setItem(`dsh-pwb:${AUTO_KEY}`, JSON.stringify(v));
+    const airOut = await rpc('personal-workbench/weather/air', { lat, lon }).catch(() => null);
+    const merged: AutoWeather = { ...v, air: airOut?.ok ? (airOut.value as AirInfo) : null };
+    setAuto(merged);
+    localStorage.setItem(`dsh-pwb:${AUTO_KEY}`, JSON.stringify(merged));
   }, [rpc]);
 
   // IP 定位兜底（宿主 Electron 默认拒绝 geolocation 权限；IP 精度到城市级）
@@ -70,7 +100,7 @@ export function WeatherWidget({ rpc }: { rpc: RpcFn }) {
     const out = await rpc('personal-workbench/geo/ip', {});
     if (!out.ok || !out.value) throw new Error((out.error as { message?: string })?.message ?? '定位失败');
     const v = out.value as { lat: number; lon: number; city: string };
-    await fetchByCoords(v.lat, v.lon);
+    await fetchByCoords(v.lat, v.lon, v.city);
   }, [rpc, fetchByCoords]);
 
   const locateAndFetch = useCallback(() => {
@@ -85,7 +115,6 @@ export function WeatherWidget({ rpc }: { rpc: RpcFn }) {
         setLoading(false);
       }
     };
-    // 先试浏览器精确定位（GPS 级，可到街巷）；宿主拒绝时自动降级 IP 定位
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
@@ -120,37 +149,70 @@ export function WeatherWidget({ rpc }: { rpc: RpcFn }) {
         </div>
       </div>
 
-      <div className="flex flex-1 items-center gap-4 px-4 pb-3">
-        {loading ? (
-          <Loader2 className="size-12 animate-spin text-white/30" />
-        ) : auto ? (
-          (() => { const { label, Icon } = wmo(auto.code); return <Icon className="size-12 text-sky-400/90" />; })()
-        ) : (
-          <CloudSun className="size-12 text-sky-400/90" />
-        )}
-        <div className="min-w-0">
-          {loading ? (
-            <div className="text-sm text-white/40">正在定位并获取实况…</div>
-          ) : auto ? (
-            (() => {
-              const { label } = wmo(auto.code);
-              return (
-                <>
-                  <div className="text-3xl font-bold tabular-nums text-white">{auto.temp}°</div>
-                  <div className="text-xs text-white/60">{label} · 湿度 {auto.humidity}% · 风 {auto.wind}km/h</div>
-                  <div className="mt-0.5 text-[10px] text-white/30">更新于 {auto.updated} · 点右上刷新</div>
-                </>
-              );
-            })()
-          ) : (
-            <>
-              <div className="text-3xl font-bold tabular-nums text-white">{custom.temp}°</div>
-              <div className="text-xs text-white/60">{custom.condition}</div>
-              <div className="mt-0.5 text-[10px] text-white/30">{custom.updatedAt ? `记录于 ${custom.updatedAt}` : '尚未记录'}</div>
-            </>
+      {loading ? (
+        <div className="flex flex-1 items-center justify-center"><Loader2 className="size-10 animate-spin text-white/30" /></div>
+      ) : auto ? (
+        <div className="flex min-h-0 flex-1 flex-col gap-1.5 px-4 pb-3">
+          {/* 实况主行 */}
+          <div className="flex items-center gap-3">
+            {(() => { const { label, Icon } = wmo(auto.code); return <Icon className="size-9 shrink-0 text-sky-400/90" />; })()}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-bold tabular-nums text-white">{auto.temp}°</span>
+                <span className="text-xs text-white/60">{wmo(auto.code).label} · 体感 {auto.feels}°</span>
+              </div>
+              <div className="mt-0.5 flex items-center gap-2 text-[10px] text-white/40">
+                <span className="flex items-center gap-0.5"><Droplets className="size-3" />{auto.humidity}%</span>
+                <span className="flex items-center gap-0.5"><Wind className="size-3" />{auto.wind}km/h</span>
+                {auto.air && auto.air.aqi > 0 && (() => {
+                  const lv = aqiLevel(auto.air.aqi);
+                  return <span className={`rounded px-1 py-px text-[9px] font-medium ${lv.cls}`}>AQI {auto.air.aqi} {lv.label}</span>;
+                })()}
+                <span className="ml-auto">{auto.updated}</span>
+              </div>
+            </div>
+          </div>
+          {/* 逐时预报（未来 10 个整点，横向滑动） */}
+          {auto.hourly?.length > 0 && (
+            <div className="flex min-w-0 gap-1.5 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
+              {auto.hourly.map((h) => {
+                const { Icon } = wmo(h.code);
+                return (
+                  <div key={h.time} className="flex w-9 shrink-0 flex-col items-center gap-0.5 rounded-md bg-white/[0.04] py-1">
+                    <span className="text-[9px] text-white/40 tabular-nums">{h.time}时</span>
+                    <Icon className="size-3.5 text-sky-400/70" />
+                    <span className="text-[10px] font-semibold tabular-nums text-white">{h.temp}°</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {/* 每日概况（未来 5 天） */}
+          {auto.daily?.length > 0 && (
+            <div className="flex min-w-0 gap-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+              {auto.daily.map((d) => {
+                const { label, Icon } = wmo(d.code);
+                return (
+                  <div key={d.date} className="flex w-9 shrink-0 flex-col items-center gap-0.5 rounded-md py-0.5" title={`${label} ${d.min}~${d.max}°`}>
+                    <span className="text-[9px] text-white/40">{dayLabel(d.date)}</span>
+                    <Icon className="size-3.5 text-white/50" />
+                    <span className="text-[9px] tabular-nums text-white/70">{d.min}° <span className="text-white/40">/</span> {d.max}°</span>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
-      </div>
+      ) : (
+        <div className="flex flex-1 items-center gap-4 px-4 pb-3">
+          <CloudSun className="size-12 text-sky-400/90" />
+          <div className="min-w-0">
+            <div className="text-3xl font-bold tabular-nums text-white">{custom.temp}°</div>
+            <div className="text-xs text-white/60">{custom.condition}</div>
+            <div className="mt-0.5 text-[10px] text-white/30">{custom.updatedAt ? `记录于 ${custom.updatedAt}` : '尚未记录'}</div>
+          </div>
+        </div>
+      )}
       {error && (
         <div className="mx-4 mb-2 rounded-md bg-red-400/10 px-2 py-1 text-[10px] leading-relaxed text-red-400">
           {error}
@@ -170,7 +232,7 @@ export function WeatherWidget({ rpc }: { rpc: RpcFn }) {
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <input type="number" value={custom.temp} onChange={(e) => setCustom((s) => ({ ...s, temp: Number(e.target.value) }))} className="w-16 rounded-md border border-white/[0.08] bg-white/[0.05] px-2 py-1 text-right text-sm text-white" />
+            <input type="text" inputMode="numeric" value={custom.temp} onChange={(e) => setCustom((s) => ({ ...s, temp: Number(e.target.value.replace(/\D/g, '')) || 0 }))} className="w-16 rounded-md border border-white/[0.08] bg-white/[0.05] px-2 py-1 text-right text-sm text-white" />
             <span className="text-xs text-white/50">°C</span>
           </div>
           <div className="flex flex-wrap gap-1">

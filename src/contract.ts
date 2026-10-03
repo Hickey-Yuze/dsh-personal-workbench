@@ -49,7 +49,8 @@ export interface KbSearchHit {
 export interface PersonalWorkbenchRequestMap {
   'personal-workbench/apps/list': Record<string, never>;
   'personal-workbench/apps/open': { name: string };
-  'personal-workbench/weather/fetch': { lat: number; lon: number };
+  'personal-workbench/weather/fetch': { lat: number; lon: number; fallbackPlace?: string };
+  'personal-workbench/weather/air': { lat: number; lon: number };
   'personal-workbench/geo/ip': Record<string, never>;
   'personal-workbench/holidays/fetch': { year: number };
   'personal-workbench/store/read': { key: string };
@@ -63,7 +64,12 @@ export interface PersonalWorkbenchRequestMap {
 export interface PersonalWorkbenchResponseMap {
   'personal-workbench/apps/list': { apps: string[] };
   'personal-workbench/apps/open': { ok: boolean; name: string };
-  'personal-workbench/weather/fetch': { place: string; temp: number; code: number; humidity: number; wind: number; updated: string };
+  'personal-workbench/weather/fetch': {
+    place: string; temp: number; code: number; humidity: number; feels: number; wind: number; updated: string;
+    hourly: Array<{ time: string; temp: number; code: number }>;
+    daily: Array<{ date: string; code: number; max: number; min: number }>;
+  };
+  'personal-workbench/weather/air': { aqi: number; pm10: number; pm25: number };
   'personal-workbench/geo/ip': { lat: number; lon: number; city: string };
   'personal-workbench/holidays/fetch': Record<string, { holiday: boolean; name: string; date: string }>;
   'personal-workbench/store/read': { key: string; value: unknown };
