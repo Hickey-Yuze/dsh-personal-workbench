@@ -31,7 +31,8 @@
     "prepare": "pnpm run build"
   },
   "dependencies": {
-    "@deepseek-ai/schemastery": "3.18.2"
+    "@deepseek-ai/schemastery": "3.18.2",
+    "lunar-typescript": "^1.8.6"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1"

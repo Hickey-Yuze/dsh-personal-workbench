@@ -616,7 +616,21 @@ html { color-scheme: light !important; }
 .dsh-pwf-stage { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 
 /* 万年历：农历小字 + 休/班标记 */
-.dsh-pwb-cal-lunar { margin-top: 1px; font-size: 8px; line-height: 1.1; color: var(--pwb-dim); }
+.dsh-pwb-cal-lunar { margin-top: 0; font-size: 10.5px; line-height: 1.1; color: var(--pwb-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dsh-pwb-cal-sel .dsh-pwb-cal-lunar { color: rgba(255, 255, 255, 0.85); }
+.dsh-pwb-almanac {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--pwb-card-hi);
+  font-size: 12px;
+}
+.dsh-pwb-almanac-date { font-weight: 650; color: var(--pwb-text); }
+.dsh-pwb-almanac-yi { color: #00b862; font-weight: 600; }
+.dsh-pwb-almanac-ji { color: #e5484d; font-weight: 600; }
 .dsh-pwb-cal-off { background: rgba(229, 72, 77, 0.09); border-radius: 8px; }
 .dsh-pwb-cal-off .dsh-pwb-cal-day, .dsh-pwb-cal-off .dsh-pwb-cal-lunar { color: #e5484d; }
 .dsh-pwb-cal-work { box-shadow: inset 0 0 0 1px rgba(0, 210, 106, 0.4); border-radius: 8px; }

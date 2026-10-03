@@ -9,6 +9,7 @@ import { t } from '../i18n.js';
 import type { RpcFn } from '../rpc.js';
 import { useKv } from '../store.js';
 import { humanDate, nowIso, toDateStr, todayStr, uid } from '../util.js';
+import { lunarOf } from '../util/lunar.js';
 
 const WEEK = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -30,6 +31,17 @@ function buildMonth(year: number, month: number): Cell[] {
     cells.push({ date, day: d.getDate(), inMonth: d.getMonth() === month, isToday: date === today });
   }
   return cells;
+}
+
+function Almanac({ date }: { date: string }): ReactElement {
+  const l = lunarOf(date);
+  return (
+    <div className="dsh-pwb-almanac">
+      <span className="dsh-pwb-almanac-date">{l.monthDay} · {l.yearGZ}年 · {l.zodiac}</span>
+      <span className="dsh-pwb-almanac-yi">宜 {l.yi.slice(0, 4).join(' · ')}</span>
+      <span className="dsh-pwb-almanac-ji">忌 {l.ji.slice(0, 4).join(' · ')}</span>
+    </div>
+  );
 }
 
 export function ScheduleView({ rpc }: { rpc: RpcFn }): ReactElement {
@@ -147,6 +159,7 @@ export function ScheduleView({ rpc }: { rpc: RpcFn }): ReactElement {
                 onClick={() => setSelected(c.date)}
               >
                 <span className="dsh-pwb-cal-day">{c.day}{c.isToday ? <i className="dsh-pwb-cal-now">今</i> : null}</span>
+                <span className="dsh-pwb-cal-lunar">{lunarOf(c.date).short}</span>
                 {list.length > 0 ? (
                   <span className="dsh-pwb-cal-evs">
                     {list.slice(0, 2).map((e) => (
@@ -165,6 +178,7 @@ export function ScheduleView({ rpc }: { rpc: RpcFn }): ReactElement {
             <span className="dsh-pwb-day-title">{humanDate(selected)}</span>
             <span className="dsh-pwb-day-count">{dayItems.length} {t('sched.items')}</span>
           </div>
+          <Almanac date={selected} />
 
           <div className="dsh-pwb-toolbar dsh-pwb-toolbar-inline">
             <input
