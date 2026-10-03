@@ -801,6 +801,55 @@ const CSS = `
 .dsh-pwb-vd-cardwrap { position: relative; display: block; }
 .dsh-pwb-vd-remove { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 50%; border: none; background: rgba(0,0,0,.55); color: #fff; display: grid; place-items: center; cursor: pointer; opacity: 0; transition: opacity .15s ease; font-size: 15px; line-height: 1; }
 .dsh-pwb-vd-cardwrap:hover .dsh-pwb-vd-remove { opacity: 1; }
+/* ── 影视首页（原版形态：Hero 搜索+三态切换+标签 chips+豆瓣网格+顶栏下拉） ── */
+.dsh-pwb-vd-shell-single { flex-direction: column; overflow-y: auto; }
+.dsh-pwb-vd-topnav { display: flex; justify-content: flex-end; padding: 12px 22px 0; position: sticky; top: 0; z-index: 20; }
+.dsh-pwb-vd-actions { position: relative; display: flex; gap: 8px; }
+.dsh-pwb-vd-roundbtn { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--pwb-border); background: var(--pwb-card); color: var(--pwb-dim); display: grid; place-items: center; cursor: pointer; transition: all .15s ease; }
+.dsh-pwb-vd-roundbtn:hover, .dsh-pwb-vd-roundbtn.on { background: var(--pwb-card-hi); color: var(--pwb-text); }
+.dsh-pwb-vd-drop { position: absolute; right: 0; top: 48px; width: 340px; background: var(--pwb-card); border: 1px solid var(--pwb-border); border-radius: 14px; box-shadow: 0 12px 40px rgba(20,20,30,.18); overflow: hidden; z-index: 50; }
+.dsh-pwb-vd-drophead { display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid var(--pwb-border); font-size: 14px; }
+.dsh-pwb-vd-dropclear { border: none; background: transparent; color: #ff5b6a; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; }
+.dsh-pwb-vd-droplist { max-height: 380px; overflow-y: auto; }
+.dsh-pwb-vd-dropitem { display: flex; gap: 12px; padding: 10px 16px; cursor: pointer; border-bottom: 1px solid var(--pwb-border); align-items: center; }
+.dsh-pwb-vd-dropitem:last-child { border-bottom: none; }
+.dsh-pwb-vd-dropitem:hover { background: var(--pwb-card-hi); }
+.dsh-pwb-vd-dropthumb { position: relative; flex: 0 0 auto; width: 52px; height: 76px; border-radius: 8px; overflow: hidden; background: var(--pwb-card-hi); color: var(--pwb-dimmer); display: grid; place-items: center; }
+.dsh-pwb-vd-dropthumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.dsh-pwb-vd-dropthumb i { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(20,20,30,.25); }
+.dsh-pwb-vd-dropthumb i span { display: block; height: 100%; background: var(--pwb-accent); }
+.dsh-pwb-vd-dropmeta { flex: 1; min-width: 0; }
+.dsh-pwb-vd-dropmeta b { display: block; font-size: 13px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dsh-pwb-vd-dropmeta p { margin: 3px 0 0; font-size: 11.5px; color: var(--pwb-dim); }
+.dsh-pwb-vd-dropremove { flex: 0 0 auto; width: 26px; height: 26px; border: none; border-radius: 50%; background: transparent; color: var(--pwb-dimmer); display: grid; place-items: center; cursor: pointer; opacity: 0; }
+.dsh-pwb-vd-dropitem:hover .dsh-pwb-vd-dropremove { opacity: 1; }
+.dsh-pwb-vd-dropremove:hover { color: #ff5b6a; }
+.dsh-pwb-vd-hero { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 6px 22px 4px; }
+.dsh-pwb-vd-herosearch { display: flex; gap: 10px; width: min(640px, 100%); }
+.dsh-pwb-vd-herosearch .dsh-pwb-vd-search { height: 44px; border-radius: 22px; font-size: 14px; }
+.dsh-pwb-vd-herosearch .dsh-pwb-vd-searchbtn { height: 44px; border-radius: 22px; font-size: 14px; }
+.dsh-pwb-vd-toggle { display: inline-flex; align-items: center; gap: 2px; background: var(--pwb-card-hi); border-radius: 12px; padding: 4px; }
+.dsh-pwb-vd-togglebtn { padding: 8px 26px; border: none; border-radius: 9px; background: transparent; color: var(--pwb-dim); font-size: 13.5px; font-weight: 650; font-family: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all .15s ease; }
+.dsh-pwb-vd-togglebtn.on { background: var(--pwb-accent); color: color-mix(in srgb, var(--pwb-accent) 12%, black); box-shadow: 0 1px 3px rgba(20,20,30,.12); }
+.dsh-pwb-vd-togglesplit { width: 1px; height: 16px; background: var(--pwb-border); }
+.dsh-pwb-vd-main { padding: 10px 24px 34px; }
+.dsh-pwb-vd-home { display: flex; flex-direction: column; gap: 8px; }
+.dsh-pwb-vd-tags { display: flex; gap: 10px; overflow-x: auto; padding: 10px 2px; scrollbar-width: none; }
+.dsh-pwb-vd-tags::-webkit-scrollbar { display: none; }
+.dsh-pwb-vd-tag { flex: 0 0 auto; padding: 8px 20px; border-radius: 10px; border: 1px solid var(--pwb-border); background: var(--pwb-card); color: var(--pwb-dim); font-size: 13px; font-weight: 550; font-family: inherit; cursor: pointer; transition: all .15s ease; }
+.dsh-pwb-vd-tag:hover { background: var(--pwb-card-hi); color: var(--pwb-text); }
+.dsh-pwb-vd-tag.on { background: color-mix(in srgb, var(--pwb-accent) 10%, transparent); border-color: color-mix(in srgb, var(--pwb-accent) 55%, transparent); color: var(--pwb-accent); font-weight: 700; }
+.dsh-pwb-vd-sechead { display: flex; align-items: center; justify-content: space-between; margin: 12px 0 2px; }
+.dsh-pwb-vd-sechead h2, .dsh-pwb-vd-block h2 { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 17px; font-weight: 750; }
+.dsh-pwb-vd-bar { width: 4px; height: 20px; border-radius: 2px; background: var(--pwb-accent); display: inline-block; }
+.dsh-pwb-vd-pager { display: flex; gap: 8px; }
+.dsh-pwb-vd-pagebtn { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--pwb-border); background: var(--pwb-card); color: var(--pwb-dim); display: grid; place-items: center; cursor: pointer; transition: all .15s ease; }
+.dsh-pwb-vd-pagebtn:disabled { opacity: .4; cursor: default; }
+.dsh-pwb-vd-pagebtn:not(:disabled):hover { border-color: color-mix(in srgb, var(--pwb-accent) 50%, transparent); color: var(--pwb-accent); }
+.dsh-pwb-vd-rate { position: absolute; right: 0; bottom: 0; padding: 3px 8px; border-radius: 10px 0 0 0; background: rgba(0,0,0,.72); color: #f5c518; font-size: 11.5px; font-style: normal; font-weight: 700; font-variant-numeric: tabular-nums; }
+.dsh-pwb-vd-backbtn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; margin-bottom: 14px; border-radius: 17px; border: 1px solid var(--pwb-border); background: var(--pwb-card); color: var(--pwb-dim); font-size: 12.5px; font-family: inherit; cursor: pointer; }
+.dsh-pwb-vd-backbtn:hover { color: var(--pwb-text); }
+
 
 /* ── 实时日薪：金额心跳（咚-咚 双脉冲节律）── */
 .dsh-pwb-salary-beat {

@@ -1,36 +1,36 @@
 /**
- * 影视平台 —— 对接 Yuze-影视 磁力猫片库（橘汁 172K+，苹果 CMS 协议）：
- * · 搜索/分类 = CF adapter 本地静态索引（yuze-yingshi-jiekou.pages.dev，秒回）
- * · 详情/直链 = SCF 直连（境内出口免风控，实测 2s）→ 磁力猫多入口容灾
- * · 播放 = MP4 直链原生 <video>（picovr 防盗链：模块挂载期全局 no-referrer）
- * · 页面：发现影视（分类板块）/ 搜索 / 分类浏览 / 详情（线路+集数）/ 播放 / 收藏 / 历史
- * · 收藏与历史保存「线路+集数」位置，恢复时直达该集
- * 不造假：无内置假数据，全部来自片库接口；板块拉不到显示「暂无推荐」。
+ * 影视平台 —— 1:1 复刻原版 Yuze-影视 首页形态 + 磁力猫片库播放链路：
+ * · 首页（原版 page.jsx 形态）：Hero 搜索框 + 电影/电视剧切换 + 标签 chips + 豆瓣热门网格（分页圆钮）+ 继续观看
+ * · 豆瓣榜单 = Host 代理 cmliussss 镜像（原版同源，1h 缓存）；点片 = 片名搜索片库
+ * · 搜索/分类/详情/播放 = 磁力猫 CF 索引 + SCF 直连 + MP4 直链（picovr 防盗链：全局 no-referrer）
+ * · 收藏/历史 = localStorage（带线路+集数位置，恢复直达该集）；顶栏历史/收藏下拉（原版 Navbar 形态）
+ * 不造假：无内置假数据，全部来自豆瓣/片库接口；拉不到显示空态。
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ReactElement } from 'react';
-import { Home, Search, Heart, History, Loader2, ChevronLeft, ChevronRight, Play, ArrowLeft } from 'lucide-react';
+import { Search as SearchIcon, Heart, History, Loader2, ChevronLeft, ChevronRight, Play, ArrowLeft, Trash2, X } from 'lucide-react';
 import type { RpcFn } from '../rpc.js';
 
 type VideoBrief = { id: string; name: string; pic?: string | undefined; remarks?: string | undefined; typeName?: string | undefined; year?: string | undefined };
+type DoubanSubject = { title: string; rate: string; cover?: string | undefined };
 type VideoDetail = { id: string; name: string; pic?: string; year?: string; typeName?: string; actor?: string; director?: string; content?: string; remarks?: string; lines: Array<{ name: string; episodes: Array<{ name: string; url: string }> }> };
-type DiscoverBlock = { key: string; title: string; items: VideoBrief[]; t?: string | undefined };
 
 type RecItem = { id: string; name: string; pic?: string | undefined; remarks?: string | undefined; lineIdx: number; epIdx: number; lineName: string; epName: string };
 const FAV_KEY = 'dsh-pwb:video_favorites_v2';
 const HIST_KEY = 'dsh-pwb:video_history_v2';
 
 type Route =
-  | { page: 'discover' }
+  | { page: 'home' }
   | { page: 'search' }
-  | { page: 'category'; t: string; title: string; pg: number }
   | { page: 'detail'; id: string; brief?: VideoBrief | undefined }
-  | { page: 'play'; id: string; lineIdx: number; epIdx: number }
-  | { page: 'favorites' }
-  | { page: 'history' };
+  | { page: 'play'; id: string; lineIdx: number; epIdx: number };
 
 type VideoSession = { route: Route; results: VideoBrief[]; query: string };
-const gSession: VideoSession = { route: { page: 'discover' }, results: [], query: '' };
+const gSession: VideoSession = { route: { page: 'home' }, results: [], query: '' };
+
+const MOVIE_TAGS = ['华语', '热门', '最新', '经典', '豆瓣高分', '冷门佳片', '欧美', '韩国', '日本', '动作', '喜剧', '爱情', '科幻', '悬疑', '恐怖', '治愈'];
+const TV_TAGS = ['国产剧', '热门', '美剧', '英剧', '韩剧', '日剧', '港剧', '日本动画', '综艺', '纪录片'];
+const PAGE_SIZE = 12;
 
 function loadList(key: string): RecItem[] {
   try {
@@ -44,16 +44,16 @@ function saveList(key: string, list: RecItem[]): void {
   try { localStorage.setItem(key, JSON.stringify(list.slice(0, 100))); } catch { /* 忽略 */ }
 }
 
-/** 海报卡：2:3 竖版 + 备注（更新至X集/已完结）角标。 */
-function PosterCard({ item, onOpen }: { item: VideoBrief; onOpen: () => void }): ReactElement {
+/** 海报卡：2:3 竖版；豆瓣片带评分角标，片库片带备注条。 */
+function PosterCard({ name, pic, sub, rate, onClick }: { name: string; pic?: string | undefined; sub?: string | undefined; rate?: string | undefined; onClick: () => void }): ReactElement {
   return (
-    <button type="button" className="dsh-pwb-vd-card" title={item.name} onClick={onOpen}>
+    <button type="button" className="dsh-pwb-vd-card" title={name} onClick={onClick}>
       <span className="dsh-pwb-vd-thumb">
-        {item.pic !== undefined && item.pic !== '' ? <img src={item.pic} alt="" loading="lazy" /> : <span className="dsh-pwb-vd-thumb-dummy"><Play className="size-6" /></span>}
-        {item.remarks !== undefined && item.remarks !== '' ? <i className="dsh-pwb-vd-remarks">{item.remarks}</i> : null}
+        {pic !== undefined && pic !== '' ? <img src={pic} alt="" loading="lazy" /> : <span className="dsh-pwb-vd-thumb-dummy"><Play className="size-6" /></span>}
+        {rate !== undefined && rate !== '' && rate !== '0' ? <i className="dsh-pwb-vd-rate">{rate}</i> : null}
+        {sub !== undefined && sub !== '' ? <i className="dsh-pwb-vd-remarks">{sub}</i> : null}
       </span>
-      <b>{item.name}</b>
-      <span className="dsh-pwb-vd-meta">{[item.typeName, item.year].filter(Boolean).join(' · ')}</span>
+      <b>{name}</b>
     </button>
   );
 }
@@ -64,19 +64,23 @@ export function VideoModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
   const [results, setResults] = useState<VideoBrief[]>(gSession.results);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
-  const [discover, setDiscover] = useState<DiscoverBlock[] | null>(null);
-  const [discoverLoading, setDiscoverLoading] = useState(false);
-  const [catItems, setCatItems] = useState<VideoBrief[]>([]);
-  const [catPage, setCatPage] = useState(1);
-  const [catPageCount, setCatPageCount] = useState(1);
-  const [catLoading, setCatLoading] = useState(false);
+  // 首页（原版形态）
+  const [mediaType, setMediaType] = useState<'movie' | 'tv'>('movie');
+  const [tag, setTag] = useState('华语');
+  const [page, setPage] = useState(0);
+  const [douban, setDouban] = useState<DoubanSubject[] | null>(null);
+  const [doubanLoading, setDoubanLoading] = useState(false);
+  // 详情/播放
   const [detail, setDetail] = useState<VideoDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailErr, setDetailErr] = useState('');
   const [curLine, setCurLine] = useState(0);
   const [curEp, setCurEp] = useState(0);
+  // 收藏/历史 + 下拉
   const [favorites, setFavorites] = useState<RecItem[]>(() => loadList(FAV_KEY));
   const [history, setHistory] = useState<RecItem[]>(() => loadList(HIST_KEY));
+  const [dropOpen, setDropOpen] = useState<'history' | 'favorites' | null>(null);
+  const dropRef = useRef<HTMLDivElement | null>(null);
 
   const go = useCallback((r: Route): void => { setRoute(r); gSession.route = r; }, []);
 
@@ -100,23 +104,34 @@ export function VideoModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     };
   }, []);
 
-  // 发现页板块
+  // 下拉点外关闭
   useEffect(() => {
-    let disposed = false;
-    setDiscoverLoading(true);
-    void rpc('personal-workbench/video/discover', {}).then((res) => {
-      if (disposed) return;
-      if (res?.ok) setDiscover((res.value as { blocks: DiscoverBlock[] }).blocks);
-      setDiscoverLoading(false);
-    }).catch(() => { if (!disposed) setDiscoverLoading(false); });
-    return () => { disposed = true; };
-  }, [rpc]);
+    if (dropOpen === null) return;
+    const onDown = (e: MouseEvent): void => {
+      if (dropRef.current !== null && !dropRef.current.contains(e.target as Node)) setDropOpen(null);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [dropOpen]);
 
-  // 搜索
+  // 豆瓣榜单（原版 fetchRecommendations 同参数）
+  useEffect(() => {
+    if (route.page !== 'home') return;
+    let disposed = false;
+    setDoubanLoading(true);
+    void rpc('personal-workbench/video/douban', { type: mediaType, tag, pageLimit: PAGE_SIZE, pageStart: page * PAGE_SIZE }).then((res) => {
+      if (disposed) return;
+      if (res?.ok) setDouban((res.value as { subjects: DoubanSubject[] }).subjects);
+      else setDouban([]);
+      setDoubanLoading(false);
+    }).catch(() => { if (!disposed) { setDouban([]); setDoubanLoading(false); } });
+    return () => { disposed = true; };
+  }, [rpc, mediaType, tag, page, route.page]);
+
   const doSearch = (kw: string): void => {
     const q = kw.trim();
     if (q === '') return;
-    setLoading(true); setErr('');
+    setLoading(true); setErr(''); setDropOpen(null);
     void (async () => {
       const out = await rpc('personal-workbench/video/search', { q });
       setLoading(false);
@@ -128,19 +143,7 @@ export function VideoModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     })();
   };
 
-  // 分类浏览
-  const loadCategory = useCallback((t: string, pg: number): void => {
-    setCatLoading(true);
-    void (async () => {
-      const out = await rpc('personal-workbench/video/category', { t, pg });
-      setCatLoading(false);
-      if (!out?.ok) { setErr((out?.error as { message?: string })?.message ?? '加载失败'); return; }
-      const v = out.value as { items: VideoBrief[]; pagecount: number };
-      setCatItems(v.items); setCatPage(pg); setCatPageCount(Math.max(1, v.pagecount));
-    })();
-  }, [rpc]);
-
-  // 详情（detail/play 页共用：play 恢复时也能拉回线路数据）
+  // 详情（detail/play 共用：play 恢复时也能拉回线路数据）
   useEffect(() => {
     if (route.page !== 'detail' && route.page !== 'play') return;
     const id = route.id;
@@ -167,7 +170,7 @@ export function VideoModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route.page, route.page === 'detail' || route.page === 'play' ? route.id : '']);
 
-  const openDetail = (item: VideoBrief): void => { go({ page: 'detail', id: item.id, brief: item }); };
+  const openDetail = (item: VideoBrief): void => { setDropOpen(null); go({ page: 'detail', id: item.id, brief: item }); };
   const openPlay = (lineIdx: number, epIdx: number): void => {
     if (detail === null) return;
     const line = detail.lines[lineIdx];
@@ -195,7 +198,6 @@ export function VideoModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
       return next;
     });
   };
-  const resumeRec = (rec: RecItem): void => { go({ page: 'play', id: rec.id, lineIdx: rec.lineIdx, epIdx: rec.epIdx }); };
 
   // ── 播放页 ──
   const renderPlay = (): ReactElement => {
@@ -204,6 +206,7 @@ export function VideoModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     const total = line?.episodes.length ?? 0;
     return (
       <div className="dsh-pwb-vd-play">
+        <button type="button" className="dsh-pwb-vd-backbtn" onClick={() => { if (detail !== null) go({ page: 'detail', id: detail.id }); else go({ page: 'home' }); }}><ArrowLeft className="size-4" /> 返回详情</button>
         {detail === null ? (
           <div className="dsh-pwb-vd-empty">{detailLoading ? <><Loader2 className="size-4 spin" /> 正在获取播放信息…</> : (detailErr !== '' ? detailErr : '加载失败')}</div>
         ) : (
@@ -219,7 +222,6 @@ export function VideoModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
                 <button type="button" className={`dsh-pwb-vd-favbtn${isFaved(detail.id) ? ' on' : ''}`} onClick={toggleFav}>
                   <Heart className="size-4" fill={isFaved(detail.id) ? 'currentColor' : 'none'} /> {isFaved(detail.id) ? '已收藏' : '收藏'}
                 </button>
-                <button type="button" className="dsh-pwb-vd-favbtn" onClick={() => go({ page: 'detail', id: detail.id, brief: detail })}><ArrowLeft className="size-4" /> 返回详情</button>
               </div>
               {detail.lines.length > 1 ? (
                 <div className="dsh-pwb-vd-linetabs">
@@ -262,6 +264,7 @@ export function VideoModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     }
     return (
       <div className="dsh-pwb-vd-dv">
+        <button type="button" className="dsh-pwb-vd-backbtn" onClick={() => go({ page: 'home' })}><ArrowLeft className="size-4" /> 返回首页</button>
         <div className="dsh-pwb-vd-detailhead">
           {detail.pic !== undefined && detail.pic !== '' ? <img className="dsh-pwb-vd-poster" src={detail.pic} alt="" /> : <span className="dsh-pwb-vd-poster dsh-pwb-vd-thumb-dummy"><Play className="size-6" /></span>}
           <div className="dsh-pwb-vd-detailmeta">
@@ -302,127 +305,148 @@ export function VideoModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     );
   };
 
-  // ── 发现页 ──
-  const renderDiscover = (): ReactElement => (
-    <div className="dsh-pwb-vd-dv">
-      {discoverLoading && discover === null ? <div className="dsh-pwb-vd-empty"><Loader2 className="size-4 spin" /> 正在获取片库内容…</div> : null}
-      {(discover ?? []).map((block) => (
-        <div className="dsh-pwb-vd-block" key={block.key}>
-          <div className="dsh-pwb-vd-listhead">
-            <h2>{block.title}</h2>
-            {block.t !== undefined && block.items.length > 0 ? (
-              <button type="button" className="dsh-pwb-vd-clear" onClick={() => { loadCategory(block.t ?? '20', 1); go({ page: 'category', t: block.t ?? '20', title: block.title, pg: 1 }); }}>更多 <ChevronRight className="size-3.5" /></button>
-            ) : null}
-          </div>
-          {block.items.length === 0 ? (
-            <div className="dsh-pwb-vd-empty">暂无推荐</div>
-          ) : (
+  // ── 首页（原版形态） ──
+  const renderHome = (): ReactElement => {
+    const tags = mediaType === 'movie' ? MOVIE_TAGS : TV_TAGS;
+    const hasPrev = page > 0;
+    const hasNext = douban !== null && douban.length >= PAGE_SIZE;
+    return (
+      <div className="dsh-pwb-vd-home">
+        {/* 继续观看（原版 ContinueWatching） */}
+        {history.length > 0 ? (
+          <div className="dsh-pwb-vd-block">
+            <h2><span className="dsh-pwb-vd-bar" /> 继续观看</h2>
             <div className="dsh-pwb-vd-row">
-              {block.items.map((it) => <PosterCard key={it.id} item={it} onOpen={() => openDetail(it)} />)}
-            </div>
-          )}
-        </div>
-      ))}
-      {!discoverLoading && (discover ?? []).length === 0 ? <div className="dsh-pwb-vd-empty">片库暂时不可用，稍后再试</div> : null}
-    </div>
-  );
-
-  // ── 分类/搜索/收藏/历史 ──
-  const renderGrid = (list: VideoBrief[], onOpen: (it: VideoBrief) => void): ReactElement => (
-    <div className="dsh-pwb-vd-grid">
-      {list.map((it) => <PosterCard key={it.id} item={it} onOpen={() => onOpen(it)} />)}
-    </div>
-  );
-
-  const renderPage = (): ReactElement => {
-    if (route.page === 'discover') return renderDiscover();
-    if (route.page === 'play') return renderPlay();
-    if (route.page === 'detail') return renderDetail();
-    if (route.page === 'category') {
-      const t = route.t; const title = route.title;
-      return (
-        <div className="dsh-pwb-vd-dv">
-          <div className="dsh-pwb-vd-listhead">
-            <h2>{title}{catPageCount > 1 ? <span className="dsh-pwb-vd-count">　第 {catPage} / {catPageCount} 页</span> : null}</h2>
-            <div className="dsh-pwb-vd-pager">
-              <button type="button" className="dsh-pwb-vd-favbtn" disabled={catPage <= 1 || catLoading} onClick={() => { loadCategory(t, catPage - 1); go({ page: 'category', t, title, pg: catPage - 1 }); }}><ChevronLeft className="size-4" /> 上一页</button>
-              <button type="button" className="dsh-pwb-vd-favbtn" disabled={catPage >= catPageCount || catLoading} onClick={() => { loadCategory(t, catPage + 1); go({ page: 'category', t, title, pg: catPage + 1 }); }}>下一页 <ChevronRight className="size-4" /></button>
-            </div>
-          </div>
-          {catLoading ? <div className="dsh-pwb-vd-empty"><Loader2 className="size-4 spin" /> 加载中…</div> : catItems.length === 0 ? <div className="dsh-pwb-vd-empty">暂无内容</div> : renderGrid(catItems, openDetail)}
-        </div>
-      );
-    }
-    if (route.page === 'favorites') {
-      return (
-        <div className="dsh-pwb-vd-dv">
-          <div className="dsh-pwb-vd-listhead">
-            <h2>我的收藏 {favorites.length > 0 ? <span className="dsh-pwb-vd-count">{favorites.length} 部</span> : null}</h2>
-            {favorites.length > 0 ? <button type="button" className="dsh-pwb-vd-clear" onClick={() => { setFavorites([]); saveList(FAV_KEY, []); }}>清空</button> : null}
-          </div>
-          {favorites.length === 0 ? <div className="dsh-pwb-vd-empty">还没有收藏影片\n在详情页点「收藏」加入</div> : renderGrid(favorites, (it) => openDetail(it))}
-        </div>
-      );
-    }
-    if (route.page === 'history') {
-      return (
-        <div className="dsh-pwb-vd-dv">
-          <div className="dsh-pwb-vd-listhead">
-            <h2>观看历史 {history.length > 0 ? <span className="dsh-pwb-vd-count">{history.length} 条</span> : null}</h2>
-            {history.length > 0 ? <button type="button" className="dsh-pwb-vd-clear" onClick={() => { setHistory([]); saveList(HIST_KEY, []); }}>清空</button> : null}
-          </div>
-          {history.length === 0 ? <div className="dsh-pwb-vd-empty">还没有观看记录</div> : (
-            <div className="dsh-pwb-vd-grid">
-              {history.map((rec) => (
+              {history.slice(0, 12).map((rec) => (
                 <span key={rec.id} className="dsh-pwb-vd-cardwrap">
-                  <PosterCard item={{ id: rec.id, name: rec.name, pic: rec.pic, remarks: rec.epName !== '' ? `${rec.lineName} · ${rec.epName}` : rec.remarks }} onOpen={() => resumeRec(rec)} />
-                  <button type="button" className="dsh-pwb-vd-remove" title="从历史移除" onClick={() => { const next = history.filter((x) => x.id !== rec.id); setHistory(next); saveList(HIST_KEY, next); }}>×</button>
+                  <PosterCard name={rec.name} pic={rec.pic} sub={rec.epName !== '' ? `${rec.lineName} · ${rec.epName}` : undefined} onClick={() => go({ page: 'play', id: rec.id, lineIdx: rec.lineIdx, epIdx: rec.epIdx })} />
                 </span>
               ))}
             </div>
-          )}
+          </div>
+        ) : null}
+
+        {/* 标签 chips（原版分类横条） */}
+        <div className="dsh-pwb-vd-tags">
+          {tags.map((tg) => (
+            <button key={tg} type="button" className={`dsh-pwb-vd-tag${tg === tag ? ' on' : ''}`}
+              onClick={() => { setTag(tg); setPage(0); }}>{tg}</button>
+          ))}
         </div>
-      );
-    }
-    // search
-    return (
-      <div className="dsh-pwb-vd-dv">
-        <h2>搜索结果{results.length > 0 ? <span className="dsh-pwb-vd-count">{results.length} 部</span> : null}</h2>
-        {results.length === 0 ? (
-          <div className="dsh-pwb-vd-empty">{err !== '' ? err : (loading ? <><Loader2 className="size-4 spin" /> 搜索中…</> : '在上方搜索框输入片名\n检索 17 万+ 部影视片库')}</div>
-        ) : renderGrid(results, openDetail)}
+
+        {/* 豆瓣热门网格 + 分页圆钮（原版 Popular Section） */}
+        <div className="dsh-pwb-vd-sechead">
+          <h2><span className="dsh-pwb-vd-bar" /> 豆瓣热门 - {tag}</h2>
+          <div className="dsh-pwb-vd-pager">
+            <button type="button" className="dsh-pwb-vd-pagebtn" disabled={!hasPrev} title="上一页" onClick={() => setPage(page - 1)}><ChevronLeft className="size-5" /></button>
+            <button type="button" className="dsh-pwb-vd-pagebtn" disabled={!hasNext} title="下一页" onClick={() => setPage(page + 1)}><ChevronRight className="size-5" /></button>
+          </div>
+        </div>
+        {doubanLoading ? (
+          <div className="dsh-pwb-vd-grid"><div className="dsh-pwb-vd-empty"><Loader2 className="size-4 spin" /> 加载中…</div></div>
+        ) : (douban ?? []).length === 0 ? (
+          <div className="dsh-pwb-vd-empty">豆瓣榜单暂时不可用，稍后再试</div>
+        ) : (
+          <div className="dsh-pwb-vd-grid">
+            {(douban ?? []).map((s) => (
+              <PosterCard key={s.title} name={s.title} pic={s.cover} rate={s.rate} onClick={() => doSearch(s.title)} />
+            ))}
+          </div>
+        )}
       </div>
     );
   };
 
-  const navItems = [
-    { key: 'discover', label: '发现影视', icon: <Home className="size-4" />, active: route.page === 'discover', onClick: () => go({ page: 'discover' }) },
-    { key: 'search', label: '搜索影视', icon: <Search className="size-4" />, active: route.page === 'search', onClick: () => go({ page: 'search' }) },
-    { key: 'favorites', label: '我的收藏', icon: <Heart className="size-4" />, active: route.page === 'favorites', onClick: () => go({ page: 'favorites' }) },
-    { key: 'history', label: '观看历史', icon: <History className="size-4" />, active: route.page === 'history', onClick: () => go({ page: 'history' }) },
-  ];
+  // ── 搜索结果 ──
+  const renderSearch = (): ReactElement => (
+    <div className="dsh-pwb-vd-dv">
+      <div className="dsh-pwb-vd-sechead">
+        <h2><span className="dsh-pwb-vd-bar" /> 搜索结果{results.length > 0 ? <span className="dsh-pwb-vd-count">　{results.length} 部</span> : null}</h2>
+        <button type="button" className="dsh-pwb-vd-backbtn" onClick={() => go({ page: 'home' })}><ArrowLeft className="size-4" /> 返回首页</button>
+      </div>
+      {results.length === 0 ? (
+        <div className="dsh-pwb-vd-empty">{err !== '' ? err : (loading ? <><Loader2 className="size-4 spin" /> 搜索中…</> : `没有找到「${query}」相关影片`)}</div>
+      ) : (
+        <div className="dsh-pwb-vd-grid">
+          {results.map((it) => <PosterCard key={it.id} name={it.name} pic={it.pic} sub={it.remarks} onClick={() => openDetail(it)} />)}
+        </div>
+      )}
+    </div>
+  );
 
-  return (
-    <div className="dsh-pwb-vd-shell">
-      <div className="dsh-pwb-vd-sidebar">
-        <div className="dsh-pwb-vd-nav">
-          {navItems.map((item) => (
-            <button key={item.key} type="button" className={`dsh-pwb-vd-navitem${item.active ? ' dsh-pwb-vd-nav-active' : ''}`} onClick={item.onClick}>
-              {item.icon} {item.label}
-            </button>
+  // ── 收藏/历史下拉面板（原版 Navbar dropdown） ──
+  const renderDrop = (kind: 'history' | 'favorites'): ReactElement => {
+    const list = kind === 'history' ? history : favorites;
+    return (
+      <div className="dsh-pwb-vd-drop">
+        <div className="dsh-pwb-vd-drophead">
+          <b>{kind === 'history' ? '观看历史' : '我的收藏'}</b>
+          {list.length > 0 ? (
+            <button type="button" className="dsh-pwb-vd-dropclear" onClick={() => {
+              if (kind === 'history') { setHistory([]); saveList(HIST_KEY, []); } else { setFavorites([]); saveList(FAV_KEY, []); }
+            }}>清空全部</button>
+          ) : null}
+        </div>
+        <div className="dsh-pwb-vd-droplist">
+          {list.length === 0 ? (
+            <div className="dsh-pwb-vd-empty">{kind === 'history' ? '暂无观看历史' : '暂无收藏影片'}</div>
+          ) : list.map((rec) => (
+            <div key={rec.id} className="dsh-pwb-vd-dropitem" onClick={() => { setDropOpen(null); go({ page: 'play', id: rec.id, lineIdx: rec.lineIdx, epIdx: rec.epIdx }); }}>
+              <span className="dsh-pwb-vd-dropthumb">
+                {rec.pic !== undefined && rec.pic !== '' ? <img src={rec.pic} alt="" loading="lazy" /> : <Play className="size-4" />}
+                {kind === 'history' ? <i><span style={{ width: '60%' }} /></i> : null}
+              </span>
+              <span className="dsh-pwb-vd-dropmeta">
+                <b>{rec.name}</b>
+                <p>{rec.lineName}{rec.epName !== '' ? ` · ${rec.epName}` : ''}</p>
+              </span>
+              <button type="button" className="dsh-pwb-vd-dropremove" title="删除" onClick={(e) => {
+                e.stopPropagation();
+                if (kind === 'history') { const next = history.filter((x) => x.id !== rec.id); setHistory(next); saveList(HIST_KEY, next); }
+                else { const next = favorites.filter((x) => x.id !== rec.id); setFavorites(next); saveList(FAV_KEY, next); }
+              }}><Trash2 className="size-3.5" /></button>
+            </div>
           ))}
         </div>
       </div>
-      <div className="dsh-pwb-vd-body">
-        <div className="dsh-pwb-vd-topbar">
+    );
+  };
+
+  const renderPage = (): ReactElement => {
+    if (route.page === 'home') return renderHome();
+    if (route.page === 'play') return renderPlay();
+    if (route.page === 'detail') return renderDetail();
+    return renderSearch();
+  };
+
+  return (
+    <div className="dsh-pwb-vd-shell dsh-pwb-vd-shell-single">
+      {/* 顶栏：标题区 + 历史/收藏下拉（原版 Navbar） */}
+      <div className="dsh-pwb-vd-topnav">
+        <div className="dsh-pwb-vd-actions" ref={dropRef}>
+          <button type="button" className={`dsh-pwb-vd-roundbtn${dropOpen === 'history' ? ' on' : ''}`} title="观看历史" onClick={() => setDropOpen(dropOpen === 'history' ? null : 'history')}><History className="size-5" /></button>
+          <button type="button" className={`dsh-pwb-vd-roundbtn${dropOpen === 'favorites' ? ' on' : ''}`} title="我的收藏" onClick={() => setDropOpen(dropOpen === 'favorites' ? null : 'favorites')}><Heart className="size-5" /></button>
+          {dropOpen !== null ? renderDrop(dropOpen) : null}
+        </div>
+      </div>
+
+      {/* Hero：大搜索框 + 三态切换（原版 SearchBox + media toggle） */}
+      <div className="dsh-pwb-vd-hero">
+        <div className="dsh-pwb-vd-herosearch">
           <input className="dsh-pwb-vd-search" value={query} onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') doSearch(query); }} placeholder="搜索电影、剧集、短剧、动漫…" />
           <button type="button" className="dsh-pwb-vd-searchbtn" disabled={loading || query.trim() === ''} onClick={() => doSearch(query)}>
-            {loading ? <Loader2 className="size-4 spin" /> : <Search className="size-4" />} 搜索
+            {loading ? <Loader2 className="size-4 spin" /> : <SearchIcon className="size-4" />} 搜索
           </button>
         </div>
-        <div className="dsh-pwb-vd-page">{renderPage()}</div>
+        <div className="dsh-pwb-vd-toggle">
+          <button type="button" className={`dsh-pwb-vd-togglebtn${mediaType === 'movie' ? ' on' : ''}`} onClick={() => { setMediaType('movie'); setTag('华语'); setPage(0); }}>电影</button>
+          <span className="dsh-pwb-vd-togglesplit" />
+          <button type="button" className={`dsh-pwb-vd-togglebtn${mediaType === 'tv' ? ' on' : ''}`} onClick={() => { setMediaType('tv'); setTag('国产剧'); setPage(0); }}>电视剧</button>
+        </div>
       </div>
+
+      <div className="dsh-pwb-vd-main">{renderPage()}</div>
     </div>
   );
 }

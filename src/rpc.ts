@@ -154,6 +154,8 @@ function videoParseLines(v: Record<string, unknown>): Array<{ name: string; epis
 type VideoDiscoverBlock = { key: string; title: string; items: VideoBriefHost[] };
 let videoDiscoverCache: VideoDiscoverBlock[] | null = null;
 let videoDiscoverAt = 0;
+/** 豆瓣热门榜单缓存（1 小时，按参数分键）。 */
+const doubanCache = new Map<string, { at: number; data: Array<{ title: string; rate: string; cover?: string }> }>();
 
 /** 文件归档根白名单：持久化 ~/.dsh/personal-workbench/roots.json；HOME 永远在列。 */
 const ROOTS_FILE = `${process.env.HOME ?? ''}/.dsh/personal-workbench/roots.json`;
@@ -565,6 +567,31 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         videoDiscoverCache = blocks;
         videoDiscoverAt = Date.now();
         return blocks;
+      }
+      case 'personal-workbench/video/douban': {
+        // 豆瓣热门榜单：cmliussss 镜像（原版影视站同款数据源），Host 代理 + 1 小时缓存
+        const p = asRecord(payload);
+        const type = p.type === 'tv' ? 'tv' : 'movie';
+        const tag = typeof p.tag === 'string' && p.tag.trim() !== '' ? p.tag.trim() : '热门';
+        const pageLimit = Math.min(30, Math.max(3, Number(p.pageLimit) || 12));
+        const pageStart = Math.min(720, Math.max(0, Number(p.pageStart) || 0));
+        const key = `${type}|${tag}|${pageLimit}|${pageStart}`;
+        const hit = doubanCache.get(key);
+        if (hit !== undefined && Date.now() - hit.at < 60 * 60 * 1000) return { subjects: hit.data };
+        const url = `https://movie.douban.cmliussss.com/j/search_subjects?type=${type}&tag=${encodeURIComponent(tag)}&sort=recommend&page_limit=${pageLimit}&page_start=${pageStart}`;
+        try {
+          const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', Referer: 'https://movie.douban.com/', Accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
+          const data = (await res.json()) as { subjects?: Array<Record<string, unknown>> };
+          const subjects = (data.subjects ?? []).map((it) => ({
+            title: String(it.title ?? ''),
+            rate: String(it.rate ?? '0'),
+            cover: typeof it.cover === 'string' && it.cover !== '' ? it.cover.replace(/^http:/, 'https:') : undefined,
+          })).filter((x) => x.title !== '');
+          doubanCache.set(key, { at: Date.now(), data: subjects });
+          return { subjects };
+        } catch {
+          fail('bad-gateway', '豆瓣榜单不可达');
+        }
       }
       case 'personal-workbench/music/source': {
         // 酷我官方直链（碳酸插件同源）：antiserver convert_url；带 iPhone UA + kuwo Referer

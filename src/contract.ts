@@ -67,6 +67,7 @@ export interface PersonalWorkbenchRequestMap {
   'personal-workbench/video/category': { t: string; pg: number };
   'personal-workbench/video/detail': { id: string };
   'personal-workbench/video/discover': Record<string, never>;
+  'personal-workbench/video/douban': { type: string; tag: string; pageLimit?: number; pageStart?: number };
   'personal-workbench/music/detail': { id: string; proxy?: string };
   'personal-workbench/music/import': { link: string; proxy?: string };
   'personal-workbench/fs/roots/pick': Record<string, never>;
@@ -106,6 +107,7 @@ export interface PersonalWorkbenchResponseMap {
   'personal-workbench/video/category': { items: VideoBrief[]; total: number; pagecount: number };
   'personal-workbench/video/detail': { name: string; pic?: string; year?: string; typeName?: string; actor?: string; director?: string; content?: string; remarks?: string; lines: Array<{ name: string; episodes: Array<{ name: string; url: string }> }> };
   'personal-workbench/video/discover': { blocks: Array<{ key: string; title: string; items: VideoBrief[] }> };
+  'personal-workbench/video/douban': { subjects: Array<{ title: string; rate: string; cover?: string }> };
   'personal-workbench/music/detail': { lyrics: Array<{ time: number; text: string }>; coverUrl?: string };
   'personal-workbench/music/import': { queries: string[]; songs: Array<{ id: string; title: string; artist: string; album: string; duration: number; audioUrl: string; coverUrl?: string }> };
   'personal-workbench/fs/roots/pick': { ok: boolean; path: string; roots: string[] } | { ok: false; code: 'cancelled' };
