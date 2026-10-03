@@ -207,9 +207,9 @@ export function KnowledgeView({ rpc }: { rpc: RpcFn }): ReactElement {
             <div className="dsh-pwb-empty">{t('kb.pick')}</div>
           ) : editing ? (
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8 }}>
-              <div className="dsh-pwb-note-head" style={{ flexShrink: 0 }}>
+              <div className="dsh-pwb-note-head" style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span>编辑中：{note.path}</span>
-                <span className="ml-auto flex gap-1.5">
+                <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                   <button type="button" className="dsh-pwb-btn" disabled={saving} onClick={() => { setDraft(note.content); setEditing(false); }}>取消</button>
                   <button type="button" className="dsh-pwb-btn dsh-pwb-btn-primary" disabled={saving} onClick={() => void saveNote()}>{saving ? '保存中…' : '保存'}</button>
                 </span>
@@ -225,7 +225,7 @@ export function KnowledgeView({ rpc }: { rpc: RpcFn }): ReactElement {
             </div>
           ) : (
             <>
-              <div className="dsh-pwb-note-head">
+              <div className="dsh-pwb-note-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span>{note.path}</span>
                 <button type="button" className="dsh-pwb-btn" style={{ marginLeft: 'auto' }} onClick={() => { setDraft(note.content); setEditing(true); }}>编辑</button>
               </div>
