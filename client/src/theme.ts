@@ -527,6 +527,21 @@ const CSS = `
 .dsh-pwb-day-title { font-size: 13.5px; font-weight: 650; }
 .dsh-pwb-day-count { font-size: 12px; color: var(--pwb-dimmer); }
 
+/* ── 实时日薪：金额心跳（咚-咚 双脉冲节律）── */
+.dsh-pwb-salary-beat {
+  display: inline-block;
+  animation: dsh-pwb-heartbeat 1.15s ease-in-out infinite;
+  transform-origin: 50% 60%;
+  will-change: transform;
+}
+@keyframes dsh-pwb-heartbeat {
+  0%, 100% { transform: scale(1); }
+  12% { transform: scale(1.055); }
+  24% { transform: scale(1); }
+  36% { transform: scale(1.075); }
+  52% { transform: scale(1); }
+}
+
 /* ── 文件归档：全局类（不依赖 dsh-pwb-dark 作用域，避免 Tailwind 作用域化失效与变量环境污染）── */
 .dsh-pwb-fs-row {
   display: flex;

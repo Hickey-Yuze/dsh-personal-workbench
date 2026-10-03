@@ -207,8 +207,10 @@ export function SalaryWidget({ rpc }: { rpc: RpcFn }) {
         </div>
         {/* ¥239.91³² —— 主数字每秒跳动，厘秒位小号 + pop 动画强化跳动感 */}
         <div className="text-center font-bold tabular-nums text-primary">
-          <span className="text-3xl">¥{earnedStr.slice(0, -2)}</span>
-          <span key={earnedStr.slice(-2)} className="dsh-pwb-sec-pop text-base align-super">{earnedStr.slice(-2)}</span>
+          <span className="dsh-pwb-salary-beat">
+            <span className="text-3xl">¥{earnedStr.slice(0, -2)}</span>
+            <span key={earnedStr.slice(-2)} className="dsh-pwb-sec-pop text-base align-super">{earnedStr.slice(-2)}</span>
+          </span>
         </div>
 
         <div className="mt-1 flex items-center justify-between text-[11px] text-white/45">
