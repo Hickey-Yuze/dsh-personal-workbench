@@ -19,6 +19,9 @@ export function KnowledgeView({ rpc }: { rpc: RpcFn }): ReactElement {
   const [hits, setHits] = useState<KbSearchHit[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | undefined>(undefined);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const loadDir = useCallback(
     async (target: string) => {
@@ -46,12 +49,28 @@ export function KnowledgeView({ rpc }: { rpc: RpcFn }): ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const saveNote = async (): Promise<void> => {
+    if (note === null) return;
+    setSaving(true);
+    setErr(undefined);
+    try {
+      await kb.write(note.path, draft);
+      setNote({ path: note.path, content: draft });
+      setEditing(false);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const openNote = async (path: string): Promise<void> => {
     setBusy(true);
     setErr(undefined);
     try {
       const out = await kb.read(path);
       setNote({ path: out.path, content: out.content });
+      setEditing(false);
       setHits(null);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -186,9 +205,30 @@ export function KnowledgeView({ rpc }: { rpc: RpcFn }): ReactElement {
         <div className="dsh-pwb-split-main">
           {note === null ? (
             <div className="dsh-pwb-empty">{t('kb.pick')}</div>
+          ) : editing ? (
+            <>
+              <div className="dsh-pwb-note-head">
+                <span>编辑中：{note.path}</span>
+                <span className="ml-auto flex gap-1.5">
+                  <button type="button" className="dsh-pwb-btn" disabled={saving} onClick={() => { setDraft(note.content); setEditing(false); }}>取消</button>
+                  <button type="button" className="dsh-pwb-btn dsh-pwb-btn-primary" disabled={saving} onClick={() => void saveNote()}>{saving ? '保存中…' : '保存'}</button>
+                </span>
+              </div>
+              <textarea
+                className="dsh-pwb-pre"
+                style={{ width: '100%', flex: 1, resize: 'none', whiteSpace: 'pre-wrap', outline: 'none' }}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); void saveNote(); } }}
+                autoFocus
+              />
+            </>
           ) : (
             <>
-              <div className="dsh-pwb-note-head">{note.path}</div>
+              <div className="dsh-pwb-note-head">
+                <span>{note.path}</span>
+                <button type="button" className="dsh-pwb-btn" style={{ marginLeft: 'auto' }} onClick={() => { setDraft(note.content); setEditing(true); }}>编辑</button>
+              </div>
               <pre className="dsh-pwb-pre">{note.content}</pre>
             </>
           )}

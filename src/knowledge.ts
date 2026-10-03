@@ -134,6 +134,16 @@ export class KnowledgeClient {
     return { path: clean, content: res.text, bytes: Buffer.byteLength(res.text, 'utf8') };
   }
 
+  /** 写笔记：PUT /vault/<path>（Obsidian REST 覆盖写；204/200 视为成功） */
+  async write(notePath: string, content: string): Promise<{ path: string; bytes: number }> {
+    const clean = normalizeVaultPath(notePath);
+    if (clean === '') throw Object.assign(new Error('缺少笔记路径'), { code: 'bad-request' });
+    const res = await this.request(`/vault/${encodeURI(clean)}`, { method: 'PUT', contentType: 'text/markdown', body: content });
+    if (res.status === 401) throw Object.assign(new Error('知识库 API key 无效或未授权'), { code: 'unauthorized' });
+    if (res.status !== 200 && res.status !== 204) throw Object.assign(new Error(`保存失败（知识库返回 ${res.status}）`), { code: 'upstream' });
+    return { path: clean, bytes: Buffer.byteLength(content, 'utf8') };
+  }
+
   /** 全文搜索：POST /search/simple/?query=... */
   async search(query: string): Promise<{ hits: KbSearchHit[]; total: number }> {
     const q = query.trim();

@@ -112,6 +112,14 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         const notePath = asString(p.path, 'path', 512);
         return await deps.knowledge.read(notePath);
       }
+      case 'personal-workbench/kb/write': {
+        const p = asRecord(payload);
+        const notePath = typeof p.path === 'string' ? p.path : '';
+        const content = typeof p.content === 'string' ? p.content : null;
+        if (notePath === '' || content === null) fail('bad-request', '缺少笔记路径或内容');
+        return await deps.knowledge.write(notePath, content);
+      }
+
       case 'personal-workbench/kb/search': {
         const p = asRecord(payload);
         const query = asString(p.query, 'query', 200);

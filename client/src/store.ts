@@ -88,6 +88,14 @@ export function useKnowledge(rpc: RpcFn) {
     },
     [rpc],
   );
+  const write = useCallback(
+    async (path: string, content: string) => {
+      const res = await rpc('personal-workbench/kb/write', { path, content });
+      if (!res.ok) throw new Error(res.error?.message ?? '保存失败');
+      return res.value ?? { path, bytes: 0 };
+    },
+    [rpc],
+  );
   // 引用必须稳定：否则调用方的 effect 依赖会随之变化，引发"拉取→setState→重渲染→再拉取"自激振荡（知识库树闪烁根因）
-  return useMemo(() => ({ list, read, search }), [list, read, search]);
+  return useMemo(() => ({ list, read, search, write }), [list, read, search, write]);
 }

@@ -57,6 +57,7 @@ export interface PersonalWorkbenchRequestMap {
   'personal-workbench/store/write': { key: string; value: unknown };
   'personal-workbench/kb/list': { path?: string };
   'personal-workbench/kb/read': { path: string };
+  'personal-workbench/kb/write': { path: string; content: string };
   'personal-workbench/kb/search': { query: string };
 }
 
@@ -76,6 +77,7 @@ export interface PersonalWorkbenchResponseMap {
   'personal-workbench/store/write': { key: string; bytes: number };
   'personal-workbench/kb/list': { entries: KbEntry[]; total: number; dir: string };
   'personal-workbench/kb/read': { path: string; content: string; bytes: number };
+  'personal-workbench/kb/write': { path: string; bytes: number };
   'personal-workbench/kb/search': { hits: KbSearchHit[]; total: number };
 }
 
