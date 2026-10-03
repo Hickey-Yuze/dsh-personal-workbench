@@ -123,12 +123,14 @@ export function WorkbenchPanel({ rpc }: WorkbenchPanelProps): ReactElement {
         </div>
       ) : (
         <>
-          <div className="dsh-pwb-head dsh-pwb-head-inline">
-            {active !== null ? (
+          {active !== null ? (
+            <div className="dsh-pwb-head dsh-pwb-head-slim">
               <button type="button" className="dsh-pwb-btn" onClick={() => setActive(null)}>
                 ← {t('act.back')}
               </button>
-            ) : null}
+            </div>
+          ) : null}
+          <div className="dsh-pwb-head">
             <div className="dsh-pwb-head-main">
               <div className="dsh-pwb-title-row">
                 <span className="dsh-pwb-title-mark">
