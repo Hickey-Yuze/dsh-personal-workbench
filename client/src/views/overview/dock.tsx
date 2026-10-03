@@ -40,8 +40,12 @@ export function DockWidget({ rpc }: { rpc: RpcFn }) {
     void (async () => {
       try {
         const out = await rpc('personal-workbench/apps/list', {});
-        if (alive) setApps((out as { apps?: string[] }).apps ?? []);
-      } catch { /* Host 未重启时端点不存在：静默 */ }
+        if (!alive) return;
+        if (out?.ok) setApps((out.value as { apps?: string[] })?.apps ?? []);
+        else setError('应用列表不可用：请完全退出并重启宿主，然后 Cmd+Shift+R 强刷本页');
+      } catch {
+        if (alive) setError('应用列表不可用：请完全退出并重启宿主，然后 Cmd+Shift+R 强刷本页');
+      }
     })();
     return () => { alive = false; };
   }, [rpc]);
