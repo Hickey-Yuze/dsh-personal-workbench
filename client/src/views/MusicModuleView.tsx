@@ -85,6 +85,15 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
   const [discoverLoading, setDiscoverLoading] = useState(false);
   const [singerData, setSingerData] = useState<{ name: string; songs: Song[] } | null>(null);
   const [singerLoading, setSingerLoading] = useState(false);
+  // 黑胶正圆兜底：样式表带 !important 的规则会压过普通内联样式，用 setProperty important 级别强制
+  const fsDiscRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = fsDiscRef.current;
+    if (el === null) return;
+    el.style.setProperty('border-radius', '50%', 'important');
+    el.style.setProperty('width', '340px', 'important');
+    el.style.setProperty('height', '340px', 'important');
+  }, []);
   const [singerError, setSingerError] = useState('');
   const [onlineLoading, setOnlineLoading] = useState(false);
   const [onlinePage, setOnlinePage] = useState(1);
@@ -767,7 +776,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
           <div className="dsh-pwb-mu-fs-tag">正在播放</div>
           <div className="dsh-pwb-mu-fs-stage">
             <div className="dsh-pwb-mu-fs-left">
-              <div className="dsh-pwb-mu-fs-disc" style={{ borderRadius: "50%", aspectRatio: "1 / 1", width: 340, height: "auto" }}>
+              <div ref={fsDiscRef} className="dsh-pwb-mu-fs-disc">
                 {current?.coverUrl ? <img src={current.coverUrl} alt="" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : <span className="dsh-pwb-mu-fs-disc-dummy"><Disc3 className="size-9" /></span>}
                 <i />
               </div>
