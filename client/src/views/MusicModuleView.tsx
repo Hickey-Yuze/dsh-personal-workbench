@@ -537,7 +537,7 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
               onClick={() => { const first = songs[0]; if (first !== undefined) playSong(first, songs, `歌手·${route.name}`); }}>
               <Play className="size-4" /> 播放全部
             </button>
-            <button type="button" className="dsh-pwb-mu-btn" disabled={songs.length === 0}
+            <button type="button" className="dsh-pwb-mu-sg-save" disabled={songs.length === 0}
               onClick={() => {
                 const pl: Playlist = { id: `pl_${Date.now()}`, name: `${route.name}·热门${songs.length}首`, songs };
                 savePlaylists([...playlists, pl]);
