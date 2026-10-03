@@ -342,6 +342,20 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         if (!TEXT_EXT.has(ext)) fail('unsupported', '该类型不支持文本预览（可用系统程序打开）');
         return { path: rel, kind: 'text', content: fs.readFileSync(abs, 'utf8'), bytes: st.size };
       }
+      case 'personal-workbench/fs/write': {
+        const p = asRecord(payload);
+        const rel = typeof p.path === 'string' ? p.path : '';
+        const content = typeof p.content === 'string' ? p.content : null;
+        if (rel === '' || content === null) fail('bad-request', '缺少路径或内容');
+        if (content.length > 2 * 1024 * 1024) fail('too-large', '内容超过 2MB');
+        const ext = rel.split('.').pop()?.toLowerCase() ?? '';
+        const TEXT_EXT2 = new Set(['md', 'txt', 'json', 'csv', 'log', 'yaml', 'yml', 'js', 'jsx', 'ts', 'tsx', 'py', 'sh', 'html', 'css', 'xml', 'ini', 'conf', 'env', 'sql']);
+        if (!TEXT_EXT2.has(ext)) fail('unsupported', '该类型不支持编辑保存');
+        const abs = fsResolveSafe(rel);
+        fs.writeFileSync(abs, content, 'utf8');
+        return { ok: true, path: rel, bytes: Buffer.byteLength(content, 'utf8') };
+      }
+
       case 'personal-workbench/fs/open': {
         const p = asRecord(payload);
         const rel = typeof p.path === 'string' ? p.path : '';

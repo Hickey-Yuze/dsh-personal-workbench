@@ -18,6 +18,9 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
   const [entries, setEntries] = useState<Node[]>([]);
   const [note, setNote] = useState<{ path: string; kind: 'text' | 'image'; content?: string; dataUrl?: string } | null>(null);
   const [unsupported, setUnsupported] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [reading, setReading] = useState(false);
   const [err, setErr] = useState('');
@@ -42,6 +45,7 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
 
   const enter = (n: Node) => {
     setUnsupported(null);
+    setEditing(false);
     if (n.kind === 'dir') { setNote(null); setStack((s) => [...s, n.path]); return; }
     void (async () => {
       setReading(true);
@@ -65,6 +69,22 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
         setReading(false);
       }
     })();
+  };
+
+  const saveNote = async (): Promise<void> => {
+    if (note === null) return;
+    setSaving(true);
+    setErr('');
+    try {
+      const out = await rpc('personal-workbench/fs/write', { path: note.path, content: draft });
+      if (!out?.ok) throw new Error((out?.error as { message?: string })?.message ?? '保存失败');
+      setNote({ path: note.path, kind: 'text', content: draft });
+      setEditing(false);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '保存失败');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const openWithSystem = async (rel: string) => {
@@ -137,13 +157,36 @@ export function ArchiveModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
         <div className="dsh-pwb-split-main">
           {reading ? (
             <div className="grid h-full place-items-center"><Loader2 className="size-8 animate-spin text-white/30" /></div>
+          ) : note !== null && editing ? (
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8 }}>
+              <div className="dsh-pwb-note-head" style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                <span className="min-w-0 truncate" title={note.path}>编辑中：{note.path}</span>
+                <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                  <button type="button" className="dsh-pwb-btn" disabled={saving} onClick={() => { setDraft(note.content ?? ''); setEditing(false); }}>取消</button>
+                  <button type="button" className="dsh-pwb-btn dsh-pwb-btn-primary" disabled={saving} onClick={() => void saveNote()}>{saving ? '保存中…' : '保存'}</button>
+                </span>
+              </div>
+              <textarea
+                className="dsh-pwb-pre"
+                style={{ flex: 1, minHeight: 0, width: '100%', resize: 'none', whiteSpace: 'pre', outline: 'none', border: '1px solid var(--pwb-border, rgba(0,0,0,0.08))', borderRadius: 8, padding: 10, background: 'var(--pwb-card-hi, #f2f3f5)' }}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); void saveNote(); } }}
+                autoFocus
+              />
+            </div>
           ) : note !== null ? (
             <>
               <div className="dsh-pwb-note-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span className="min-w-0 truncate" title={note.path}>{note.path}</span>
-                <button type="button" className="dsh-pwb-btn" style={{ marginLeft: 'auto' }} onClick={() => void openWithSystem(note.path)}>
-                  <ExternalLink className="size-3.5" /> 用系统程序打开
-                </button>
+                <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                  {note.kind === 'text' ? (
+                    <button type="button" className="dsh-pwb-btn" onClick={() => { setDraft(note.content ?? ''); setEditing(true); }}>编辑</button>
+                  ) : null}
+                  <button type="button" className="dsh-pwb-btn" onClick={() => void openWithSystem(note.path)}>
+                    <ExternalLink className="size-3.5" /> 用系统程序打开
+                  </button>
+                </span>
               </div>
               {note.kind === 'image' && note.dataUrl ? (
                 <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto', background: 'var(--pwb-card-hi, #f2f3f5)', borderRadius: 10 }}>

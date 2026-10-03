@@ -61,6 +61,7 @@ export interface PersonalWorkbenchRequestMap {
   'personal-workbench/fs/list': { path?: string };
   'personal-workbench/fs/read': { path: string };
   'personal-workbench/fs/open': { path: string };
+  'personal-workbench/fs/write': { path: string; content: string };
   'personal-workbench/kb/search': { query: string };
 }
 
@@ -84,6 +85,7 @@ export interface PersonalWorkbenchResponseMap {
   'personal-workbench/fs/list': { entries: Array<{ name: string; path: string; kind: 'dir' | 'file' }>; root: string };
   'personal-workbench/fs/read': { path: string; kind: 'text'; content: string; bytes: number } | { path: string; kind: 'image'; dataUrl: string; bytes: number };
   'personal-workbench/fs/open': { ok: boolean; path: string };
+  'personal-workbench/fs/write': { ok: boolean; path: string; bytes: number };
   'personal-workbench/kb/search': { hits: KbSearchHit[]; total: number };
 }
 
