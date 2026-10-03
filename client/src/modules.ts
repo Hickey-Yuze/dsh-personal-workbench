@@ -54,8 +54,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: 'film',
     accent: '#FBBF24',
-    ready: false,
-    pendingKey: 'pending.media',
+    ready: true,
     icon: 'M4 5.5h16v13H4v-13Zm0 4h16M8 5.5v13M16 5.5v13',
   },
   {
