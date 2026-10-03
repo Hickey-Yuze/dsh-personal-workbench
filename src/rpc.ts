@@ -38,6 +38,63 @@ interface WebServerLike {
 
 export const API_PREFIX = '/api/personal-workbench';
 
+// ── 音乐平台：酷我接口 Host 代理（浏览器侧有 CORS，Node 侧无）──
+const MUSIC_PROXY_DEFAULT = 'https://jsnzkpg4.pages.dev/';
+function musicWithProxy(url: string, proxy?: string): string {
+  const base = (proxy !== undefined && proxy.trim() !== '' ? proxy.trim() : MUSIC_PROXY_DEFAULT);
+  const b = base.endsWith('/') ? base : `${base}/`;
+  return `${b}${url}`;
+}
+async function musicFetch(url: string, ms = 15000, headers?: Record<string, string>): Promise<string> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal, headers });
+    return await res.text();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+function musicParseMaybeJsonp(text: string): Record<string, unknown> {
+  const t = text.trim();
+  if (t.startsWith('callback(') || t.startsWith('jsonp(')) {
+    return JSON.parse(t.slice(t.indexOf('(') + 1, t.lastIndexOf(')'))) as Record<string, unknown>;
+  }
+  return JSON.parse(t) as Record<string, unknown>;
+}
+function musicDecode(html: string): string {
+  return html.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+}
+function musicArtworkShort2Long(short?: string): string | undefined {
+  if (typeof short !== 'string' || short === '') return undefined;
+  const idx = short.indexOf('/');
+  return idx !== -1 ? `https://img4.kuwo.cn/star/albumcover/1080${short.slice(idx)}` : undefined;
+}
+function musicKuwoPlayUrl(id: string, level: string): string {
+  return `https://music.nxinxz.com/kw.php?id=${encodeURIComponent(id)}&level=${level}&type=mp3`;
+}
+interface MusicSong { id: string; title: string; artist: string; album: string; duration: number; audioUrl: string; coverUrl?: string }
+function musicMapAbslist(data: Record<string, unknown>): { songs: MusicSong[]; isEnd: boolean; total: number } {
+  const abslist = Array.isArray(data.abslist) ? (data.abslist as Array<Record<string, unknown>>) : [];
+  const songs = abslist.map((it) => {
+    const id = String(it.MUSICRID ?? '').replace('MUSIC_', '');
+    return {
+      id,
+      title: musicDecode(String(it.NAME ?? '未知歌曲')),
+      artist: musicDecode(String(it.ARTIST ?? '未知歌手')),
+      album: musicDecode(String(it.ALBUM ?? '未知专辑')),
+      duration: Number(it.DURATION) || 0,
+      audioUrl: musicKuwoPlayUrl(id, 'standard'),
+      coverUrl: musicArtworkShort2Long(typeof it.web_albumpic_short === 'string' ? it.web_albumpic_short : undefined),
+    };
+  });
+  const total = Number(data.TOTAL) || 0;
+  const pn = Number(data.PN) || 0;
+  const rn = Number(data.RN) || 30;
+  return { songs, isEnd: total > 0 && (pn + 1) * rn >= total, total };
+}
+const musicSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
 /** 文件归档根白名单：持久化 ~/.dsh/personal-workbench/roots.json；HOME 永远在列。 */
 const ROOTS_FILE = `${process.env.HOME ?? ''}/.dsh/personal-workbench/roots.json`;
 function loadRoots(): string[] {
@@ -337,6 +394,141 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
       // ── 文件归档：HOME 下安全浏览/读文本/系统程序打开 ──
       case 'personal-workbench/fs/roots/list':
         return { roots: loadRoots(), home: process.env.HOME ?? '' };
+      case 'personal-workbench/music/search': {
+        const p = asRecord(payload);
+        const q = typeof p.q === 'string' ? p.q.trim() : '';
+        const page = Math.max(1, Number(p.page) || 1);
+        const proxy = typeof p.proxy === 'string' ? p.proxy : undefined;
+        if (q === '') fail('bad-request', '缺少搜索词');
+        const url = `http://search.kuwo.cn/r.s?client=kt&all=${encodeURIComponent(q)}&pn=${page - 1}&rn=30&uid=2574109560&ver=kwplayer_ar_8.5.4.2&vipver=1&ft=music&cluster=0&strategy=2012&encoding=utf8&rformat=json&vermerge=1&mobi=1`;
+        let data: Record<string, unknown>;
+        try {
+          data = musicParseMaybeJsonp(await musicFetch(musicWithProxy(url, proxy)));
+        } catch {
+          fail('bad-gateway', '搜索接口不可达');
+        }
+        const m = musicMapAbslist(data);
+        return { songs: m.songs, isEnd: m.isEnd, total: m.total };
+      }
+      case 'personal-workbench/music/detail': {
+        // 歌词 + 高清封面（同一接口；酷我偶发 301 限流，重试 3 次退避）
+        const p = asRecord(payload);
+        const id = typeof p.id === 'string' ? p.id : '';
+        const proxy = typeof p.proxy === 'string' ? p.proxy : undefined;
+        if (id === '' || !/^\d+$/.test(id)) fail('bad-request', '缺少歌曲 id');
+        const url = `http://m.kuwo.cn/newh5/singles/songinfoandlrc?musicId=${id}&httpStatus=1`;
+        let lastErr = '';
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const data = musicParseMaybeJsonp(await musicFetch(musicWithProxy(url, proxy))) as {
+              status?: number; data?: { lrclist?: Array<{ time?: unknown; lineLyric?: unknown }>; songinfo?: { pic?: unknown } };
+            };
+            if (data.status === 301 || data.data === undefined) { await musicSleep(800 * (attempt + 1)); continue; }
+            const lrc = (Array.isArray(data.data.lrclist) ? data.data.lrclist : [])
+              .map((line) => {
+                const raw = typeof line.time === 'string' ? line.time : String(line.time ?? '0');
+                let time = 0;
+                if (raw.includes(':')) {
+                  const parts = raw.split(':');
+                  time = parts.length === 2 ? Number(parts[0]) * 60 + parseFloat(parts[1]) : parseFloat(raw) || 0;
+                } else {
+                  time = parseFloat(raw) || 0;
+                }
+                return { time, text: musicDecode(String(line.lineLyric ?? '')) };
+              })
+              .filter((l) => l.text !== '');
+            const pic = typeof data.data.songinfo?.pic === 'string' ? data.data.songinfo.pic.replace('/800/', '/1080/') : undefined;
+            return { lyrics: lrc, coverUrl: pic };
+          } catch (e) {
+            lastErr = e instanceof Error ? e.message : String(e);
+            await musicSleep(800 * (attempt + 1));
+          }
+        }
+        fail('bad-gateway', lastErr === '' ? '歌词接口连续失败' : lastErr);
+      }
+      case 'personal-workbench/music/import': {
+        // 歌单分享链接解析：网易云/QQ/酷狗 → queries；酷我/波点 → 可直接播放 songs
+        const p = asRecord(payload);
+        const link = typeof p.link === 'string' ? p.link.trim() : '';
+        const proxy = typeof p.proxy === 'string' ? p.proxy : undefined;
+        if (link === '') fail('bad-request', '缺少分享链接');
+        const queries: string[] = [];
+        const songs: MusicSong[] = [];
+        if (link.includes('163cn.tv') || link.includes('music.163.com') || link.includes('163.cn')) {
+          const id = link.includes('163cn.tv') ? null : (link.match(/(?:playlist|list)[/?](\d+)/)?.[1] ?? link.match(/id=(\d+)/)?.[1]);
+          if (!link.includes('163cn.tv') && id === null) fail('bad-request', '链接里没有歌单 id');
+          for (let attempt = 0; attempt < 5 && queries.length === 0; attempt++) {
+            const target = link.includes('163cn.tv')
+              ? `${link}${link.includes('?') ? '&' : '?'}r=${Date.now().toString(36)}${attempt}`
+              : `https://music.163.com/playlist?id=${id}`;
+            try {
+              const html = await musicFetch(musicWithProxy(target, proxy), 20000);
+              const re = /<a href="\/song\?id=\d+">([^<]+)<\/a>/g;
+              let m: RegExpExecArray | null;
+              while ((m = re.exec(html)) !== null) {
+                const title = musicDecode(m[1]).trim();
+                if (title !== '' && !queries.includes(title)) queries.push(title);
+              }
+            } catch { /* 单次失败退避重试 */ }
+            if (queries.length === 0) await musicSleep(1200);
+          }
+        } else if (link.includes('y.qq.com') || link.includes('qq.com')) {
+          const id = link.match(/playlist\/(\d+)/)?.[1] ?? link.match(/id=(\d+)/)?.[1];
+          if (id === undefined) fail('bad-request', '链接里没有歌单 id');
+          const data = musicParseMaybeJsonp(await musicFetch(musicWithProxy(`https://c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg?type=1&json=1&utf8=1&onlysong=0&disstid=${id}&format=json`, proxy), 20000)) as { songlist?: Array<Record<string, unknown>> };
+          const list = Array.isArray(data.songlist) ? data.songlist : [];
+          for (const song of list) {
+            const title = String(song.songname ?? '').trim();
+            if (title === '') continue;
+            const singers = Array.isArray(song.singer) ? (song.singer as Array<Record<string, unknown>>) : [];
+            const artist = singers.map((x) => x.name).filter((x): x is string => typeof x === 'string').join(' ');
+            queries.push(artist !== '' ? `${title} - ${artist}` : title);
+          }
+        } else if (link.includes('kugou.com')) {
+          const id = link.match(/special\/single\/(\d+)/)?.[1];
+          if (id === undefined) fail('bad-request', '链接里没有歌单 id');
+          const html = await musicFetch(musicWithProxy(`https://www.kugou.com/yy/special/single/${id}.html`, proxy), 20000);
+          const pat1 = /data-title="([^"]+)"[^>]*data-singer="([^"]+)"/g;
+          let m: RegExpExecArray | null;
+          while ((m = pat1.exec(html)) !== null) {
+            const title = musicDecode(m[1]).trim();
+            if (title !== '') queries.push(m[2] !== '' ? `${title} - ${musicDecode(m[2])}` : title);
+          }
+          if (queries.length === 0) {
+            const pat2 = /"filename"\s*:\s*"([^"]+?)-([^"]+?)"/g;
+            while ((m = pat2.exec(html)) !== null) {
+              const title = musicDecode(m[1]).trim();
+              if (title !== '') queries.push(m[2] !== '' ? `${title} - ${musicDecode(m[2])}` : title);
+            }
+          }
+        } else if (link.includes('kuwo.cn')) {
+          const pid = link.match(/playlistId=(\d+)/)?.[1];
+          if (pid === undefined) fail('bad-request', '链接里没有歌单 id');
+          const source = link.match(/source=(\d+)/)?.[1] ?? '5';
+          const reqId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+          const res = await fetch(musicWithProxy(`https://bd-api.kuwo.cn/api/service/playlist/${pid}/musicList?reqId=${reqId}&source=${source}&pn=1&rn=100`, proxy), { headers: { plat: 'h5', ver: '' } });
+          const data = JSON.parse(await res.text()) as { data?: { list?: Array<Record<string, unknown>>; musicList?: Array<Record<string, unknown>> } };
+          const list = data.data?.list ?? data.data?.musicList ?? [];
+          for (const song of list) {
+            const sid = String(song.id ?? '');
+            const pic = typeof song.albumPic === 'string' && song.albumPic !== '' ? song.albumPic.replace('/800/', '/1080/') : undefined;
+            songs.push({
+              id: sid,
+              title: musicDecode(String(song.name ?? '未知歌曲')),
+              artist: musicDecode(String(song.artist ?? '未知歌手')),
+              album: musicDecode(String(song.album ?? '未知专辑')),
+              duration: Number(song.duration) || 0,
+              audioUrl: musicKuwoPlayUrl(sid, 'standard'),
+              coverUrl: pic,
+            });
+          }
+        } else {
+          fail('bad-request', '暂不支持该平台的分享链接（支持网易云/QQ/酷狗/酷我）');
+        }
+        if (queries.length === 0 && songs.length === 0) fail('bad-gateway', '解析不到歌曲，链接可能失效');
+        return { queries, songs };
+      }
+
       case 'personal-workbench/fs/roots/pick': {
         // macOS 原生「选择文件夹」对话框（osascript）；Windows 宿主无此路由，走输入路径
         let picked = '';

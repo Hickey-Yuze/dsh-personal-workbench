@@ -44,7 +44,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: 'music',
     accent: '#F472B6',
-    ready: false,
+    ready: true,
     pendingKey: 'pending.media',
     icon: 'M9 18V6l10-2v12M9 18a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Zm10-2a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z',
   },
