@@ -618,6 +618,21 @@ html { color-scheme: light !important; }
 /* 万年历：农历小字 + 休/班标记 */
 .dsh-pwb-cal-lunar { margin-top: 0; font-size: 10.5px; line-height: 1.1; color: var(--pwb-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dsh-pwb-cal-sel .dsh-pwb-cal-lunar { color: rgba(255, 255, 255, 0.85); }
+.dsh-pwb-cal-festival { color: #e5484d; font-weight: 650; }
+.dsh-pwb-cal-jieqi { color: #00b862; font-weight: 650; }
+.dsh-pwb-cal-sel .dsh-pwb-cal-festival, .dsh-pwb-cal-sel .dsh-pwb-cal-jieqi { color: #ffffff; }
+.dsh-pwb-cal-hol {
+  margin-left: auto;
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  color: #ffffff;
+  background: #e5484d;
+  border-radius: 5px;
+  padding: 2px 4px;
+}
+.dsh-pwb-cal-hol.dsh-pwb-cal-ban { background: var(--pwb-dimmer, #9aa0a6); }
 .dsh-pwb-almanac {
   display: flex;
   align-items: center;

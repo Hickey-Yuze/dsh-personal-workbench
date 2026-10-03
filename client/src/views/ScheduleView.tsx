@@ -2,7 +2,7 @@
  * 模块：日常管理（日程）——插件自有数据，落盘 <dataDir>/events.json。
  * 月历 + 当日清单 + 就地新增，全部离线可用。
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { ScheduleEvent } from '../../../src/contract.js';
 import { t } from '../i18n.js';
@@ -37,7 +37,7 @@ function Almanac({ date }: { date: string }): ReactElement {
   const l = lunarOf(date);
   return (
     <div className="dsh-pwb-almanac">
-      <span className="dsh-pwb-almanac-date">{l.monthDay} · {l.yearGZ}年 · {l.zodiac}</span>
+      <span className="dsh-pwb-almanac-date">{l.festival !== undefined ? `${l.festival} · ` : ''}{l.monthDay} · {l.yearGZ}年 · {l.zodiac}</span>
       <span className="dsh-pwb-almanac-yi">宜 {l.yi.slice(0, 4).join(' · ')}</span>
       <span className="dsh-pwb-almanac-ji">忌 {l.ji.slice(0, 4).join(' · ')}</span>
     </div>
@@ -53,10 +53,24 @@ export function ScheduleView({ rpc }: { rpc: RpcFn }): ReactElement {
   });
   const [selected, setSelected] = useState<string>(today);
   const [title, setTitle] = useState('');
+  const [holidays, setHolidays] = useState<Record<string, { holiday: boolean; name: string }>>({});
   const [startTime, setStartTime] = useState('');
   const [location, setLocation] = useState('');
 
   const cells = useMemo(() => buildMonth(cursor.y, cursor.m), [cursor]);
+
+  // 法定节假日调休（Host 代理 holiday-cn/timor，多源降级）；拉取失败不显示徽章，不造假
+  useEffect(() => {
+    let dead = false;
+    void (async () => {
+      try {
+        const out = await rpc('personal-workbench/holidays/fetch', { year: cursor.y });
+        if (!out?.ok || dead) return;
+        setHolidays((out.value ?? {}) as Record<string, { holiday: boolean; name: string }>);
+      } catch { /* 静默：无徽章 */ }
+    })();
+    return () => { dead = true; };
+  }, [cursor.y, rpc]);
 
   const byDate = useMemo(() => {
     const map = new Map<string, ScheduleEvent[]>();
@@ -159,7 +173,12 @@ export function ScheduleView({ rpc }: { rpc: RpcFn }): ReactElement {
                 onClick={() => setSelected(c.date)}
               >
                 <span className="dsh-pwb-cal-day">{c.day}{c.isToday ? <i className="dsh-pwb-cal-now">今</i> : null}</span>
-                <span className="dsh-pwb-cal-lunar">{lunarOf(c.date).short}</span>
+                {(() => { const l = lunarOf(c.date); const hol = holidays[c.date]; return (
+                  <>
+                    <span className={l.festival !== undefined ? (l.festival.includes('节') ? 'dsh-pwb-cal-lunar dsh-pwb-cal-festival' : 'dsh-pwb-cal-lunar dsh-pwb-cal-jieqi') : 'dsh-pwb-cal-lunar'}>{l.festival ?? l.short}</span>
+                    {hol !== undefined ? <span className={`dsh-pwb-cal-hol${hol.holiday ? '' : ' dsh-pwb-cal-ban'}`}>{hol.holiday ? '休' : '班'}</span> : null}
+                  </>
+                ); })()}
                 {list.length > 0 ? (
                   <span className="dsh-pwb-cal-evs">
                     {list.slice(0, 2).map((e) => (
