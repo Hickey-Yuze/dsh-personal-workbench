@@ -19,7 +19,7 @@ interface TaskItem {
   title: string;
   priority: 'high' | 'medium' | 'low';
   status: 'todo' | 'in_progress' | 'completed' | 'overdue';
-  group: string;
+  groupId: string;
   assignee: string;
   assigneeAvatar: string;
   project: string;
@@ -40,17 +40,22 @@ const readTasks = (): TaskItem[] => {
     return Array.isArray(parsed) ? parsed : [];
   } catch { return []; }
 };
-const readGroups = (): string[] => {
+interface GroupLite { id: string; name: string }
+/** 读看板分组（TaskGroupItem 对象数组；兼容历史字符串数据），总览卡按 id 归组用。 */
+const readGroups = (): GroupLite[] => {
   try {
     const g = localStorage.getItem('dsh-pwb:task_board_groups');
-    const parsed = g ? (JSON.parse(g) as string[]) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed = g ? (JSON.parse(g) as unknown) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((it) => (typeof it === 'string' ? { id: it, name: it } : (it as { id?: string; name?: string })))
+      .filter((it): it is GroupLite => typeof it?.id === 'string' && it.id.length > 0);
   } catch { return []; }
 };
 
 export function TodoWidget({ rpc, onOpen }: { rpc: RpcFn; onOpen: (id: string) => void }) {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
-  const [groups, setGroups] = useState<string[]>([]);
+  const [groups, setGroups] = useState<GroupLite[]>([]);
   const [text, setText] = useState('');
 
   // 挂载读一次 + 5s 轮询 + 事件桥（本页/看板写入后即时跟随）
@@ -80,7 +85,7 @@ export function TodoWidget({ rpc, onOpen }: { rpc: RpcFn; onOpen: (id: string) =
       title,
       priority: 'medium',
       status: 'todo',
-      group: groups[0] ?? '待办',
+      groupId: groups[0]?.id ?? 'requirement',
       assignee: '我',
       assigneeAvatar: '',
       project: '',
