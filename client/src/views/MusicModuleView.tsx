@@ -33,10 +33,14 @@ function kuwoPlayUrl(id: string, level: string): string {
 
 // ── 全局播放会话（跨模块切换不中断）──
 let persistentAudio: HTMLAudioElement | null = null;
+// ended→下一首的常驻驱动：组件卸载（切到工作区/其他模块）后仍要自动连播，
+// 事件挂在 audio 单例上永不移除，回调指针由组件 effect 持续指向最新 handleNext
+let persistentEndedCb: (() => void) | null = null;
 function getAudio(): HTMLAudioElement {
   if (persistentAudio === null) {
     persistentAudio = new Audio();
     persistentAudio.volume = 0.7;
+    persistentAudio.addEventListener('ended', () => { persistentEndedCb?.(); });
   }
   return persistentAudio;
 }
@@ -248,7 +252,6 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     const audio = getAudio();
     const onTime = (): void => { gSession.progress = audio.currentTime; setProgress(audio.currentTime); };
     const onDur = (): void => setAudioDur(audio.duration);
-    const onEnd = (): void => handleNext(true);
     const onPlay = (): void => { gSession.isPlaying = true; setIsPlaying(true); };
     const onPause = (): void => { gSession.isPlaying = false; setIsPlaying(false); };
     const onErr = (): void => {
@@ -277,18 +280,21 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     };
     audio.addEventListener('timeupdate', onTime);
     audio.addEventListener('loadedmetadata', onDur);
-    audio.addEventListener('ended', onEnd);
     audio.addEventListener('play', onPlay);
     audio.addEventListener('pause', onPause);
     audio.addEventListener('error', onErr);
     return () => {
       audio.removeEventListener('timeupdate', onTime);
       audio.removeEventListener('loadedmetadata', onDur);
-      audio.removeEventListener('ended', onEnd);
       audio.removeEventListener('play', onPlay);
       audio.removeEventListener('pause', onPause);
       audio.removeEventListener('error', onErr);
     };
+  }, [handleNext]);
+
+  // 常驻连播指针：不设 cleanup，卸载后 ended 仍指向最新 handleNext（跨页自动下一首）
+  useEffect(() => {
+    persistentEndedCb = () => handleNext(true);
   }, [handleNext]);
 
   // 回到模块恢复 UI
