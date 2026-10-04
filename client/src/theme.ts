@@ -729,7 +729,8 @@ const CSS = `
 .dsh-pwb-mu-queue {
   position: fixed; right: 16px; bottom: 86px; z-index: 60;
   width: 320px; max-height: 420px; display: flex; flex-direction: column; min-height: 0;
-  border-radius: 16px; border: 1px solid var(--pwb-border); background: var(--pwb-card);
+  border-radius: 16px; border: 1px solid var(--pwb-border);
+  background: var(--pwb-card, #fff); background-color: #fff; /* 实色：宿主半透明卡片变量会让浮层透底 */
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.18); overflow: hidden;
 }
 .dsh-pwb-mu-queue-head { display: flex; align-items: center; justify-content: space-between; padding: 11px 14px; border-bottom: 1px solid var(--pwb-border); font-size: 12.5px; font-weight: 700; color: var(--pwb-text); }

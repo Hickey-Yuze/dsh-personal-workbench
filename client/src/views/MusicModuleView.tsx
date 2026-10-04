@@ -121,6 +121,20 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
   const lyricsSongIdRef = useRef<string | null>(null);
 
   const [showQueue, setShowQueue] = useState(false);
+  const queueRef = useRef<HTMLDivElement | null>(null);
+  const queueBtnRef = useRef<HTMLButtonElement | null>(null);
+  // 播放列表浮层：点击浮层与开关按钮之外的区域自动关闭
+  useEffect(() => {
+    if (!showQueue) return;
+    const onDoc = (e: MouseEvent): void => {
+      const el = queueRef.current;
+      const btn = queueBtnRef.current;
+      const t = e.target as Node;
+      if (el !== null && !el.contains(t) && (btn === null || !btn.contains(t))) setShowQueue(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => { document.removeEventListener('mousedown', onDoc); };
+  }, [showQueue]);
   const [showFull, setShowFull] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [importLink, setImportLink] = useState('');
@@ -747,14 +761,14 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
             if (v > 0 && isMuted) { audio.muted = false; gSession.isMuted = false; setIsMuted(false); }
           }} />
           <button type="button" className="dsh-pwb-mu-ctrlbtn" title="下载歌词 LRC" disabled={lyrics.length === 0} onClick={downloadLyrics}><Download className="size-4" /></button>
-          <button type="button" className="dsh-pwb-mu-ctrlbtn" title="播放列表" onClick={() => setShowQueue((v) => !v)}><ListMusic className="size-4" /></button>
+          <button ref={queueBtnRef} type="button" className="dsh-pwb-mu-ctrlbtn" title="播放列表" onClick={() => setShowQueue((v) => !v)}><ListMusic className="size-4" /></button>
           <button type="button" className="dsh-pwb-mu-ctrlbtn" title="全屏播放" onClick={() => setShowFull(true)}><Maximize2 className="size-4" /></button>
         </div>
       </div>
 
       {/* 队列浮层 */}
       {showQueue ? (
-        <div className="dsh-pwb-mu-queue">
+        <div ref={queueRef} className="dsh-pwb-mu-queue">
           <div className="dsh-pwb-mu-queue-head">
             播放列表{gSession.listLabel !== '' ? ` · ${gSession.listLabel}` : ` · ${gSession.list.length} 首`}
             <button type="button" className="dsh-pwb-mu-pl-act" style={{ opacity: 1 }} onClick={() => setShowQueue(false)}><X className="size-4" /></button>
