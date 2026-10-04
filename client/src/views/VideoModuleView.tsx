@@ -186,6 +186,8 @@ export function VideoModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
     if (detail === null) return;
     const line = detail.lines[lineIdx];
     const ep = line?.episodes[epIdx];
+    // 同片内切集：路由 id 不变，detail effect 不会重跑，必须就地同步播放状态
+    setCurLine(lineIdx); setCurEp(epIdx);
     go({ page: 'play', id: detail.id, lineIdx, epIdx });
     if (line !== undefined && ep !== undefined) {
       const rec: RecItem = { id: detail.id, name: detail.name, pic: detail.pic, remarks: detail.remarks, lineIdx, epIdx, lineName: line.name, epName: ep.name };
