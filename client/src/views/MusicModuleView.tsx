@@ -627,6 +627,12 @@ export function MusicModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
         <div className="dsh-pwb-mu-plate-head">
           <h2 style={{ margin: 0 }}><Music className="size-4" /> {pl?.name ?? '歌单'} <span className="dsh-pwb-mu-count">{pl?.songs.length ?? 0} 首</span></h2>
           <div style={{ display: 'flex', gap: 8 }}>
+            {pl !== undefined && pl.songs.length > 0 ? (
+              <button type="button" className="dsh-pwb-mu-sg-playall" style={{ height: 32, padding: '0 16px', fontSize: 12.5, borderRadius: 16 }}
+                onClick={() => { const first = pl.songs[0]; if (first !== undefined) playSong(first, pl.songs, pl.name); }}>
+                <Play className="size-3.5" /> 播放全部
+              </button>
+            ) : null}
             {pl !== undefined && pl.id !== 'liked' && pl.id !== 'recent' ? (
               <>
                 <button type="button" className="dsh-pwb-mu-btn" onClick={() => { setRenameTarget(pl); setRenameName(pl.name); }}><Pencil className="size-3.5" /> 重命名</button>
