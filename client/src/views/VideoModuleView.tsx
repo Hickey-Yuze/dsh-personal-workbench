@@ -18,6 +18,11 @@ type VideoDetail = { id: string; name: string; pic?: string; year?: string; type
 type RecItem = { id: string; name: string; pic?: string | undefined; remarks?: string | undefined; lineIdx: number; epIdx: number; lineName: string; epName: string };
 const FAV_KEY = 'dsh-pwb:video_favorites_v2';
 const HIST_KEY = 'dsh-pwb:video_history_v2';
+/** 秒级观看进度表（键=id:线路:集数 → 播放秒数），重进自动续播；5 秒节流写 localStorage */
+const PROG_KEY = 'dsh-pwb:video_progress_v1';
+type ProgressMap = Record<string, number>;
+const loadProg = (): ProgressMap => { try { const o = JSON.parse(localStorage.getItem(PROG_KEY) ?? '{}') as unknown; return o !== null && typeof o === 'object' ? o as ProgressMap : {}; } catch { return {}; } };
+const saveProg = (m: ProgressMap): void => { try { localStorage.setItem(PROG_KEY, JSON.stringify(m)); } catch { /* 忽略 */ } };
 
 type Route =
   | { page: 'home' }
@@ -90,6 +95,9 @@ export function VideoModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
   const [history, setHistory] = useState<RecItem[]>(() => loadList(HIST_KEY));
   const [dropOpen, setDropOpen] = useState<'history' | 'favorites' | null>(null);
   const dropRef = useRef<HTMLDivElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const lastProgSaveRef = useRef(0);
+  const pausedAtRef = useRef(0);
 
   const go = useCallback((r: Route): void => { setRoute(r); gSession.route = r; }, []);
 
@@ -225,7 +233,43 @@ export function VideoModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
         ) : (
           <>
             <div className="dsh-pwb-vd-player">
-              {ep !== undefined ? <video key={ep.url} src={ep.url} controls autoPlay playsInline /> : <div className="dsh-pwb-vd-empty">该线路暂无可播放的集数</div>}
+              {ep !== undefined ? <video key={ep.url} ref={videoRef} src={ep.url} controls autoPlay playsInline
+                onLoadedMetadata={() => {
+                  // 续播：跳到上次观看进度（>5s 且未临近片尾才恢复）
+                  const v = videoRef.current;
+                  if (v === null) return;
+                  const key = `${route.id}:${route.lineIdx}:${route.epIdx}`;
+                  const t = loadProg()[key] ?? 0;
+                  if (t > 5 && Number.isFinite(v.duration) && t < v.duration - 15) v.currentTime = t;
+                }}
+                onTimeUpdate={() => {
+                  const v = videoRef.current;
+                  if (v === null || v.currentTime < 3) return;
+                  const now = Date.now();
+                  if (now - lastProgSaveRef.current < 5000) return;
+                  lastProgSaveRef.current = now;
+                  const key = `${route.id}:${route.lineIdx}:${route.epIdx}`;
+                  const m = loadProg();
+                  m[key] = v.currentTime;
+                  const keys = Object.keys(m);
+                  if (keys.length > 200) { keys.sort((a, b) => (m[a] ?? 0) - (m[b] ?? 0)); for (const k of keys.slice(0, keys.length - 200)) delete m[k]; }
+                  saveProg(m);
+                }}
+                onPause={() => {
+                  // 暂停即存一次进度
+                  const v = videoRef.current;
+                  pausedAtRef.current = Date.now();
+                  if (v !== null && v.currentTime >= 3) { const key = `${route.id}:${route.lineIdx}:${route.epIdx}`; const m = loadProg(); m[key] = v.currentTime; saveProg(m); }
+                }}
+                onPlay={() => {
+                  // 暂停过久后画面与声音失步（画面冻结声音走）：轻推 1ms 强制画面重同步
+                  const v = videoRef.current;
+                  if (v !== null && pausedAtRef.current !== 0 && Date.now() - pausedAtRef.current > 8000) {
+                    try { v.currentTime = v.currentTime + 0.001; } catch { /* 忽略 */ }
+                  }
+                  pausedAtRef.current = 0;
+                }}
+              /> : <div className="dsh-pwb-vd-empty">该线路暂无可播放的集数</div>}
             </div>
             <div className="dsh-pwb-vd-playinfo">
               <h1>{detail.name}{line !== undefined && ep !== undefined ? <span className="dsh-pwb-vd-count">　{line.name} · {ep.name}</span> : null}</h1>
