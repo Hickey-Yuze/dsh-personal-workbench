@@ -222,6 +222,7 @@ export function VideoModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
 
   // ── 播放页 ──
   const renderPlay = (): ReactElement => {
+    const pk = route.page === 'play' ? `${route.id}:${route.lineIdx}:${route.epIdx}` : '';
     const line = detail?.lines[curLine];
     const ep = line?.episodes[curEp];
     const total = line?.episodes.length ?? 0;
@@ -238,7 +239,7 @@ export function VideoModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
                   // 续播：跳到上次观看进度（>5s 且未临近片尾才恢复）
                   const v = videoRef.current;
                   if (v === null) return;
-                  const key = `${route.id}:${route.lineIdx}:${route.epIdx}`;
+                  const key = pk;
                   const t = loadProg()[key] ?? 0;
                   if (t > 5 && Number.isFinite(v.duration) && t < v.duration - 15) v.currentTime = t;
                 }}
@@ -248,7 +249,7 @@ export function VideoModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
                   const now = Date.now();
                   if (now - lastProgSaveRef.current < 5000) return;
                   lastProgSaveRef.current = now;
-                  const key = `${route.id}:${route.lineIdx}:${route.epIdx}`;
+                  const key = pk;
                   const m = loadProg();
                   m[key] = v.currentTime;
                   const keys = Object.keys(m);
@@ -259,7 +260,7 @@ export function VideoModuleView({ rpc }: { rpc: RpcFn }): ReactElement {
                   // 暂停即存一次进度
                   const v = videoRef.current;
                   pausedAtRef.current = Date.now();
-                  if (v !== null && v.currentTime >= 3) { const key = `${route.id}:${route.lineIdx}:${route.epIdx}`; const m = loadProg(); m[key] = v.currentTime; saveProg(m); }
+                  if (v !== null && v.currentTime >= 3) { const key = pk; const m = loadProg(); m[key] = v.currentTime; saveProg(m); }
                 }}
                 onPlay={() => {
                   // 暂停过久后画面与声音失步（画面冻结声音走）：轻推 1ms 强制画面重同步
