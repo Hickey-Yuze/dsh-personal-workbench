@@ -427,6 +427,8 @@ export function OfficeModuleView(): ReactElement {
     chatTarget.kind === 'ai' ? 'AI 助手' : chatTarget.kind === 'npc' ? `和 ${chatTarget.name} 聊天 · ${chatTarget.role}` : '全员群聊';
   const emptyText =
     chatTarget.kind === 'ai' ? '问问办公室里的情况，或让我安排同事做事' : chatTarget.kind === 'npc' ? `和 ${chatTarget.name} 说点什么吧，回复会冒泡到 TA 头上` : '先说一句抛话题，或点「让他们聊」看同事们互聊';
+  const npcWorkRow = chatTarget.kind === 'npc' ? agentRows[chatTarget.id] : undefined;
+  const npcWorkActive = npcWorkRow !== undefined && npcWorkRow.status !== 'stopped';
 
   return (
     <div className="dsh-pwb-view">
@@ -502,7 +504,7 @@ export function OfficeModuleView(): ReactElement {
                       返回 AI
                     </button>
                   )}
-                  {chatTarget.kind === 'npc' && agentRows[chatTarget.id] !== undefined && agentRows[chatTarget.id].status !== 'stopped' && (
+                  {chatTarget.kind === 'npc' && npcWorkActive && (
                     <button onClick={() => postAgent('office/agent/stop', { npcId: chatTarget.id })}>停工</button>
                   )}
                   <button
@@ -520,32 +522,22 @@ export function OfficeModuleView(): ReactElement {
                 <div className="dsh-pwb-office-work">
                   <input
                     value={workInput}
-                    placeholder={
-                      agentRows[chatTarget.id] !== undefined && agentRows[chatTarget.id].status !== 'stopped'
-                        ? '给 TA 递话或追加指示…'
-                        : '派真实任务，如：统计本项目代码行数并写个报告'
-                    }
+                    placeholder={npcWorkActive ? '给 TA 递话或追加指示…' : '派真实任务，如：统计本项目代码行数并写个报告'}
                     onChange={(e) => setWorkInput(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') workSend(chatTarget);
                     }}
                   />
                   <button disabled={workInput.trim() === ''} onClick={() => workSend(chatTarget)}>
-                    {agentRows[chatTarget.id] !== undefined && agentRows[chatTarget.id].status !== 'stopped' ? '递话' : '派活'}
+                    {npcWorkActive ? '递话' : '派活'}
                   </button>
                 </div>
               )}
-              {chatTarget.kind === 'npc' && agentRows[chatTarget.id] !== undefined && (
+              {npcWorkRow !== undefined && (
                 <div className="dsh-pwb-office-work-status">
                   ⚒{' '}
-                  {agentRows[chatTarget.id].status === 'working'
-                    ? '真实工作中'
-                    : agentRows[chatTarget.id].status === 'idle'
-                      ? '真实会话空闲'
-                      : '已停工'}
-                  {(agentRows[chatTarget.id]?.lastText.trim() ?? '') !== '' && (
-                    <span> · {agentRows[chatTarget.id]?.lastText.trim().slice(-120)}</span>
-                  )}
+                  {npcWorkRow.status === 'working' ? '真实工作中' : npcWorkRow.status === 'idle' ? '真实会话空闲' : '已停工'}
+                  {(npcWorkRow.lastText.trim() ?? '') !== '' && <span> · {npcWorkRow.lastText.trim().slice(-120)}</span>}
                 </div>
               )}
               <div className="dsh-pwb-office-chat-body" ref={chatBodyRef}>
