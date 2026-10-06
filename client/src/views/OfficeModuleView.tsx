@@ -1,6 +1,6 @@
 /**
- * 模块：像素办公室 —— P1 场景 + P2 互动 + P3 编辑器 + P4 对话 + P5 数据面板/动作网关。
- * 页签：场景（点击走位/拜访/开会 + AI 对话悬浮面板）/ 数据 / 布置办公室。
+ * 模块：像素办公室 —— P1 场景 + P2 互动 + P3 编辑器 + P4 对话 + P5 数据面板/动作网关
+ * + P4.5 同事 agent 联动：点谁跟谁聊（私聊）、全员群聊互聊、会议讨论；NPC 回复冒泡到头上。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
@@ -24,23 +24,67 @@ const STATE_TEXT: Record<MemberStat['state'], string> = {
 
 type Tab = 'scene' | 'data' | 'edit';
 
-type ChatMsg = { role: 'user' | 'assistant'; content: string; streaming?: boolean };
+type ChatMsg = { role: 'user' | 'assistant'; content: string; speaker?: string; streaming?: boolean };
+type ChatTarget = { kind: 'ai' } | { kind: 'npc'; id: string; name: string; role: string } | { kind: 'group' };
+/** 群聊/私聊共享记忆：speaker='me' 是老板说的话，否则是同事名。 */
+type MemEntry = { speaker: string; content: string };
 
 type OfficeAction = { id: number; type: 'desk_visit' | 'desk_visit_tour' | 'set_state'; payload?: Record<string, unknown> };
 
 const CHAT_URL = '/api/personal-workbench/office/chat';
+const NPC_CHAT_URL = '/api/personal-workbench/office/npc/chat';
 const ACTIONS_URL = '/api/personal-workbench/office/actions';
+
+/** 读取 SSE 流，逐 delta 回调，返回完整文本。 */
+async function readSse(res: Response, onDelta: (d: string) => void, onErr: (e: string) => void): Promise<string> {
+  let full = '';
+  if (!res.ok || res.body === null) {
+    const detail = await res.text().catch(() => '');
+    onErr(`对话服务不可用（${res.status}）${detail ? `：${detail.slice(0, 120)}` : ''}`);
+    return full;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const parts = buf.split('\n\n');
+    buf = parts.pop() ?? '';
+    for (const part of parts) {
+      const line = part.trim();
+      if (!line.startsWith('data:')) continue;
+      const payload = line.slice(5).trim();
+      if (payload === '[DONE]') continue;
+      try {
+        const obj = JSON.parse(payload) as { delta?: string; error?: string };
+        if (obj.error !== undefined) onErr(obj.error);
+        else if (obj.delta !== undefined && obj.delta !== '') {
+          full += obj.delta;
+          onDelta(obj.delta);
+        }
+      } catch {
+        /* 非 JSON 行忽略 */
+      }
+    }
+  }
+  return full;
+}
 
 export function OfficeModuleView(): ReactElement {
   const [engine, setEngine] = useState<OfficeEngine>(() => new OfficeEngine(loadOfficeMap() ?? undefined));
   const [members, setMembers] = useState<MemberStat[]>(() => engine.members());
   const [tab, setTab] = useState<Tab>('scene');
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatTarget, setChatTarget] = useState<ChatTarget>({ kind: 'ai' });
   const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatBusy, setChatBusy] = useState(false);
   const chatAbortRef = useRef<AbortController | null>(null);
   const chatBodyRef = useRef<HTMLDivElement | null>(null);
+  /** NPC 对话记忆：私聊按 charId 存，群聊统一 'group'。 */
+  const npcMemRef = useRef(new Map<string, MemEntry[]>());
   const actionsDeadRef = useRef(false);
 
   useEffect(() => {
@@ -53,6 +97,178 @@ export function OfficeModuleView(): ReactElement {
     const el = chatBodyRef.current;
     if (el !== null) el.scrollTop = el.scrollHeight;
   }, [chatMsgs, chatOpen]);
+
+  const sceneState = useCallback(
+    () => JSON.stringify(members.map((m) => ({ name: m.name, role: m.role, state: STATE_TEXT[m.state] }))),
+    [members],
+  );
+
+  /* ── AI 助手（全局） ── */
+  const sendAi = useCallback(
+    async (text: string, ctrl: AbortController): Promise<void> => {
+      const history = chatMsgs.filter((m) => !m.streaming).map((m) => ({ role: m.role, content: m.content }));
+      setChatMsgs([...history, { role: 'user', content: text }, { role: 'assistant', content: '', streaming: true }]);
+      try {
+        const res = await fetch(CHAT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: [...history, { role: 'user', content: text }], sceneState: sceneState() }),
+          signal: ctrl.signal,
+        });
+        await readSse(
+          res,
+          (d) =>
+            setChatMsgs((prev) => {
+              const copy = [...prev];
+              const last = copy[copy.length - 1];
+              if (last === undefined || last.role !== 'assistant') return copy;
+              copy[copy.length - 1] = { ...last, content: last.content + d };
+              return copy;
+            }),
+          (e) =>
+            setChatMsgs((prev) => {
+              const copy = [...prev];
+              const last = copy[copy.length - 1];
+              if (last !== undefined && last.role === 'assistant') copy[copy.length - 1] = { ...last, content: `⚠️ ${e}` };
+              return copy;
+            }),
+        );
+      } catch (err) {
+        const aborted = err instanceof DOMException && err.name === 'AbortError';
+        if (!aborted)
+          setChatMsgs((prev) => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            if (last !== undefined && last.role === 'assistant' && last.content === '') copy[copy.length - 1] = { ...last, content: '连接中断，请重试' };
+            return copy;
+          });
+      }
+    },
+    [chatMsgs, sceneState],
+  );
+
+  /* ── 同事 agent 说一句（低层）：写进流式消息槽，返回完整话 ── */
+  const npcUtterance = useCallback(
+    async (char: { id: string; name: string; role: string }, history: Array<{ role: 'user' | 'assistant'; content: string }>, ctrl: AbortController): Promise<string> => {
+      setChatMsgs((prev) => [...prev, { role: 'assistant', content: '', speaker: char.name, streaming: true }]);
+      let said = '';
+      try {
+        const res = await fetch(NPC_CHAT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: char.name, role: char.role, messages: history, sceneState: sceneState() }),
+          signal: ctrl.signal,
+        });
+        said = await readSse(
+          res,
+          (d) =>
+            setChatMsgs((prev) => {
+              const copy = [...prev];
+              const last = copy[copy.length - 1];
+              if (last === undefined || last.role !== 'assistant') return copy;
+              copy[copy.length - 1] = { ...last, content: last.content + d };
+              return copy;
+            }),
+          (e) =>
+            setChatMsgs((prev) => {
+              const copy = [...prev];
+              const last = copy[copy.length - 1];
+              if (last !== undefined && last.role === 'assistant') copy[copy.length - 1] = { ...last, content: `⚠️ ${e}` };
+              return copy;
+            }),
+        );
+      } catch (err) {
+        const aborted = err instanceof DOMException && err.name === 'AbortError';
+        if (!aborted)
+          setChatMsgs((prev) => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            if (last !== undefined && last.role === 'assistant' && last.content === '') copy[copy.length - 1] = { ...last, content: '连接中断' };
+            return copy;
+          });
+      }
+      if (said.trim() !== '') engine.setBubble(char.id, said.trim(), 6000); // 同事开口 → 场景冒泡
+      return said.trim();
+    },
+    [engine, sceneState],
+  );
+
+  /* ── 私聊：点谁跟谁聊 ── */
+  const sendNpc = useCallback(
+    async (text: string, ctrl: AbortController): Promise<void> => {
+      if (chatTarget.kind !== 'npc') return;
+      const key = `npc:${chatTarget.id}`;
+      const mem = npcMemRef.current.get(key) ?? [];
+      mem.push({ speaker: 'me', content: text });
+      const history = mem.map((e) => ({ role: e.speaker === 'me' ? ('user' as const) : ('assistant' as const), content: e.content }));
+      setChatMsgs((prev) => [...prev.filter((m) => !m.streaming), { role: 'user', content: text }]);
+      const said = await npcUtterance({ id: chatTarget.id, name: chatTarget.name, role: chatTarget.role }, history, ctrl);
+      mem.push({ speaker: chatTarget.name, content: said });
+      npcMemRef.current.set(key, mem.slice(-40));
+    },
+    [chatTarget, npcUtterance],
+  );
+
+  /* ── 群聊：轮流让每个同事 agent 说一句（互聊核心） ── */
+  const runGroupRound = useCallback(
+    async (text: string, ctrl: AbortController): Promise<void> => {
+      const npcList = engine.chars.filter((c) => !c.isSelf);
+      if (npcList.length === 0) return;
+      const mem = npcMemRef.current.get('group') ?? [];
+      if (text.trim() !== '') {
+        mem.push({ speaker: 'me', content: text });
+        setChatMsgs((prev) => [...prev.filter((m) => !m.streaming), { role: 'user', content: text }]);
+      }
+      for (const c of npcList) {
+        if (ctrl.signal.aborted) break;
+        const history = mem.map((e) =>
+          e.speaker === 'me'
+            ? { role: 'user' as const, content: e.content }
+            : e.speaker === c.name
+              ? { role: 'assistant' as const, content: e.content }
+              : { role: 'user' as const, content: `[${e.speaker}] ${e.content}` },
+        );
+        if (history.length === 0) history.push({ role: 'user', content: '（会议开始，围绕刚才的话题说一句你的看法）' });
+        const said = await npcUtterance({ id: c.id, name: c.name, role: c.role }, history, ctrl);
+        if (said !== '') mem.push({ speaker: c.name, content: said });
+      }
+      npcMemRef.current.set('group', mem.slice(-60));
+    },
+    [engine, npcUtterance],
+  );
+
+  const sendChat = useCallback(
+    async (text: string): Promise<void> => {
+      const q = text.trim();
+      if (q === '' || chatBusy) return;
+      setChatInput('');
+      setChatBusy(true);
+      const ctrl = new AbortController();
+      chatAbortRef.current = ctrl;
+      if (chatTarget.kind === 'ai') await sendAi(q, ctrl);
+      else if (chatTarget.kind === 'npc') await sendNpc(q, ctrl);
+      else await runGroupRound(q, ctrl);
+      setChatMsgs((prev) =>
+        prev.map((m) => (m.streaming === true ? (m.content === '' ? { ...m, content: '（无回复内容）', streaming: false } : { ...m, streaming: false }) : m)),
+      );
+      setChatBusy(false);
+      chatAbortRef.current = null;
+    },
+    [chatBusy, chatTarget, runGroupRound, sendAi, sendNpc],
+  );
+
+  /* 「让他们聊」：不输入话题，空转一轮互聊 */
+  const runAutoChat = useCallback((): void => {
+    if (chatBusy || chatTarget.kind !== 'group') return;
+    setChatBusy(true);
+    const ctrl = new AbortController();
+    chatAbortRef.current = ctrl;
+    void runGroupRound('', ctrl).finally(() => {
+      setChatMsgs((prev) => prev.map((m) => (m.streaming === true ? (m.content === '' ? { ...m, content: '（无回复内容）', streaming: false } : { ...m, streaming: false }) : m)));
+      setChatBusy(false);
+      chatAbortRef.current = null;
+    });
+  }, [chatBusy, chatTarget, runGroupRound]);
 
   /* P5 动作网关轮询：取走即执行（宿主半未部署时 404 静默停轮询） */
   useEffect(() => {
@@ -106,97 +322,36 @@ export function OfficeModuleView(): ReactElement {
     };
   }, [engine, members]);
 
-  const sendChat = useCallback(
-    async (text: string): Promise<void> => {
-      const q = text.trim();
-      if (q === '' || chatBusy) return;
-      setChatInput('');
-      const history = chatMsgs.filter((m) => !m.streaming).map((m) => ({ role: m.role, content: m.content }));
-      const next: ChatMsg[] = [...history, { role: 'user', content: q }, { role: 'assistant', content: '', streaming: true }];
-      setChatMsgs(next);
-      setChatBusy(true);
-      const ctrl = new AbortController();
-      chatAbortRef.current = ctrl;
-      const sceneState = JSON.stringify(members.map((m) => ({ name: m.name, role: m.role, state: STATE_TEXT[m.state] })));
-      try {
-        const res = await fetch(CHAT_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: [...history, { role: 'user', content: q }], sceneState }),
-          signal: ctrl.signal,
-        });
-        if (!res.ok || res.body === null) {
-          const detail = await res.text().catch(() => '');
-          setChatMsgs((prev) => {
-            const copy = [...prev];
-            const last = copy[copy.length - 1];
-            if (last !== undefined && last.role === 'assistant') {
-              copy[copy.length - 1] = { role: 'assistant', content: `对话服务不可用（${res.status}）${detail ? `：${detail.slice(0, 120)}` : ''}` };
-            }
-            return copy;
-          });
-          return;
-        }
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buf = '';
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          const parts = buf.split('\n\n');
-          buf = parts.pop() ?? '';
-          for (const part of parts) {
-            const line = part.trim();
-            if (!line.startsWith('data:')) continue;
-            const payload = line.slice(5).trim();
-            if (payload === '[DONE]') continue;
-            try {
-              const obj = JSON.parse(payload) as { delta?: string; error?: string };
-              setChatMsgs((prev) => {
-                const copy = [...prev];
-                const last = copy[copy.length - 1];
-                if (last === undefined || last.role !== 'assistant') return copy;
-                const add = obj.error !== undefined ? `⚠️ ${obj.error}` : (obj.delta ?? '');
-                copy[copy.length - 1] = { role: 'assistant', content: last.content + add, streaming: true };
-                return copy;
-              });
-            } catch {
-              /* 非 JSON 行忽略 */
-            }
-          }
-        }
-      } catch (err) {
-        const aborted = err instanceof DOMException && err.name === 'AbortError';
-        setChatMsgs((prev) => {
-          const copy = [...prev];
-          const last = copy[copy.length - 1];
-          if (last !== undefined && last.role === 'assistant' && !aborted && last.content === '') {
-            copy[copy.length - 1] = { role: 'assistant', content: '连接中断，请重试' };
-          }
-          return copy;
-        });
-      } finally {
-        setChatMsgs((prev) => {
-          const copy = [...prev];
-          const last = copy[copy.length - 1];
-          if (last !== undefined && last.role === 'assistant' && last.streaming === true) {
-            if (last.content === '') copy[copy.length - 1] = { role: 'assistant', content: '（无回复内容）' };
-            else copy[copy.length - 1] = { role: 'assistant', content: last.content };
-          }
-          return copy;
-        });
-        setChatBusy(false);
-        chatAbortRef.current = null;
-      }
-    },
-    [chatBusy, chatMsgs, members],
-  );
-
   const handleSaveMap = useCallback((m: OfficeMap): void => {
     setEngine(new OfficeEngine(m)); // 换图即换引擎：OfficeCanvas 的 rAF effect 依赖 engine 会自动重挂
     setTab('scene');
   }, []);
+
+  /* 点格子：互动照旧；点到同事（本人格或其椅位）→ 切私聊 */
+  const handleCellClick = useCallback(
+    (cell: { x: number; y: number }): void => {
+      engine.clickCell(cell.x, cell.y);
+      const hit = engine.chars.find((c) => {
+        if (c.isSelf) return false;
+        if (c.cx === cell.x && c.cy === cell.y) return true;
+        const desk = engine.map.furniture.find((f) => f.id === c.deskId);
+        if (desk === undefined) return false;
+        const ch = deskChairCell(desk);
+        return ch.x === cell.x && ch.y === cell.y;
+      });
+      if (hit !== undefined) {
+        setChatTarget({ kind: 'npc', id: hit.id, name: hit.name, role: hit.role });
+        setChatMsgs([]);
+        setChatOpen(true);
+      }
+    },
+    [engine],
+  );
+
+  const targetLabel =
+    chatTarget.kind === 'ai' ? 'AI 助手' : chatTarget.kind === 'npc' ? `和 ${chatTarget.name} 聊天 · ${chatTarget.role}` : '全员群聊';
+  const emptyText =
+    chatTarget.kind === 'ai' ? '问问办公室里的情况，或让我安排同事做事' : chatTarget.kind === 'npc' ? `和 ${chatTarget.name} 说点什么吧，回复会冒泡到 TA 头上` : '先说一句抛话题，或点「让他们聊」看同事们互聊';
 
   return (
     <div className="dsh-pwb-view">
@@ -220,13 +375,38 @@ export function OfficeModuleView(): ReactElement {
         {tab === 'scene' && (
           <div className="dsh-pwb-office-scenewrap">
             <div className="dsh-pwb-office-stage">
-              <OfficeCanvas engine={engine} className="dsh-pwb-office-canvas" onClickCell={(cell) => engine.clickCell(cell.x, cell.y)} />
+              <OfficeCanvas engine={engine} className="dsh-pwb-office-canvas" onClickCell={handleCellClick} />
             </div>
             {chatOpen && (
               <div className="dsh-pwb-office-chat">
                 <div className="dsh-pwb-office-chat-head">
-                  AI 助手
+                  {targetLabel}
                   <span className="dsh-pwb-office-chat-act">
+                    {chatTarget.kind === 'npc' && (
+                      <button
+                        onClick={() => {
+                          setChatTarget({ kind: 'group' });
+                          setChatMsgs([]);
+                        }}
+                      >
+                        全员群聊
+                      </button>
+                    )}
+                    {chatTarget.kind === 'group' && (
+                      <button disabled={chatBusy} onClick={runAutoChat}>
+                        让他们聊
+                      </button>
+                    )}
+                    {chatTarget.kind !== 'ai' && (
+                      <button
+                        onClick={() => {
+                          setChatTarget({ kind: 'ai' });
+                          setChatMsgs([]);
+                        }}
+                      >
+                        返回 AI
+                      </button>
+                    )}
                     <button
                       onClick={() => {
                         chatAbortRef.current?.abort();
@@ -239,7 +419,7 @@ export function OfficeModuleView(): ReactElement {
                   </span>
                 </div>
                 <div className="dsh-pwb-office-chat-body" ref={chatBodyRef}>
-                  {chatMsgs.length === 0 && <div className="dsh-pwb-office-chat-empty">问问办公室里的情况，或让我安排同事做事</div>}
+                  {chatMsgs.length === 0 && <div className="dsh-pwb-office-chat-empty">{emptyText}</div>}
                   {chatMsgs.map((m, i) => (
                     <div
                       key={i}
@@ -247,6 +427,7 @@ export function OfficeModuleView(): ReactElement {
                         m.streaming === true ? ' dsh-pwb-office-chat-msg-streaming' : ''
                       }`}
                     >
+                      {m.speaker !== undefined && <b>{m.speaker}：</b>}
                       {m.content}
                     </div>
                   ))}
@@ -288,7 +469,7 @@ export function OfficeModuleView(): ReactElement {
             </span>
           ))}
         </div>
-        <div className="dsh-pwb-office-hint">点同事打招呼 · 点空地走位 · 点白板开会 · 右上角可与 AI 对话</div>
+        <div className="dsh-pwb-office-hint">点同事打招呼并私聊 · 点空地走位 · 点白板开会 · 群聊里看同事们互聊</div>
       </div>
     </div>
   );

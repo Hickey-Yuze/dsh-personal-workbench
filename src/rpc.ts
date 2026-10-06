@@ -137,6 +137,31 @@ function officeNormalizeEndpoint(url: string | undefined): string {
   }
 }
 
+/** 同事 agent 职业口吻（与客户端 P2 寒暄台词同源的键）。 */
+const OFFICE_NPC_STYLES: Record<string, string> = {
+  前端工程师: '口头禅偏「在改 bug」「样式又炸了」，聊技术但不较真',
+  产品经理: '口头禅偏「需求又变了」「对齐一下」，爱提排期',
+  架构师: '口头禅偏「这个要重构」「先出方案」，稳重话少',
+  测试工程师: '口头禅偏「又复现不了」「提个单」，爱吐槽',
+  设计师: '口头禅偏「配色再看看」「留白多一点」，审美挑剔',
+  运营: '口头禅偏「数据拉一下」「拉个群」，爱张罗',
+};
+
+/** 同事 agent 的 system 提示词：职业人设 + 口语短句约束 + 场景状态。 */
+function officeNpcSystem(name: string, role: string, sceneState: string): string {
+  const style = OFFICE_NPC_STYLES[role] ?? '性格随和，说话接地气';
+  const scene = sceneState.trim() === '' ? '' : `\n当前场景状态：${sceneState}`;
+  return [
+    `你是像素办公室里的员工「${name}」（${role}）。性格：${style}。`,
+    '你正在办公室里和身边同事或老板 Yuze 闲聊、讨论工作。',
+    '要求：完全用中文口语短句回复，一次不超过 60 字；不要 markdown、不要堆表情、不要自我介绍或复述身份、不要替别人说话；直接说出你要说的话。',
+    '群聊/会议时消息历史以「[说话人] 内容」标注谁在说话，你只以自己「' + name + '」的身份说一句。',
+    scene,
+  ]
+    .filter((l) => l !== '')
+    .join('\n');
+}
+
 /* ── 影视源：磁力猫橘汁片库（CF adapter 本地索引 + SCF 详情直连） ── */
 const VIDEO_CF = 'https://yuze-yingshi-jiekou.pages.dev/api/yuze';
 const VIDEO_BASES = ['https://1301366908-k5q7ggear7.ap-guangzhou.tencentscf.com', 'http://103.36.167.27:18004', 'http://juziapp.hzhcbkj.cn', 'http://103.45.131.38:40001'];
@@ -1132,80 +1157,106 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         send(res, 200, { ok: true, id: officeActionSeq });
         return;
       }
-      // office/chat：SSE 流式对话
-      const llm = ctx.get('llm') as { stream?: (options: object) => AsyncIterable<OfficeStreamChunk> } | undefined;
-      if (!llm || typeof llm.stream !== 'function') {
-        send(res, 501, { error: 'llm service 不可用' });
-        return;
-      }
-      const selection = (ctx.get('agentDefaultModel') as
-        | { currentSelection?: () => { provider?: unknown; model?: unknown; reasoningEffort?: unknown } }
-        | undefined)?.currentSelection?.();
-      const officeProvider = typeof selection?.provider === 'string' && selection.provider !== '' ? selection.provider : '';
-      const officeModel = typeof selection?.model === 'string' && selection.model !== '' ? selection.model : '';
-      if (officeProvider === '' || officeModel === '') {
-        send(res, 501, { error: '默认模型未配置' });
-        return;
-      }
-      const rawMessages = Array.isArray(officeBody.messages) ? officeBody.messages : [];
-      if (rawMessages.length === 0 || rawMessages.length > 200) {
-        send(res, 400, { ok: false, error: { code: 'bad-request', message: 'messages 必须为 1..200 条的数组' } });
-        return;
-      }
-      const officeMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
-      for (const item of rawMessages) {
-        const msgRole = (item as { role?: unknown })?.role;
-        const msgContent = (item as { content?: unknown })?.content;
-        if ((msgRole !== 'user' && msgRole !== 'assistant' && msgRole !== 'system') || typeof msgContent !== 'string' || msgContent.length > 32768) {
-          send(res, 400, { ok: false, error: { code: 'bad-request', message: 'messages 每项须含 role(user|assistant|system) 与 content(string,≤32768)' } });
+      // SSE 流式回复公共骨架：llm 软探测 + 默认模型 + 断连中止 + data: delta/[DONE]
+      const officeSse = async (
+        systemContent: string,
+        msgs: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+      ): Promise<void> => {
+        const llm = ctx.get('llm') as { stream?: (options: object) => AsyncIterable<OfficeStreamChunk> } | undefined;
+        if (!llm || typeof llm.stream !== 'function') {
+          send(res, 501, { error: 'llm service 不可用' });
           return;
         }
-        officeMessages.push({ role: msgRole, content: msgContent });
-      }
-      const sceneState = typeof officeBody.sceneState === 'string' ? officeBody.sceneState : '';
-      if (sceneState.length > 8192) {
-        send(res, 400, { ok: false, error: { code: 'bad-request', message: 'sceneState 超长（>8192）' } });
+        const selection = (ctx.get('agentDefaultModel') as
+          | { currentSelection?: () => { provider?: unknown; model?: unknown; reasoningEffort?: unknown } }
+          | undefined)?.currentSelection?.();
+        const officeProvider = typeof selection?.provider === 'string' && selection.provider !== '' ? selection.provider : '';
+        const officeModel = typeof selection?.model === 'string' && selection.model !== '' ? selection.model : '';
+        if (officeProvider === '' || officeModel === '') {
+          send(res, 501, { error: '默认模型未配置' });
+          return;
+        }
+        const officeCtrl = new AbortController();
+        const officeClose = (): void => officeCtrl.abort();
+        (req as HttpRequestLike & { on(event: string, fn: () => void): unknown }).on('close', officeClose);
+        const officeRes = res as HttpResponseLike & { on?(event: string, fn: () => void): unknown };
+        if (typeof officeRes.on === 'function') officeRes.on('close', officeClose);
+        res.writeHead(200, {
+          'content-type': 'text/event-stream; charset=utf-8',
+          'cache-control': 'no-cache',
+          'connection': 'keep-alive',
+          'x-accel-buffering': 'no',
+        });
+        try {
+          for await (const chunk of llm.stream({
+            provider: officeProvider,
+            model: officeModel,
+            messages: [{ role: 'system', content: systemContent }, ...msgs],
+            signal: officeCtrl.signal,
+            ...(typeof selection?.reasoningEffort === 'string' && selection.reasoningEffort !== ''
+              ? { reasoningEffort: selection.reasoningEffort }
+              : {}),
+          })) {
+            if (officeCtrl.signal.aborted) break;
+            if (chunk?.type === 'text-delta' && typeof chunk.text === 'string' && chunk.text !== '') {
+              res.write?.(`data: ${JSON.stringify({ delta: chunk.text })}\n\n`);
+            }
+          }
+          if (!officeCtrl.signal.aborted) res.write?.('data: [DONE]\n\n');
+        } catch (officeErr) {
+          if (!officeCtrl.signal.aborted) {
+            res.write?.(`data: ${JSON.stringify({ error: officeErr instanceof Error ? officeErr.message : String(officeErr) })}\n\n`);
+            res.write?.('data: [DONE]\n\n');
+          }
+        } finally {
+          res.end();
+        }
+      };
+      // messages/sceneState 校验（chat 与 npc/chat 共用）；system 由各分支自行组装
+      const officeParse = (): { msgs: Array<{ role: 'user' | 'assistant'; content: string }>; sceneState: string } | null => {
+        const rawMessages = Array.isArray(officeBody.messages) ? officeBody.messages : [];
+        if (rawMessages.length === 0 || rawMessages.length > 200) {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: 'messages 必须为 1..200 条的数组' } });
+          return null;
+        }
+        const msgs: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+        for (const item of rawMessages) {
+          const msgRole = (item as { role?: unknown })?.role;
+          const msgContent = (item as { content?: unknown })?.content;
+          if ((msgRole !== 'user' && msgRole !== 'assistant') || typeof msgContent !== 'string' || msgContent.length > 32768) {
+            send(res, 400, { ok: false, error: { code: 'bad-request', message: 'messages 每项须含 role(user|assistant) 与 content(string,≤32768)' } });
+            return null;
+          }
+          msgs.push({ role: msgRole, content: msgContent });
+        }
+        const sceneState = typeof officeBody.sceneState === 'string' ? officeBody.sceneState : '';
+        if (sceneState.length > 8192) {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: 'sceneState 超长（>8192）' } });
+          return null;
+        }
+        return { msgs, sceneState };
+      };
+      // office/npc/chat：同事 agent（职业人设，私聊/群聊/会议共用）
+      if (officeEndpoint === 'office/npc/chat') {
+        const npcName = typeof officeBody.name === 'string' ? officeBody.name : '';
+        const npcRole = typeof officeBody.role === 'string' ? officeBody.role : '';
+        if (npcName === '' || npcRole === '') {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: 'name/role 必填' } });
+          return;
+        }
+        const parsedNpc = officeParse();
+        if (parsedNpc === null) return;
+        await officeSse(officeNpcSystem(npcName, npcRole, parsedNpc.sceneState), parsedNpc.msgs);
         return;
       }
-      if (sceneState.trim() !== '') {
-        officeMessages.unshift({ role: 'system', content: `你是办公室场景 AI 助手，当前场景状态：${sceneState}` });
+      if (officeEndpoint !== 'office/chat') {
+        send(res, 404, { ok: false, error: { code: 'not-found', message: '未知 office 端点' } });
+        return;
       }
-      // 客户端断开 → 中止上游流（IncomingMessage 与 ServerResponse 的 close 均覆盖）
-      const officeCtrl = new AbortController();
-      const officeClose = (): void => officeCtrl.abort();
-      (req as HttpRequestLike & { on(event: string, fn: () => void): unknown }).on('close', officeClose);
-      const officeRes = res as HttpResponseLike & { on?(event: string, fn: () => void): unknown };
-      if (typeof officeRes.on === 'function') officeRes.on('close', officeClose);
-      res.writeHead(200, {
-        'content-type': 'text/event-stream; charset=utf-8',
-        'cache-control': 'no-cache',
-        'connection': 'keep-alive',
-        'x-accel-buffering': 'no',
-      });
-      try {
-        for await (const chunk of llm.stream({
-          provider: officeProvider,
-          model: officeModel,
-          messages: officeMessages,
-          signal: officeCtrl.signal,
-          ...(typeof selection?.reasoningEffort === 'string' && selection.reasoningEffort !== ''
-            ? { reasoningEffort: selection.reasoningEffort }
-            : {}),
-        })) {
-          if (officeCtrl.signal.aborted) break;
-          if (chunk?.type === 'text-delta' && typeof chunk.text === 'string' && chunk.text !== '') {
-            res.write?.(`data: ${JSON.stringify({ delta: chunk.text })}\n\n`);
-          }
-        }
-        if (!officeCtrl.signal.aborted) res.write?.('data: [DONE]\n\n');
-      } catch (officeErr) {
-        if (!officeCtrl.signal.aborted) {
-          res.write?.(`data: ${JSON.stringify({ error: officeErr instanceof Error ? officeErr.message : String(officeErr) })}\n\n`);
-          res.write?.('data: [DONE]\n\n');
-        }
-      } finally {
-        res.end();
-      }
+      // office/chat：办公室场景 AI 助手（SSE 流式）
+      const parsedChat = officeParse();
+      if (parsedChat === null) return;
+      await officeSse(`你是办公室场景 AI 助手，当前场景状态：${parsedChat.sceneState}`, parsedChat.msgs);
       return;
     }
     if ((req.method ?? 'GET').toUpperCase() !== 'POST') {
