@@ -1241,12 +1241,8 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         send(res, 200, { ok: true, agents: list });
         return;
       }
-      // office/roster GET：自定义员工花名册（默认六名 NPC 客户端内置，不在此列）
-      if (officeEndpoint === 'office/roster') {
-        if (officeMethod !== 'GET') {
-          send(res, 405, { ok: false, error: { code: 'method-not-allowed', message: '仅支持 GET' } });
-          return;
-        }
+      // office/roster GET：自定义员工花名册（默认六名 NPC 客户端内置，不在此列）；非 GET 落到下面 POST 段的新增分支
+      if (officeEndpoint === 'office/roster' && officeMethod === 'GET') {
         send(res, 200, { ok: true, roster: loadOfficeRoster() });
         return;
       }
