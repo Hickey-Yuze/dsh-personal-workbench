@@ -1370,18 +1370,16 @@ html { color-scheme: light !important; }
 .dsh-pwb-office-tab-spacer { flex: 1; }
 /* AI 对话面板（PixOffice 同款：底部悬浮输入、对话向上展开、流式彩边） */
 .dsh-pwb-office-chat {
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
-  width: min(400px, calc(100% - 24px));
+  position: static;
+  width: 100%;
+  margin-top: 10px;
   background: #fff;
   border: 1px solid var(--pwb-border);
   border-radius: 14px;
-  box-shadow: 0 14px 40px rgba(15, 20, 30, 0.22);
+  box-shadow: 0 10px 28px rgba(15, 20, 30, 0.12);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  z-index: 6;
 }
 .dsh-pwb-office-chat-head {
   display: flex;

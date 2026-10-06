@@ -379,82 +379,6 @@ export function OfficeModuleView(): ReactElement {
             <div className="dsh-pwb-office-stage">
               <OfficeCanvas engine={engine} className="dsh-pwb-office-canvas" onClickCell={handleCellClick} />
             </div>
-            {chatOpen && (
-              <div className="dsh-pwb-office-chat">
-                <div className="dsh-pwb-office-chat-head">
-                  {targetLabel}
-                  <span className="dsh-pwb-office-chat-act">
-                    {chatTarget.kind === 'npc' && (
-                      <button
-                        onClick={() => {
-                          setChatTarget({ kind: 'group' });
-                          setChatMsgs([]);
-                        }}
-                      >
-                        全员群聊
-                      </button>
-                    )}
-                    {chatTarget.kind === 'group' && (
-                      <button disabled={chatBusy} onClick={runAutoChat}>
-                        让他们聊
-                      </button>
-                    )}
-                    {chatTarget.kind !== 'ai' && (
-                      <button
-                        onClick={() => {
-                          setChatTarget({ kind: 'ai' });
-                          setChatMsgs([]);
-                        }}
-                      >
-                        返回 AI
-                      </button>
-                    )}
-                    <button
-                      onClick={() => {
-                        chatAbortRef.current?.abort();
-                        setChatMsgs([]);
-                      }}
-                    >
-                      新建
-                    </button>
-                    <button onClick={() => setChatOpen(false)}>收起</button>
-                  </span>
-                </div>
-                <div className="dsh-pwb-office-chat-body" ref={chatBodyRef}>
-                  {chatMsgs.length === 0 && <div className="dsh-pwb-office-chat-empty">{emptyText}</div>}
-                  {chatMsgs.map((m, i) => (
-                    <div
-                      key={i}
-                      className={`dsh-pwb-office-chat-msg ${m.role === 'user' ? 'dsh-pwb-office-chat-msg-user' : 'dsh-pwb-office-chat-msg-ai'}${
-                        m.streaming === true ? ' dsh-pwb-office-chat-msg-streaming' : ''
-                      }`}
-                    >
-                      {m.speaker !== undefined && <b>{m.speaker}：</b>}
-                      {m.content}
-                    </div>
-                  ))}
-                </div>
-                <div className="dsh-pwb-office-chat-input">
-                  <input
-                    value={chatInput}
-                    placeholder="输入消息…"
-                    onChange={(e) => setChatInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') void sendChat(chatInput);
-                    }}
-                  />
-                  {chatBusy ? (
-                    <button className="dsh-pwb-office-chat-stop" onClick={() => chatAbortRef.current?.abort()}>
-                      停止
-                    </button>
-                  ) : (
-                    <button className="dsh-pwb-office-chat-send" disabled={chatInput.trim() === ''} onClick={() => void sendChat(chatInput)}>
-                      发送
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -472,6 +396,82 @@ export function OfficeModuleView(): ReactElement {
           ))}
         </div>
         <div className="dsh-pwb-office-hint">点同事打招呼并私聊 · 点空地走位 · 点白板开会 · 群聊里看同事们互聊</div>
+          {tab === 'scene' && chatOpen && (
+            <div className="dsh-pwb-office-chat">
+              <div className="dsh-pwb-office-chat-head">
+                {targetLabel}
+                <span className="dsh-pwb-office-chat-act">
+                  {chatTarget.kind === 'npc' && (
+                    <button
+                      onClick={() => {
+                        setChatTarget({ kind: 'group' });
+                        setChatMsgs([]);
+                      }}
+                    >
+                      全员群聊
+                    </button>
+                  )}
+                  {chatTarget.kind === 'group' && (
+                    <button disabled={chatBusy} onClick={runAutoChat}>
+                      让他们聊
+                    </button>
+                  )}
+                  {chatTarget.kind !== 'ai' && (
+                    <button
+                      onClick={() => {
+                        setChatTarget({ kind: 'ai' });
+                        setChatMsgs([]);
+                      }}
+                    >
+                      返回 AI
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      chatAbortRef.current?.abort();
+                      setChatMsgs([]);
+                    }}
+                  >
+                    新建
+                  </button>
+                  <button onClick={() => setChatOpen(false)}>收起</button>
+                </span>
+              </div>
+              <div className="dsh-pwb-office-chat-body" ref={chatBodyRef}>
+                {chatMsgs.length === 0 && <div className="dsh-pwb-office-chat-empty">{emptyText}</div>}
+                {chatMsgs.map((m, i) => (
+                  <div
+                    key={i}
+                    className={`dsh-pwb-office-chat-msg ${m.role === 'user' ? 'dsh-pwb-office-chat-msg-user' : 'dsh-pwb-office-chat-msg-ai'}${
+                      m.streaming === true ? ' dsh-pwb-office-chat-msg-streaming' : ''
+                    }`}
+                  >
+                    {m.speaker !== undefined && <b>{m.speaker}：</b>}
+                    {m.content}
+                  </div>
+                ))}
+              </div>
+              <div className="dsh-pwb-office-chat-input">
+                <input
+                  value={chatInput}
+                  placeholder="输入消息…"
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void sendChat(chatInput);
+                  }}
+                />
+                {chatBusy ? (
+                  <button className="dsh-pwb-office-chat-stop" onClick={() => chatAbortRef.current?.abort()}>
+                    停止
+                  </button>
+                ) : (
+                  <button className="dsh-pwb-office-chat-send" disabled={chatInput.trim() === ''} onClick={() => void sendChat(chatInput)}>
+                    发送
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
       </div>
     </div>
   );
