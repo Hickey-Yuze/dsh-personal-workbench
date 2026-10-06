@@ -1,14 +1,17 @@
 /**
- * 模块：像素办公室 —— P1 场景本体。
- * 整数格地图 + 自己与 6 位 NPC 同事的行为循环（工作/咖啡/拜访/闲逛），
- * canvas 自绘零依赖。P2 加点击互动（走位/拜访/会议），P3 加地图编辑器，
- * P4 加流式对话面板，P5 加三栏数据面板与动作网关。
+ * 模块：像素办公室 —— P1 场景 + P2 互动 + P3 编辑器 + P4 对话 + P5 数据面板/动作网关。
+ * 页签：场景（点击走位/拜访/开会 + AI 对话悬浮面板）/ 数据 / 布置办公室。
  */
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { OfficeEngine } from '../office/engine.js';
 import { OfficeCanvas } from '../office/OfficeCanvas.js';
+import { loadOfficeMap } from '../office/store.js';
+import { deskChairCell } from '../office/map.js';
+import type { OfficeMap } from '../office/types.js';
 import type { MemberStat } from '../office/types.js';
+import { OfficeEditor } from './OfficeEditor.js';
+import { OfficeDataPanel } from './OfficeDataPanel.js';
 
 const STATE_TEXT: Record<MemberStat['state'], string> = {
   idle: '摸鱼中',
@@ -16,25 +19,266 @@ const STATE_TEXT: Record<MemberStat['state'], string> = {
   working: '工作中',
   coffee: '咖啡时间',
   visit: '拜访同事',
+  meeting: '会议中',
 };
 
+type Tab = 'scene' | 'data' | 'edit';
+
+type ChatMsg = { role: 'user' | 'assistant'; content: string; streaming?: boolean };
+
+type OfficeAction = { id: number; type: 'desk_visit' | 'desk_visit_tour' | 'set_state'; payload?: Record<string, unknown> };
+
+const CHAT_URL = '/api/personal-workbench/office/chat';
+const ACTIONS_URL = '/api/personal-workbench/office/actions';
+
 export function OfficeModuleView(): ReactElement {
-  const engineRef = useRef<OfficeEngine | null>(null);
-  if (engineRef.current === null) engineRef.current = new OfficeEngine();
-  const engine = engineRef.current;
+  const [engine, setEngine] = useState<OfficeEngine>(() => new OfficeEngine(loadOfficeMap() ?? undefined));
   const [members, setMembers] = useState<MemberStat[]>(() => engine.members());
+  const [tab, setTab] = useState<Tab>('scene');
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatBusy, setChatBusy] = useState(false);
+  const chatAbortRef = useRef<AbortController | null>(null);
+  const chatBodyRef = useRef<HTMLDivElement | null>(null);
+  const actionsDeadRef = useRef(false);
 
   useEffect(() => {
     const id = window.setInterval(() => setMembers(engine.members()), 900);
     return () => window.clearInterval(id);
   }, [engine]);
 
+  /* 对话跟随滚动到底 */
+  useEffect(() => {
+    const el = chatBodyRef.current;
+    if (el !== null) el.scrollTop = el.scrollHeight;
+  }, [chatMsgs, chatOpen]);
+
+  /* P5 动作网关轮询：取走即执行（宿主半未部署时 404 静默停轮询） */
+  useEffect(() => {
+    let stopped = false;
+    const runOne = (a: OfficeAction): void => {
+      if (a.type === 'desk_visit') {
+        const name = typeof a.payload?.name === 'string' ? a.payload.name : '';
+        const target = engine.chars.find((c) => c.name === name && !c.isSelf);
+        const desk = target === undefined ? undefined : engine.map.furniture.find((f) => f.id === target.deskId);
+        if (desk !== undefined) {
+          const ch = deskChairCell(desk);
+          engine.clickCell(ch.x, ch.y);
+        }
+      } else if (a.type === 'desk_visit_tour') {
+        const others = engine.chars.filter((c) => !c.isSelf);
+        others.forEach((c, i) => {
+          window.setTimeout(() => {
+            const desk = engine.map.furniture.find((f) => f.id === c.deskId);
+            if (desk !== undefined) {
+              const ch = deskChairCell(desk);
+              engine.clickCell(ch.x, ch.y);
+            }
+          }, i * 5000);
+        });
+      } else if (a.type === 'set_state') {
+        const msg = typeof a.payload?.message === 'string' ? a.payload.message : '';
+        const self = members.find((m) => m.isSelf);
+        if (self !== undefined && msg !== '') engine.setBubble(self.id, msg, 6000);
+      }
+    };
+    const poll = (): void => {
+      if (stopped || actionsDeadRef.current) return;
+      fetch(ACTIONS_URL)
+        .then((res) => {
+          if (res.status === 404) {
+            actionsDeadRef.current = true;
+            return null;
+          }
+          return res.ok ? (res.json() as Promise<{ actions?: OfficeAction[] }>) : null;
+        })
+        .then((data) => {
+          if (data === null || data === undefined) return;
+          for (const a of data.actions ?? []) runOne(a);
+        })
+        .catch(() => undefined);
+    };
+    const id = window.setInterval(poll, 1500);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+    };
+  }, [engine, members]);
+
+  const sendChat = useCallback(
+    async (text: string): Promise<void> => {
+      const q = text.trim();
+      if (q === '' || chatBusy) return;
+      setChatInput('');
+      const history = chatMsgs.filter((m) => !m.streaming).map((m) => ({ role: m.role, content: m.content }));
+      const next: ChatMsg[] = [...history, { role: 'user', content: q }, { role: 'assistant', content: '', streaming: true }];
+      setChatMsgs(next);
+      setChatBusy(true);
+      const ctrl = new AbortController();
+      chatAbortRef.current = ctrl;
+      const sceneState = JSON.stringify(members.map((m) => ({ name: m.name, role: m.role, state: STATE_TEXT[m.state] })));
+      try {
+        const res = await fetch(CHAT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: [...history, { role: 'user', content: q }], sceneState }),
+          signal: ctrl.signal,
+        });
+        if (!res.ok || res.body === null) {
+          const detail = await res.text().catch(() => '');
+          setChatMsgs((prev) => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            if (last !== undefined && last.role === 'assistant') {
+              copy[copy.length - 1] = { role: 'assistant', content: `对话服务不可用（${res.status}）${detail ? `：${detail.slice(0, 120)}` : ''}` };
+            }
+            return copy;
+          });
+          return;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split('\n\n');
+          buf = parts.pop() ?? '';
+          for (const part of parts) {
+            const line = part.trim();
+            if (!line.startsWith('data:')) continue;
+            const payload = line.slice(5).trim();
+            if (payload === '[DONE]') continue;
+            try {
+              const obj = JSON.parse(payload) as { delta?: string; error?: string };
+              setChatMsgs((prev) => {
+                const copy = [...prev];
+                const last = copy[copy.length - 1];
+                if (last === undefined || last.role !== 'assistant') return copy;
+                const add = obj.error !== undefined ? `⚠️ ${obj.error}` : (obj.delta ?? '');
+                copy[copy.length - 1] = { role: 'assistant', content: last.content + add, streaming: true };
+                return copy;
+              });
+            } catch {
+              /* 非 JSON 行忽略 */
+            }
+          }
+        }
+      } catch (err) {
+        const aborted = err instanceof DOMException && err.name === 'AbortError';
+        setChatMsgs((prev) => {
+          const copy = [...prev];
+          const last = copy[copy.length - 1];
+          if (last !== undefined && last.role === 'assistant' && !aborted && last.content === '') {
+            copy[copy.length - 1] = { role: 'assistant', content: '连接中断，请重试' };
+          }
+          return copy;
+        });
+      } finally {
+        setChatMsgs((prev) => {
+          const copy = [...prev];
+          const last = copy[copy.length - 1];
+          if (last !== undefined && last.role === 'assistant' && last.streaming === true) {
+            if (last.content === '') copy[copy.length - 1] = { role: 'assistant', content: '（无回复内容）' };
+            else copy[copy.length - 1] = { role: 'assistant', content: last.content };
+          }
+          return copy;
+        });
+        setChatBusy(false);
+        chatAbortRef.current = null;
+      }
+    },
+    [chatBusy, chatMsgs, members],
+  );
+
+  const handleSaveMap = useCallback((m: OfficeMap): void => {
+    setEngine(new OfficeEngine(m)); // 换图即换引擎：OfficeCanvas 的 rAF effect 依赖 engine 会自动重挂
+    setTab('scene');
+  }, []);
+
   return (
     <div className="dsh-pwb-view">
       <div className="dsh-pwb-view-body">
-        <div className="dsh-pwb-office-stage">
-          <OfficeCanvas engine={engine} className="dsh-pwb-office-canvas" />
+        <div className="dsh-pwb-office-tabs">
+          <button className={`dsh-pwb-office-tab${tab === 'scene' ? ' dsh-pwb-office-tab-active' : ''}`} onClick={() => setTab('scene')}>
+            场景
+          </button>
+          <button className={`dsh-pwb-office-tab${tab === 'data' ? ' dsh-pwb-office-tab-active' : ''}`} onClick={() => setTab('data')}>
+            数据面板
+          </button>
+          <button className={`dsh-pwb-office-tab${tab === 'edit' ? ' dsh-pwb-office-tab-active' : ''}`} onClick={() => setTab('edit')}>
+            布置办公室
+          </button>
+          <span className="dsh-pwb-office-tab-spacer" />
+          <button className="dsh-pwb-office-tab" onClick={() => setChatOpen((v) => !v)}>
+            {chatOpen ? '收起 AI' : 'AI 助手'}
+          </button>
         </div>
+
+        {tab === 'scene' && (
+          <div className="dsh-pwb-office-scenewrap">
+            <div className="dsh-pwb-office-stage">
+              <OfficeCanvas engine={engine} className="dsh-pwb-office-canvas" onClickCell={(cell) => engine.clickCell(cell.x, cell.y)} />
+            </div>
+            {chatOpen && (
+              <div className="dsh-pwb-office-chat">
+                <div className="dsh-pwb-office-chat-head">
+                  AI 助手
+                  <span className="dsh-pwb-office-chat-act">
+                    <button
+                      onClick={() => {
+                        chatAbortRef.current?.abort();
+                        setChatMsgs([]);
+                      }}
+                    >
+                      新建
+                    </button>
+                    <button onClick={() => setChatOpen(false)}>收起</button>
+                  </span>
+                </div>
+                <div className="dsh-pwb-office-chat-body" ref={chatBodyRef}>
+                  {chatMsgs.length === 0 && <div className="dsh-pwb-office-chat-empty">问问办公室里的情况，或让我安排同事做事</div>}
+                  {chatMsgs.map((m, i) => (
+                    <div
+                      key={i}
+                      className={`dsh-pwb-office-chat-msg ${m.role === 'user' ? 'dsh-pwb-office-chat-msg-user' : 'dsh-pwb-office-chat-msg-ai'}${
+                        m.streaming === true ? ' dsh-pwb-office-chat-msg-streaming' : ''
+                      }`}
+                    >
+                      {m.content}
+                    </div>
+                  ))}
+                </div>
+                <div className="dsh-pwb-office-chat-input">
+                  <input
+                    value={chatInput}
+                    placeholder="输入消息…"
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void sendChat(chatInput);
+                    }}
+                  />
+                  {chatBusy ? (
+                    <button className="dsh-pwb-office-chat-stop" onClick={() => chatAbortRef.current?.abort()}>
+                      停止
+                    </button>
+                  ) : (
+                    <button className="dsh-pwb-office-chat-send" disabled={chatInput.trim() === ''} onClick={() => void sendChat(chatInput)}>
+                      发送
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'data' && <OfficeDataPanel members={members} />}
+
+        {tab === 'edit' && <OfficeEditor onSave={handleSaveMap} onCancel={() => setTab('scene')} />}
+
         <div className="dsh-pwb-office-status">
           {members.map((m) => (
             <span key={m.id} className={`dsh-pwb-office-chip${m.isSelf ? ' dsh-pwb-office-chip-self' : ''}`}>
@@ -44,7 +288,7 @@ export function OfficeModuleView(): ReactElement {
             </span>
           ))}
         </div>
-        <div className="dsh-pwb-office-hint">像素办公室 · 同事们各自忙着手头的事（后续版本：点击互动、地图编辑、AI 对话）</div>
+        <div className="dsh-pwb-office-hint">点同事打招呼 · 点空地走位 · 点白板开会 · 右上角可与 AI 对话</div>
       </div>
     </div>
   );
