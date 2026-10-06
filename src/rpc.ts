@@ -1255,6 +1255,9 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         }
         try {
           const handle = await agents.create({
+            // sessionId 必传：agent.id 必须与 session.id 一致（AgentRegistry.enter 不变式），
+            // 缺省时 agent id 为 undefined 而创建即抛错。
+            sessionId: `session-office-${npcId}-${Date.now()}`,
             agentOptions: { ...(provider ? { provider } : {}), ...(model ? { model } : {}) },
             setup: (agentCtx) => {
               try {
