@@ -39,6 +39,28 @@ const AGENTS_URL = '/api/personal-workbench/office/agents';
 /** 真工位会话快照（office/agents 轮询返回的NPC 条目）。 */
 type AgentRow = { npcId: string; name?: string; status: string; lastText: string; task?: string; report?: string; reportAt?: number };
 
+/* ── 聊天记录持久化：按会话对象分键存 localStorage，重进视图不丢记录 ── */
+const CHAT_CAP = 100;
+function chatKeyOf(t: ChatTarget): string {
+  return t.kind === 'ai' ? 'dsh-pwb:office_chat_v1:ai' : t.kind === 'group' ? 'dsh-pwb:office_chat_v1:group' : `dsh-pwb:office_chat_v1:npc:${t.id}`;
+}
+function loadChatMsgs(t: ChatTarget): ChatMsg[] {
+  try {
+    const raw = window.localStorage.getItem(chatKeyOf(t));
+    if (raw === null) return [];
+    const arr = JSON.parse(raw) as ChatMsg[];
+    if (!Array.isArray(arr)) return [];
+    return arr.slice(-CHAT_CAP).map((m) => ({ ...m, streaming: false }));
+  } catch {
+    return [];
+  }
+}
+function saveChatMsgs(t: ChatTarget, msgs: ChatMsg[]): void {
+  try {
+    window.localStorage.setItem(chatKeyOf(t), JSON.stringify(msgs.filter((m) => m.streaming !== true).slice(-CHAT_CAP)));
+  } catch { /* 存储失败仅影响持久化 */ }
+}
+
 /** 读取 SSE 流，逐 delta 回调，返回完整文本；非流式/空流都在气泡里给出原因。 */
 async function readSse(res: Response, onDelta: (d: string) => void, onErr: (e: string) => void): Promise<string> {
   let full = '';
@@ -134,21 +156,35 @@ export function OfficeModuleView(): ReactElement {
     };
   }, [engine]);
 
-  /* 干完活的完整汇报回聊天区：reportAt 前进 → 头顶冒泡 + 写入当前私聊（每条只投递一次） */
+  /* 干完活的完整汇报回聊天区：reportAt 前进且正在看该同事私聊 → 冒泡 + 写入聊天（写入了才记账，切走再切回也能补看） */
   const deliveredReportRef = useRef(new Map<string, number>());
   useEffect(() => {
-    for (const row of Object.values(agentRows)) {
-      if (row.report === undefined || row.reportAt === undefined || row.report.trim() === '') continue;
-      if ((deliveredReportRef.current.get(row.npcId) ?? 0) >= row.reportAt) continue;
-      deliveredReportRef.current.set(row.npcId, row.reportAt);
-      engine.setBubble(row.npcId, row.report.trim().slice(-60), 8000);
-      if (chatTarget.kind === 'npc' && chatTarget.id === row.npcId) {
-        const speaker = members.find((m) => m.id === row.npcId)?.name ?? row.npcId;
-        const content = row.report;
-        setChatMsgs((prev) => [...prev, { role: 'assistant', speaker, content }]);
-      }
-    }
+    if (chatTarget.kind !== 'npc') return;
+    const row = agentRows[chatTarget.id];
+    if (row === undefined || row.report === undefined || row.reportAt === undefined || row.report.trim() === '') return;
+    if ((deliveredReportRef.current.get(row.npcId) ?? 0) >= row.reportAt) return;
+    deliveredReportRef.current.set(row.npcId, row.reportAt);
+    engine.setBubble(row.npcId, row.report.trim().slice(-60), 8000);
+    const speaker = members.find((m) => m.id === row.npcId)?.name ?? row.npcId;
+    const content = row.report;
+    setChatMsgs((prev) => [...prev, { role: 'assistant', speaker, content }]);
   }, [agentRows, chatTarget, engine, members]);
+
+  /* 切换聊天对象时载入历史记录 */
+  useEffect(() => {
+    setChatMsgs(loadChatMsgs(chatTarget));
+  }, [chatTarget]);
+
+  /* 聊天记录落盘：目标或消息变化即保存（刚切对象的那一帧闭包里还是旧记录，跳过防串键） */
+  const savedKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const key = chatKeyOf(chatTarget);
+    if (savedKeyRef.current !== key) {
+      savedKeyRef.current = key;
+      return;
+    }
+    saveChatMsgs(chatTarget, chatMsgs);
+  }, [chatTarget, chatMsgs]);
 
   const postAgent = useCallback(
     (path: 'office/agent/start' | 'office/agent/say' | 'office/agent/stop', body: Record<string, string>): void => {
@@ -459,7 +495,6 @@ export function OfficeModuleView(): ReactElement {
       });
       if (hit !== undefined) {
         setChatTarget({ kind: 'npc', id: hit.id, name: hit.name, role: hit.role });
-        setChatMsgs([]);
         setChatOpen(true);
       }
     },
@@ -523,30 +558,14 @@ export function OfficeModuleView(): ReactElement {
                 {targetLabel}
                 <span className="dsh-pwb-office-chat-act">
                   {chatTarget.kind === 'npc' && (
-                    <button
-                      onClick={() => {
-                        setChatTarget({ kind: 'group' });
-                        setChatMsgs([]);
-                      }}
-                    >
-                      全员群聊
-                    </button>
+                    <button onClick={() => setChatTarget({ kind: 'group' })}>全员群聊</button>
                   )}
                   {chatTarget.kind === 'group' && (
                     <button disabled={chatBusy} onClick={runAutoChat}>
                       让他们聊
                     </button>
                   )}
-                  {chatTarget.kind !== 'ai' && (
-                    <button
-                      onClick={() => {
-                        setChatTarget({ kind: 'ai' });
-                        setChatMsgs([]);
-                      }}
-                    >
-                      返回 AI
-                    </button>
-                  )}
+                  {chatTarget.kind !== 'ai' && <button onClick={() => setChatTarget({ kind: 'ai' })}>返回 AI</button>}
                   {chatTarget.kind === 'npc' && npcWorkActive && (
                     <button onClick={() => postAgent('office/agent/stop', { npcId: chatTarget.id })}>停工</button>
                   )}
