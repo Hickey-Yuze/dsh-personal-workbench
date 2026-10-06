@@ -1194,7 +1194,10 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
           for await (const chunk of llm.stream({
             provider: officeProvider,
             model: officeModel,
-            messages: [{ role: 'system', content: systemContent }, ...msgs],
+            messages: [
+              { role: 'system', content: [{ type: 'text', text: systemContent }] },
+              ...msgs.map((m) => ({ role: m.role, content: [{ type: 'text', text: m.content }] })),
+            ],
             signal: officeCtrl.signal,
             ...(typeof selection?.reasoningEffort === 'string' && selection.reasoningEffort !== ''
               ? { reasoningEffort: selection.reasoningEffort }
