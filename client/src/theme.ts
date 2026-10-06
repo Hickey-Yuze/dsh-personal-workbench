@@ -1289,7 +1289,10 @@ html { color-scheme: light !important; }
   border: 1px solid var(--pwb-border);
   background: #5b6472;
   overflow: hidden;
-  height: min(58vh, 460px);
+  aspect-ratio: 20 / 12; /* 与地图同比例：画布铺满，无灰边 */
+  /* 高度不超过 72vh 时按列宽铺满；超了就收窄宽度保持比例，同样无灰边 */
+  width: min(100%, calc(72vh * 20 / 12));
+  margin: 0 auto;
 }
 .dsh-pwb-office-canvas {
   width: 100%;
@@ -1334,7 +1337,7 @@ html { color-scheme: light !important; }
   color: var(--pwb-dim);
 }
 .dsh-pwb-office-mini {
-  height: 150px;
+  aspect-ratio: 20 / 12;
   border-radius: 10px;
   overflow: hidden;
   background: #5b6472;
