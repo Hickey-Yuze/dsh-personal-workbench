@@ -24,6 +24,8 @@ interface HttpRequestLike {
 
 interface HttpResponseLike {
   writeHead(code: number, headers: Record<string, string>): unknown;
+  /** SSE / 流式增量写出（office/chat 用；node ServerResponse.write 的最小结构面）。 */
+  write?(body?: string): unknown;
   end(body?: string): unknown;
 }
 
@@ -113,6 +115,27 @@ let discoverCacheAt = 0;
 const singerCache = new Map<string, { at: number; data: { name: string; songs: Array<{ id: string; title: string; artist: string; album: string; duration: number; audioUrl: string; coverUrl?: string }> } }>();
 /** 影视搜索结果缓存（10 分钟，键=片名；值已含补图后的海报）。 */
 const videoSearchCache = new Map<string, { at: number; data: { items: VideoBriefHost[] } }>();
+
+/* ── 办公室场景：动作网关队列（模块级；上限 50，溢出丢最旧）── */
+type OfficeActionType = 'desk_visit' | 'desk_visit_tour' | 'set_state';
+type OfficeAction = { id: number; type: OfficeActionType; payload?: Record<string, unknown> };
+const OFFICE_ACTION_MAX = 50;
+const OFFICE_ACTION_TYPES: readonly OfficeActionType[] = ['desk_visit', 'desk_visit_tour', 'set_state'];
+const officeActions: OfficeAction[] = [];
+let officeActionSeq = 0;
+/** llm.stream 的 StreamChunk 最小结构面（text-delta 携带正文增量；字段名经 @deepseek-ai/dsh-llm types.d.ts 查证）。 */
+type OfficeStreamChunk = { type?: string; text?: unknown };
+/** 解析 URL 得 office/<name> 端点名；非 office 端点返回空串，交还既有分发逻辑。 */
+function officeNormalizeEndpoint(url: string | undefined): string {
+  try {
+    const pathname = new URL(url ?? '/', 'http://localhost').pathname.replace(/\/+$/, '');
+    const prefixed = '/api/personal-workbench/';
+    const rest = pathname.startsWith(prefixed) ? pathname.slice(prefixed.length) : pathname.replace(/^\/+/, '');
+    return rest.startsWith('office/') ? rest : '';
+  } catch {
+    return '';
+  }
+}
 
 /* ── 影视源：磁力猫橘汁片库（CF adapter 本地索引 + SCF 详情直连） ── */
 const VIDEO_CF = 'https://yuze-yingshi-jiekou.pages.dev/api/yuze';
@@ -1045,6 +1068,143 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         res.end(png as unknown as string);
       } catch {
         send(res, 500, { ok: false, error: { code: 'internal', message: '图标提取失败' } });
+      }
+      return;
+    }
+
+    // ── 办公室场景（office/*）：chat=SSE 流式对话、action=动作入队、actions=轮询取走、state=心跳 ──
+    const officeEndpoint = officeNormalizeEndpoint(req.url);
+    if (officeEndpoint !== '') {
+      const officeMethod = (req.method ?? 'GET').toUpperCase();
+      if (officeEndpoint === 'office/state') {
+        if (officeMethod !== 'GET') {
+          send(res, 405, { ok: false, error: { code: 'method-not-allowed', message: '仅支持 GET' } });
+          return;
+        }
+        send(res, 200, { ok: true, ts: Date.now() });
+        return;
+      }
+      if (officeEndpoint === 'office/actions') {
+        if (officeMethod !== 'GET') {
+          send(res, 405, { ok: false, error: { code: 'method-not-allowed', message: '仅支持 GET' } });
+          return;
+        }
+        send(res, 200, { ok: true, actions: officeActions.splice(0, officeActions.length) });
+        return;
+      }
+      if (officeMethod !== 'POST') {
+        send(res, 405, { ok: false, error: { code: 'method-not-allowed', message: '仅支持 POST' } });
+        return;
+      }
+      let officeBody: Record<string, unknown> = {};
+      try {
+        const officeRaw = await readBody(req);
+        if (officeRaw.trim() !== '') officeBody = JSON.parse(officeRaw) as Record<string, unknown>;
+      } catch (officeErr) {
+        const officeCode = (officeErr as { code?: unknown }).code;
+        send(res, officeCode === 'payload-too-large' ? 413 : 400, {
+          ok: false,
+          error: {
+            code: typeof officeCode === 'string' && officeCode !== '' ? officeCode : 'bad-json',
+            message: officeErr instanceof Error ? officeErr.message : '请求体不是合法 JSON',
+          },
+        });
+        return;
+      }
+      if (officeEndpoint === 'office/action') {
+        const officeType = typeof officeBody.type === 'string' ? officeBody.type : '';
+        if (!(OFFICE_ACTION_TYPES as readonly string[]).includes(officeType)) {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: 'type 必须为 desk_visit | desk_visit_tour | set_state' } });
+          return;
+        }
+        const officePayload = officeBody.payload;
+        if (officePayload !== undefined && (typeof officePayload !== 'object' || officePayload === null || Array.isArray(officePayload))) {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: 'payload 必须为对象' } });
+          return;
+        }
+        officeActionSeq += 1;
+        officeActions.push({
+          id: officeActionSeq,
+          type: officeType as OfficeActionType,
+          ...(officePayload === undefined ? {} : { payload: officePayload as Record<string, unknown> }),
+        });
+        if (officeActions.length > OFFICE_ACTION_MAX) officeActions.splice(0, officeActions.length - OFFICE_ACTION_MAX);
+        send(res, 200, { ok: true, id: officeActionSeq });
+        return;
+      }
+      // office/chat：SSE 流式对话
+      const llm = ctx.get('llm') as { stream?: (options: object) => AsyncIterable<OfficeStreamChunk> } | undefined;
+      if (!llm || typeof llm.stream !== 'function') {
+        send(res, 501, { error: 'llm service 不可用' });
+        return;
+      }
+      const selection = (ctx.get('agentDefaultModel') as
+        | { currentSelection?: () => { provider?: unknown; model?: unknown; reasoningEffort?: unknown } }
+        | undefined)?.currentSelection?.();
+      const officeProvider = typeof selection?.provider === 'string' && selection.provider !== '' ? selection.provider : '';
+      const officeModel = typeof selection?.model === 'string' && selection.model !== '' ? selection.model : '';
+      if (officeProvider === '' || officeModel === '') {
+        send(res, 501, { error: '默认模型未配置' });
+        return;
+      }
+      const rawMessages = Array.isArray(officeBody.messages) ? officeBody.messages : [];
+      if (rawMessages.length === 0 || rawMessages.length > 200) {
+        send(res, 400, { ok: false, error: { code: 'bad-request', message: 'messages 必须为 1..200 条的数组' } });
+        return;
+      }
+      const officeMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
+      for (const item of rawMessages) {
+        const msgRole = (item as { role?: unknown })?.role;
+        const msgContent = (item as { content?: unknown })?.content;
+        if ((msgRole !== 'user' && msgRole !== 'assistant' && msgRole !== 'system') || typeof msgContent !== 'string' || msgContent.length > 32768) {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: 'messages 每项须含 role(user|assistant|system) 与 content(string,≤32768)' } });
+          return;
+        }
+        officeMessages.push({ role: msgRole, content: msgContent });
+      }
+      const sceneState = typeof officeBody.sceneState === 'string' ? officeBody.sceneState : '';
+      if (sceneState.length > 8192) {
+        send(res, 400, { ok: false, error: { code: 'bad-request', message: 'sceneState 超长（>8192）' } });
+        return;
+      }
+      if (sceneState.trim() !== '') {
+        officeMessages.unshift({ role: 'system', content: `你是办公室场景 AI 助手，当前场景状态：${sceneState}` });
+      }
+      // 客户端断开 → 中止上游流（IncomingMessage 与 ServerResponse 的 close 均覆盖）
+      const officeCtrl = new AbortController();
+      const officeClose = (): void => officeCtrl.abort();
+      (req as HttpRequestLike & { on(event: string, fn: () => void): unknown }).on('close', officeClose);
+      const officeRes = res as HttpResponseLike & { on?(event: string, fn: () => void): unknown };
+      if (typeof officeRes.on === 'function') officeRes.on('close', officeClose);
+      res.writeHead(200, {
+        'content-type': 'text/event-stream; charset=utf-8',
+        'cache-control': 'no-cache',
+        'connection': 'keep-alive',
+        'x-accel-buffering': 'no',
+      });
+      try {
+        for await (const chunk of llm.stream({
+          provider: officeProvider,
+          model: officeModel,
+          messages: officeMessages,
+          signal: officeCtrl.signal,
+          ...(typeof selection?.reasoningEffort === 'string' && selection.reasoningEffort !== ''
+            ? { reasoningEffort: selection.reasoningEffort }
+            : {}),
+        })) {
+          if (officeCtrl.signal.aborted) break;
+          if (chunk?.type === 'text-delta' && typeof chunk.text === 'string' && chunk.text !== '') {
+            res.write?.(`data: ${JSON.stringify({ delta: chunk.text })}\n\n`);
+          }
+        }
+        if (!officeCtrl.signal.aborted) res.write?.('data: [DONE]\n\n');
+      } catch (officeErr) {
+        if (!officeCtrl.signal.aborted) {
+          res.write?.(`data: ${JSON.stringify({ error: officeErr instanceof Error ? officeErr.message : String(officeErr) })}\n\n`);
+          res.write?.('data: [DONE]\n\n');
+        }
+      } finally {
+        res.end();
       }
       return;
     }
