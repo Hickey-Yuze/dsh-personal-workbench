@@ -134,7 +134,8 @@ interface OfficeAgentHandle {
   dispose(): unknown;
 }
 interface OfficeAgentCtx {
-  on?(event: string, fn: (frame: unknown) => void): unknown;
+  on?(event: string, fn: (payload: unknown) => void): unknown;
+  get?(name: string): unknown;
 }
 interface OfficeAgentsService {
   create(opts: {
@@ -1296,7 +1297,15 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
             // 缺省会让 agent 第 1 步就报 "prompt variable \"{{cwd}}\" has no value" 而挂。
             meta: { cwd: agentCwd },
             agentOptions: { ...(provider ? { provider } : {}), ...(model ? { model } : {}) },
-            setup: (agentCtx) => {
+            setup: async (agentCtx) => {
+              // 挂载默认 agent 预设：核心工具（bash/read/write/edit…）是预设里的子插件，
+              // 不挂预设的 agent 只能看到宿主全局工具（29 个 harness/browser 类），干不了真活。
+              try {
+                const presets = agentCtx.get?.('agentPresets') as { mount?: (ctx: unknown, id?: string) => Promise<unknown> } | undefined;
+                if (presets && typeof presets.mount === 'function') await presets.mount(agentCtx);
+              } catch (err) {
+                deps.log.warn(`[personal-workbench] office agent 预设挂载失败: ${err instanceof Error ? err.message : '未知错误'}`);
+              }
               try {
                 agentCtx.on?.('agent/assistant-stream', officeAgentCapture(npcId));
               } catch { /* 监听失败仅影响进度显示 */ }
