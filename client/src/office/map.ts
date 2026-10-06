@@ -6,7 +6,7 @@
  */
 import type { Furniture, FurnitureKind, OfficeMap, Vec } from './types.js';
 
-export const MAP_W = 20;
+export const MAP_W = 40;
 export const MAP_H = 12;
 
 /** 各家具固定尺寸（整数格协议）。 */
@@ -24,24 +24,34 @@ function mk(kind: FurnitureKind, x: number, y: number): Furniture {
   return { id: `${kind}-${furnSeq}`, kind, x, y, w: s.w, h: s.h };
 }
 
-/** 默认办公室：左右两列工位 + 中央自己的工位 + 白板/咖啡机/绿植。 */
+/** 默认办公室（40×12）：左右各一排工位区 + 中央自己的工位 + 白板/双咖啡机/绿植。 */
 export function defaultMap(): OfficeMap {
   furnSeq = 0;
   const furniture: Furniture[] = [
-    mk('whiteboard', 9, 1),
-    mk('coffee', 6, 1),
+    mk('whiteboard', 19, 1),
+    mk('coffee', 5, 1),
+    mk('coffee', 34, 1),
+    // 左工位区
     mk('desk', 3, 3),
-    mk('desk', 3, 6),
-    mk('desk', 3, 9),
-    mk('desk', 14, 3),
-    mk('desk', 14, 6),
-    mk('desk', 14, 9),
-    mk('desk', 9, 4), // 自己的中央工位
+    mk('desk', 8, 3),
+    mk('desk', 3, 7),
+    mk('desk', 8, 7),
+    // 右工位区
+    mk('desk', 30, 3),
+    mk('desk', 35, 3),
+    mk('desk', 30, 7),
+    mk('desk', 35, 7),
+    // 自己的中央工位（必须是最后一张桌：spawn 约定 desks 最后一座是自己）
+    mk('desk', 19, 4),
+    // 绿植
     mk('plant', 2, 1),
-    mk('plant', 17, 1),
+    mk('plant', 37, 1),
     mk('plant', 2, 10),
-    mk('plant', 17, 10),
-    mk('plant', 11, 10),
+    mk('plant', 37, 10),
+    mk('plant', 13, 2),
+    mk('plant', 26, 2),
+    mk('plant', 13, 10),
+    mk('plant', 26, 10),
   ];
   return { w: MAP_W, h: MAP_H, furniture };
 }

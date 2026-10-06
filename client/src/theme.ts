@@ -1289,9 +1289,9 @@ html { color-scheme: light !important; }
   border: 1px solid var(--pwb-border);
   background: #5b6472;
   overflow: hidden;
-  /* 尺寸回到原始档：高约 460px，宽按地图 20:12 收紧——框内严丝合缝无灰边，也不放大 */
-  width: min(100%, calc(460px * 20 / 12));
-  aspect-ratio: 20 / 12;
+  /* 舞台与地图同比例（40:12）：整行铺满、人物保持原始大小、无灰边无放大 */
+  width: 100%;
+  aspect-ratio: 40 / 12;
 }
 .dsh-pwb-office-canvas {
   width: 100%;
@@ -1336,7 +1336,7 @@ html { color-scheme: light !important; }
   color: var(--pwb-dim);
 }
 .dsh-pwb-office-mini {
-  aspect-ratio: 20 / 12;
+  aspect-ratio: 40 / 12;
   border-radius: 10px;
   overflow: hidden;
   background: #5b6472;
