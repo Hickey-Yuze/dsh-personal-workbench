@@ -1370,35 +1370,17 @@ html { color-scheme: light !important; }
 .dsh-pwb-office-tab-spacer { flex: 1; }
 /* AI 对话面板（PixOffice 同款：底部悬浮输入、对话向上展开、流式彩边） */
 .dsh-pwb-office-viewbody { display: flex; flex-direction: column; }
-.dsh-pwb-office-work {
-  display: flex;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--pwb-border);
-  background: rgba(0, 200, 83, 0.05);
-}
-.dsh-pwb-office-work input {
-  flex: 1;
-  min-width: 0;
-  padding: 6px 10px;
-  font-size: 12.5px;
-  border: 1px solid var(--pwb-border);
-  border-radius: 8px;
-  background: #fff;
-  color: var(--pwb-text, #1c1c22);
-  outline: none;
-}
-.dsh-pwb-office-work button {
+.dsh-pwb-office-chat-work {
   padding: 6px 12px;
   font-size: 12px;
   font-weight: 650;
   border-radius: 8px;
   border: none;
-  background: #00b45f;
+  background: #d97706;
   color: #fff;
   cursor: pointer;
 }
-.dsh-pwb-office-work button:disabled { opacity: 0.45; cursor: default; }
+.dsh-pwb-office-chat-work:disabled { opacity: 0.45; cursor: default; }
 .dsh-pwb-office-work-status {
   padding: 6px 12px;
   font-size: 11.5px;
@@ -1410,6 +1392,7 @@ html { color-scheme: light !important; }
   text-overflow: ellipsis;
 }
 .dsh-pwb-office-work-status span { color: var(--pwb-dim, #6b7280); }
+.dsh-pwb-office-work-err { color: #c0392b; background: rgba(224, 80, 80, 0.08); }
 .dsh-pwb-office-chat {
   position: static;
   width: 100%;

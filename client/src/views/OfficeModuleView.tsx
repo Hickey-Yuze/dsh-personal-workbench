@@ -94,7 +94,7 @@ export function OfficeModuleView(): ReactElement {
   const actionsDeadRef = useRef(false);
   /** 真工位：npcId → 会话快照；bubbledRef 记录已冒泡过的 lastText 尾部，避免每轮重复弹。 */
   const [agentRows, setAgentRows] = useState<Record<string, AgentRow>>({});
-  const [workInput, setWorkInput] = useState('');
+  const [workErr, setWorkErr] = useState('');
   const agentsDeadRef = useRef(false);
   const bubbledRef = useRef(new Map<string, string>());
 
@@ -140,26 +140,43 @@ export function OfficeModuleView(): ReactElement {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
-      }).catch(() => undefined);
+      })
+        .then(async (res) => {
+          if (res.ok) {
+            setWorkErr('');
+            return;
+          }
+          let msg = `请求失败（${res.status}）`;
+          try {
+            const j = (await res.json()) as { error?: { message?: string } };
+            if (typeof j.error?.message === 'string' && j.error.message !== '') msg = j.error.message;
+          } catch {
+            /* 非 JSON 响应用默认文案 */
+          }
+          if (res.status === 404) msg = `${msg}（宿主需要 ⌘Q 重启后才有此功能）`;
+          setWorkErr(msg);
+        })
+        .catch(() => setWorkErr('网络错误，无法连接宿主'));
     },
     [],
   );
 
-  /** 派活/递话/停止 的统一入口：无会话→start；有会话→say；输入为空且有会话→仅忽略。 */
+  /** 派活/递话统一入口：无会话→start；有会话→say；输入为空忽略。 */
   const workSend = useCallback(
-    (npc: { id: string; name: string; role: string }): void => {
-      const text = workInput.trim();
-      if (text === '') return;
-      const row = agentRows[npc.id];
+    (text: string): void => {
+      if (chatTarget.kind !== 'npc') return;
+      const t = text.trim();
+      if (t === '') return;
+      const row = agentRows[chatTarget.id];
       if (row !== undefined && row.status !== 'stopped') {
-        postAgent('office/agent/say', { npcId: npc.id, text });
+        postAgent('office/agent/say', { npcId: chatTarget.id, text: t });
       } else {
-        bubbledRef.current.delete(npc.id);
-        postAgent('office/agent/start', { npcId: npc.id, name: npc.name, role: npc.role, task: text });
+        bubbledRef.current.delete(chatTarget.id);
+        postAgent('office/agent/start', { npcId: chatTarget.id, name: chatTarget.name, role: chatTarget.role, task: t });
       }
-      setWorkInput('');
+      setChatInput('');
     },
-    [agentRows, postAgent, workInput],
+    [agentRows, chatTarget, postAgent],
   );
 
   useEffect(() => {
@@ -518,21 +535,6 @@ export function OfficeModuleView(): ReactElement {
                   <button onClick={() => setChatOpen(false)}>收起</button>
                 </span>
               </div>
-              {chatTarget.kind === 'npc' && (
-                <div className="dsh-pwb-office-work">
-                  <input
-                    value={workInput}
-                    placeholder={npcWorkActive ? '给 TA 递话或追加指示…' : '派真实任务，如：统计本项目代码行数并写个报告'}
-                    onChange={(e) => setWorkInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') workSend(chatTarget);
-                    }}
-                  />
-                  <button disabled={workInput.trim() === ''} onClick={() => workSend(chatTarget)}>
-                    {npcWorkActive ? '递话' : '派活'}
-                  </button>
-                </div>
-              )}
               {npcWorkRow !== undefined && (
                 <div className="dsh-pwb-office-work-status">
                   ⚒{' '}
@@ -540,6 +542,7 @@ export function OfficeModuleView(): ReactElement {
                   {(npcWorkRow.lastText.trim() ?? '') !== '' && <span> · {npcWorkRow.lastText.trim().slice(-120)}</span>}
                 </div>
               )}
+              {workErr !== '' && <div className="dsh-pwb-office-work-status dsh-pwb-office-work-err">⚠️ {workErr}</div>}
               <div className="dsh-pwb-office-chat-body" ref={chatBodyRef}>
                 {chatMsgs.length === 0 && <div className="dsh-pwb-office-chat-empty">{emptyText}</div>}
                 {chatMsgs.map((m, i) => (
@@ -557,12 +560,21 @@ export function OfficeModuleView(): ReactElement {
               <div className="dsh-pwb-office-chat-input">
                 <input
                   value={chatInput}
-                  placeholder="输入消息…"
+                  placeholder={chatTarget.kind === 'npc' ? '找 TA 聊天，或输入任务点「派活」让 TA 真干活…' : '输入消息…'}
                   onChange={(e) => setChatInput(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') void sendChat(chatInput);
                   }}
                 />
+                {chatTarget.kind === 'npc' && !chatBusy && (
+                  <button
+                    className="dsh-pwb-office-chat-work"
+                    disabled={chatInput.trim() === ''}
+                    onClick={() => workSend(chatInput.trim())}
+                  >
+                    {npcWorkActive ? '递话' : '派活'}
+                  </button>
+                )}
                 {chatBusy ? (
                   <button className="dsh-pwb-office-chat-stop" onClick={() => chatAbortRef.current?.abort()}>
                     停止
