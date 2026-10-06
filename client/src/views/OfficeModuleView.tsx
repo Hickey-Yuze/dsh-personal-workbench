@@ -3,7 +3,7 @@
  * + P4.5 同事 agent 联动：点谁跟谁聊（私聊）、全员群聊互聊、会议讨论；NPC 回复冒泡到头上。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ReactElement } from 'react';
+import type { PointerEvent as ReactPointerEvent, ReactElement } from 'react';
 import { OfficeEngine } from '../office/engine.js';
 import { OfficeCanvas } from '../office/OfficeCanvas.js';
 import { loadOfficeMap } from '../office/store.js';
@@ -12,6 +12,7 @@ import type { OfficeMap } from '../office/types.js';
 import type { MemberStat } from '../office/types.js';
 import { OfficeEditor } from './OfficeEditor.js';
 import { OfficeDataPanel } from './OfficeDataPanel.js';
+import { OfficeAgentPanel } from './OfficeAgentPanel.js';
 
 const STATE_TEXT: Record<MemberStat['state'], string> = {
   idle: '摸鱼中',
@@ -38,6 +39,25 @@ const AGENTS_URL = '/api/personal-workbench/office/agents';
 
 /** 真工位会话快照（office/agents 轮询返回的NPC 条目）。 */
 type AgentRow = { npcId: string; name?: string; status: string; lastText: string; task?: string; report?: string; reportAt?: number };
+
+/* ── 左右分栏：左列宽度比例（0.3~0.8），存 localStorage 进视图恢复，拖拽分隔条实时调整 ── */
+const SPLIT_KEY = 'dsh-pwb:office_split_v1';
+const SPLIT_MIN = 0.3;
+const SPLIT_MAX = 0.8;
+const SPLIT_DEFAULT = 0.6;
+function clampSplit(v: number): number {
+  return Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, v));
+}
+function loadSplit(): number {
+  try {
+    const raw = window.localStorage.getItem(SPLIT_KEY);
+    if (raw === null) return SPLIT_DEFAULT;
+    const v = Number(raw);
+    return Number.isFinite(v) ? clampSplit(v) : SPLIT_DEFAULT;
+  } catch {
+    return SPLIT_DEFAULT;
+  }
+}
 
 /* ── 聊天记录持久化：按会话对象分键存 localStorage，重进视图不丢记录 ── */
 const CHAT_CAP = 100;
@@ -481,6 +501,36 @@ export function OfficeModuleView(): ReactElement {
     setTab('scene');
   }, []);
 
+  /* ── 左右分栏拖拽：pointer capture 让指针移出分隔条也持续收到 move/up；比例 clamp 后实时刷新左列 flex-basis ── */
+  const [split, setSplit] = useState<number>(loadSplit);
+  const viewBodyRef = useRef<HTMLDivElement | null>(null);
+  const splitDraggingRef = useRef(false);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SPLIT_KEY, String(split));
+    } catch { /* 存储失败仅影响持久化 */ }
+  }, [split]);
+  const onSplitPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>): void => {
+    e.preventDefault();
+    splitDraggingRef.current = true;
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }, []);
+  const onSplitPointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>): void => {
+    if (!splitDraggingRef.current) return;
+    const el = viewBodyRef.current;
+    if (el === null) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    setSplit(clampSplit((e.clientX - rect.left) / rect.width));
+  }, []);
+  const onSplitPointerUp = useCallback((e: ReactPointerEvent<HTMLDivElement>): void => {
+    if (!splitDraggingRef.current) return;
+    splitDraggingRef.current = false;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch { /* 指针捕获已释放时忽略 */ }
+  }, []);
+
   /* 点格子：互动照旧；点到同事（本人格或其椅位）→ 切私聊 */
   const handleCellClick = useCallback(
     (cell: { x: number; y: number }): void => {
@@ -510,134 +560,158 @@ export function OfficeModuleView(): ReactElement {
 
   return (
     <div className="dsh-pwb-view">
-      <div className="dsh-pwb-view-body dsh-pwb-office-viewbody">
-        <div className="dsh-pwb-office-tabs">
-          <button className={`dsh-pwb-office-tab${tab === 'scene' ? ' dsh-pwb-office-tab-active' : ''}`} onClick={() => setTab('scene')}>
-            场景
-          </button>
-          <button className={`dsh-pwb-office-tab${tab === 'data' ? ' dsh-pwb-office-tab-active' : ''}`} onClick={() => setTab('data')}>
-            数据面板
-          </button>
-          <button className={`dsh-pwb-office-tab${tab === 'edit' ? ' dsh-pwb-office-tab-active' : ''}`} onClick={() => setTab('edit')}>
-            布置办公室
-          </button>
-          <span className="dsh-pwb-office-tab-spacer" />
-          <button className="dsh-pwb-office-tab" onClick={() => setChatOpen((v) => !v)}>
-            {chatOpen ? '收起 AI' : 'AI 助手'}
-          </button>
-        </div>
-
-        {tab === 'scene' && (
-          <div className="dsh-pwb-office-scenewrap">
-            <div className="dsh-pwb-office-stage">
-              <OfficeCanvas engine={engine} className="dsh-pwb-office-canvas" onClickCell={handleCellClick} />
-            </div>
+      <div className="dsh-pwb-view-body dsh-pwb-office-viewbody" ref={viewBodyRef}>
+        <div className="dsh-pwb-office-left" style={chatOpen ? { flex: `0 0 ${(split * 100).toFixed(2)}%` } : { flex: '1 1 auto' }}>
+          <div className="dsh-pwb-office-tabs">
+            <button className={`dsh-pwb-office-tab${tab === 'scene' ? ' dsh-pwb-office-tab-active' : ''}`} onClick={() => setTab('scene')}>
+              场景
+            </button>
+            <button className={`dsh-pwb-office-tab${tab === 'data' ? ' dsh-pwb-office-tab-active' : ''}`} onClick={() => setTab('data')}>
+              数据面板
+            </button>
+            <button className={`dsh-pwb-office-tab${tab === 'edit' ? ' dsh-pwb-office-tab-active' : ''}`} onClick={() => setTab('edit')}>
+              布置办公室
+            </button>
+            <span className="dsh-pwb-office-tab-spacer" />
+            <button className="dsh-pwb-office-tab" onClick={() => setChatOpen((v) => !v)}>
+              {chatOpen ? '收起 AI' : 'AI 助手'}
+            </button>
           </div>
-        )}
 
-        {tab === 'data' && <OfficeDataPanel members={members} />}
-
-        {tab === 'edit' && <OfficeEditor onSave={handleSaveMap} onCancel={() => setTab('scene')} />}
-
-        <div className="dsh-pwb-office-status">
-          {members.map((m) => (
-            <span key={m.id} className={`dsh-pwb-office-chip${m.isSelf ? ' dsh-pwb-office-chip-self' : ''}`}>
-              <b>{m.name}</b>
-              <i>{m.role}</i>
-              <em>
-                {STATE_TEXT[m.state]}
-                {agentRows[m.id]?.status === 'working' ? ' ⚒' : ''}
-              </em>
-            </span>
-          ))}
-        </div>
-        <div className="dsh-pwb-office-hint">点同事打招呼并私聊 · 点空地走位 · 点白板开会 · 群聊里看同事们互聊</div>
-          {tab === 'scene' && chatOpen && (
-            <div className="dsh-pwb-office-chat">
-              <div className="dsh-pwb-office-chat-head">
-                {targetLabel}
-                <span className="dsh-pwb-office-chat-act">
-                  {chatTarget.kind === 'npc' && (
-                    <button onClick={() => setChatTarget({ kind: 'group' })}>全员群聊</button>
-                  )}
-                  {chatTarget.kind === 'group' && (
-                    <button disabled={chatBusy} onClick={runAutoChat}>
-                      让他们聊
-                    </button>
-                  )}
-                  {chatTarget.kind !== 'ai' && <button onClick={() => setChatTarget({ kind: 'ai' })}>返回 AI</button>}
-                  {chatTarget.kind === 'npc' && npcWorkActive && (
-                    <button onClick={() => postAgent('office/agent/stop', { npcId: chatTarget.id })}>停工</button>
-                  )}
-                  <button
-                    onClick={() => {
-                      chatAbortRef.current?.abort();
-                      setChatMsgs([]);
-                    }}
-                  >
-                    新建
-                  </button>
-                  <button onClick={() => setChatOpen(false)}>收起</button>
-                </span>
-              </div>
-              {npcWorkRow !== undefined && (
-                <div className="dsh-pwb-office-work-status">
-                  ⚒{' '}
-                  {npcWorkRow.status === 'working' ? '真实工作中' : npcWorkRow.status === 'idle' ? '真实会话空闲' : '已停工'}
-                  {(npcWorkRow.lastText.trim() ?? '') !== '' && <span> · {npcWorkRow.lastText.trim().slice(-120)}</span>}
-                </div>
-              )}
-              {workErr !== '' && <div className="dsh-pwb-office-work-status dsh-pwb-office-work-err">⚠️ {workErr}</div>}
-              <div className="dsh-pwb-office-chat-body" ref={chatBodyRef}>
-                {chatMsgs.length === 0 && <div className="dsh-pwb-office-chat-empty">{emptyText}</div>}
-                {chatMsgs.map((m, i) => (
-                  <div
-                    key={i}
-                    className={`dsh-pwb-office-chat-msg ${m.role === 'user' ? 'dsh-pwb-office-chat-msg-user' : 'dsh-pwb-office-chat-msg-ai'}${
-                      m.streaming === true ? ' dsh-pwb-office-chat-msg-streaming' : ''
-                    }`}
-                  >
-                    {m.speaker !== undefined && <b>{m.speaker}：</b>}
-                    {m.content}
-                  </div>
-                ))}
-              </div>
-              <div className="dsh-pwb-office-chat-input">
-                <input
-                  value={chatInput}
-                  placeholder={
-                    chatTarget.kind === 'npc'
-                      ? npcWorkActive
-                        ? 'TA 正在干活，消息会递进 TA 的真实会话…'
-                        : '找 TA 聊天，或输入任务点「派活」让 TA 真干活…'
-                      : '输入消息…'
-                  }
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void sendChat(chatInput);
-                  }}
-                />
-                {chatTarget.kind === 'npc' && !chatBusy && !npcWorkActive && (
-                  <button
-                    className="dsh-pwb-office-chat-work"
-                    disabled={chatInput.trim() === ''}
-                    onClick={() => workSend(chatInput.trim())}
-                  >
-                    派活
-                  </button>
-                )}
-                {chatBusy ? (
-                  <button className="dsh-pwb-office-chat-stop" onClick={() => chatAbortRef.current?.abort()}>
-                    停止
-                  </button>
-                ) : (
-                  <button className="dsh-pwb-office-chat-send" disabled={chatInput.trim() === ''} onClick={() => void sendChat(chatInput)}>
-                    发送
-                  </button>
-                )}
+          {tab === 'scene' && (
+            <div className="dsh-pwb-office-scenewrap">
+              <div className="dsh-pwb-office-stage">
+                <OfficeCanvas engine={engine} className="dsh-pwb-office-canvas" onClickCell={handleCellClick} />
               </div>
             </div>
           )}
+
+          {tab === 'data' && <OfficeDataPanel members={members} />}
+
+          {tab === 'edit' && <OfficeEditor onSave={handleSaveMap} onCancel={() => setTab('scene')} />}
+
+          <div className="dsh-pwb-office-status">
+            {members.map((m) => (
+              <span key={m.id} className={`dsh-pwb-office-chip${m.isSelf ? ' dsh-pwb-office-chip-self' : ''}`}>
+                <b>{m.name}</b>
+                <i>{m.role}</i>
+                <em>
+                  {STATE_TEXT[m.state]}
+                  {agentRows[m.id]?.status === 'working' ? ' ⚒' : ''}
+                </em>
+              </span>
+            ))}
+          </div>
+          <div className="dsh-pwb-office-hint">点同事打招呼并私聊 · 点空地走位 · 点白板开会 · 群聊里看同事们互聊</div>
+        </div>
+
+        {chatOpen && (
+          <>
+            <div
+              className="dsh-pwb-office-splitter"
+              role="separator"
+              aria-orientation="vertical"
+              title="拖动调整左右宽度"
+              onPointerDown={onSplitPointerDown}
+              onPointerMove={onSplitPointerMove}
+              onPointerUp={onSplitPointerUp}
+              onPointerCancel={onSplitPointerUp}
+            />
+            <div className="dsh-pwb-office-right">
+              <OfficeAgentPanel
+                onOpenChat={(id, name, role) => {
+                  setChatTarget({ kind: 'npc', id, name, role });
+                  setChatOpen(true);
+                }}
+              />
+              <div className="dsh-pwb-office-chat">
+                <div className="dsh-pwb-office-chat-head">
+                  {targetLabel}
+                  <span className="dsh-pwb-office-chat-act">
+                    {chatTarget.kind === 'npc' && (
+                      <button onClick={() => setChatTarget({ kind: 'group' })}>全员群聊</button>
+                    )}
+                    {chatTarget.kind === 'group' && (
+                      <button disabled={chatBusy} onClick={runAutoChat}>
+                        让他们聊
+                      </button>
+                    )}
+                    {chatTarget.kind !== 'ai' && <button onClick={() => setChatTarget({ kind: 'ai' })}>返回 AI</button>}
+                    {chatTarget.kind === 'npc' && npcWorkActive && (
+                      <button onClick={() => postAgent('office/agent/stop', { npcId: chatTarget.id })}>停工</button>
+                    )}
+                    <button
+                      onClick={() => {
+                        chatAbortRef.current?.abort();
+                        setChatMsgs([]);
+                      }}
+                    >
+                      新建
+                    </button>
+                    <button onClick={() => setChatOpen(false)}>收起</button>
+                  </span>
+                </div>
+                {/* OFFICE-AGENT-PANEL-SLOT */}
+                {npcWorkRow !== undefined && (
+                  <div className="dsh-pwb-office-work-status">
+                    ⚒{' '}
+                    {npcWorkRow.status === 'working' ? '真实工作中' : npcWorkRow.status === 'idle' ? '真实会话空闲' : '已停工'}
+                    {(npcWorkRow.lastText.trim() ?? '') !== '' && <span> · {npcWorkRow.lastText.trim().slice(-120)}</span>}
+                  </div>
+                )}
+                {workErr !== '' && <div className="dsh-pwb-office-work-status dsh-pwb-office-work-err">⚠️ {workErr}</div>}
+                <div className="dsh-pwb-office-chat-body" ref={chatBodyRef}>
+                  {chatMsgs.length === 0 && <div className="dsh-pwb-office-chat-empty">{emptyText}</div>}
+                  {chatMsgs.map((m, i) => (
+                    <div
+                      key={i}
+                      className={`dsh-pwb-office-chat-msg ${m.role === 'user' ? 'dsh-pwb-office-chat-msg-user' : 'dsh-pwb-office-chat-msg-ai'}${
+                        m.streaming === true ? ' dsh-pwb-office-chat-msg-streaming' : ''
+                      }`}
+                    >
+                      {m.speaker !== undefined && <b>{m.speaker}：</b>}
+                      {m.content}
+                    </div>
+                  ))}
+                </div>
+                <div className="dsh-pwb-office-chat-input">
+                  <input
+                    value={chatInput}
+                    placeholder={
+                      chatTarget.kind === 'npc'
+                        ? npcWorkActive
+                          ? 'TA 正在干活，消息会递进 TA 的真实会话…'
+                          : '找 TA 聊天，或输入任务点「派活」让 TA 真干活…'
+                        : '输入消息…'
+                    }
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void sendChat(chatInput);
+                    }}
+                  />
+                  {chatTarget.kind === 'npc' && !chatBusy && !npcWorkActive && (
+                    <button
+                      className="dsh-pwb-office-chat-work"
+                      disabled={chatInput.trim() === ''}
+                      onClick={() => workSend(chatInput.trim())}
+                    >
+                      派活
+                    </button>
+                  )}
+                  {chatBusy ? (
+                    <button className="dsh-pwb-office-chat-stop" onClick={() => chatAbortRef.current?.abort()}>
+                      停止
+                    </button>
+                  ) : (
+                    <button className="dsh-pwb-office-chat-send" disabled={chatInput.trim() === ''} onClick={() => void sendChat(chatInput)}>
+                      发送
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

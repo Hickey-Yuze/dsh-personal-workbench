@@ -1368,8 +1368,36 @@ html { color-scheme: light !important; }
   font-weight: 650;
 }
 .dsh-pwb-office-tab-spacer { flex: 1; }
-/* AI 对话面板（PixOffice 同款：底部悬浮输入、对话向上展开、流式彩边） */
-.dsh-pwb-office-viewbody { display: flex; flex-direction: column; }
+/* AI 对话面板（PixOffice 同款：底部悬浮输入、对话向上展开、流式彩边）；viewbody 左右分栏：左列内容 / 拖拽分隔条 / 右列聊天 */
+.dsh-pwb-office-viewbody { display: flex; flex-direction: row; align-items: stretch; min-height: 0; }
+.dsh-pwb-office-left { flex: 1 1 auto; min-width: 0; }
+.dsh-pwb-office-right { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
+.dsh-pwb-office-splitter {
+  flex: 0 0 6px;
+  width: 6px;
+  position: relative;
+  cursor: col-resize;
+  background: transparent;
+  border-radius: 3px;
+  transition: background 0.15s ease;
+  touch-action: none;
+  user-select: none;
+}
+.dsh-pwb-office-splitter::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 14px;
+  bottom: 14px;
+  width: 2px;
+  transform: translateX(-50%);
+  border-radius: 1px;
+  background: var(--pwb-border, #e5e7eb);
+}
+.dsh-pwb-office-splitter:hover,
+.dsh-pwb-office-splitter:active { background: rgba(0, 200, 120, 0.16); }
+.dsh-pwb-office-splitter:hover::after,
+.dsh-pwb-office-splitter:active::after { background: #00c853; }
 .dsh-pwb-office-chat-work {
   padding: 6px 12px;
   font-size: 12px;
@@ -1396,7 +1424,6 @@ html { color-scheme: light !important; }
 .dsh-pwb-office-chat {
   position: static;
   width: 100%;
-  margin-top: 10px;
   flex: 1;
   min-height: 240px;
   background: #fff;
@@ -1680,6 +1707,12 @@ html { color-scheme: light !important; }
 }
 .dsh-pwb-office-dp-task-title-done { text-decoration: line-through; color: var(--pwb-dim); }
 .dsh-pwb-office-dp-empty { font-size: 12px; color: var(--pwb-dim); padding: 6px 0; }
+/* 窄屏（<900px）回退上下堆叠：分隔条隐藏，左列恢复内容高、右列聊天占剩余高度（!important 覆盖内联 flex-basis） */
+@media (max-width: 899.98px) {
+  .dsh-pwb-office-viewbody { flex-direction: column; }
+  .dsh-pwb-office-left { flex: 0 0 auto !important; }
+  .dsh-pwb-office-splitter { display: none; }
+}
 `;
 
 export function ensureThemeStyle(): void {
