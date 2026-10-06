@@ -210,6 +210,34 @@ function officeAgentCapture(npcId: string): (payload: unknown) => void {
 function officeWorkerSystem(name: string, role: string): string {
   return `你是用户工作台「办公室」里的同事 ${name}（${role}），现在被老板派了一个真实工作任务。请直接动手完成（可以读写文件、运行命令、写代码），不要反问老板，遇到小决策自己拿主意；完成后用中文简短汇报：做了什么、改了哪些文件、结果如何。不要寒暄与任务无关的内容。`;
 }
+/** 办公室自定义员工花名册：持久化 ~/.dsh/personal-workbench/office_agents.json（默认六名 NPC 客户端内置，不进 roster）。 */
+const OFFICE_ROSTER_FILE = `${process.env.HOME ?? ''}/.dsh/personal-workbench/office_agents.json`;
+type OfficeRosterEntry = { id: string; name: string; role: string };
+function loadOfficeRoster(): OfficeRosterEntry[] {
+  try {
+    const data = JSON.parse(fs.readFileSync(OFFICE_ROSTER_FILE, 'utf8')) as { roster?: unknown };
+    if (!Array.isArray(data.roster)) return [];
+    const list: OfficeRosterEntry[] = [];
+    for (const r of data.roster) {
+      if (r === null || typeof r !== 'object') continue;
+      const e = r as { id?: unknown; name?: unknown; role?: unknown };
+      if (typeof e.id === 'string' && typeof e.name === 'string' && typeof e.role === 'string' && e.name.trim() !== '') {
+        list.push({ id: e.id, name: e.name, role: e.role });
+      }
+    }
+    return list;
+  } catch {
+    return []; // 读不到 → 默认空数组
+  }
+}
+function saveOfficeRoster(list: OfficeRosterEntry[]): void {
+  try {
+    fs.mkdirSync(`${process.env.HOME ?? ''}/.dsh/personal-workbench`, { recursive: true });
+    fs.writeFileSync(OFFICE_ROSTER_FILE, JSON.stringify({ roster: list }, null, 2), 'utf8');
+  } catch {
+    /* 写失败仅影响持久化，下次 POST 重写 */
+  }
+}
 /** llm.stream 的 StreamChunk 最小结构面（text-delta 携带正文增量；字段名经 @deepseek-ai/dsh-llm types.d.ts 查证）。 */
 type OfficeStreamChunk = { type?: string; text?: unknown };
 /** 解析 URL 得 office/<name> 端点名；非 office 端点返回空串，交还既有分发逻辑。 */
@@ -1213,6 +1241,15 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         send(res, 200, { ok: true, agents: list });
         return;
       }
+      // office/roster GET：自定义员工花名册（默认六名 NPC 客户端内置，不在此列）
+      if (officeEndpoint === 'office/roster') {
+        if (officeMethod !== 'GET') {
+          send(res, 405, { ok: false, error: { code: 'method-not-allowed', message: '仅支持 GET' } });
+          return;
+        }
+        send(res, 200, { ok: true, roster: loadOfficeRoster() });
+        return;
+      }
       if (officeMethod !== 'POST') {
         send(res, 405, { ok: false, error: { code: 'method-not-allowed', message: '仅支持 POST' } });
         return;
@@ -1361,12 +1398,83 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
             void slot.handle.dispose();
           } catch { /* dispose 失败忽略 */ }
         }
-        if (slot) {
-          slot.handle = null;
-          slot.entry.status = 'stopped';
-          slot.entry.updatedAt = Date.now();
-        }
         send(res, 200, { ok: true });
+        return;
+      }
+      // office/roster POST：新增自定义员工（id 生成 custom-<序号>，序号取现有最大值 +1 防删后复用）
+      if (officeEndpoint === 'office/roster') {
+        const name = typeof officeBody.name === 'string' ? officeBody.name.trim() : '';
+        const role = typeof officeBody.role === 'string' ? officeBody.role.trim() : '';
+        if (name === '' || role === '') {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: 'name 与 role 必填' } });
+          return;
+        }
+        const roster = loadOfficeRoster();
+        let maxSeq = 0;
+        for (const r of roster) {
+          const m = /^custom-(\d+)$/.exec(r.id);
+          if (m !== null) maxSeq = Math.max(maxSeq, Number.parseInt(m[1] ?? '0', 10));
+        }
+        const entry: OfficeRosterEntry = { id: `custom-${maxSeq + 1}`, name, role };
+        roster.push(entry);
+        saveOfficeRoster(roster);
+        send(res, 200, { ok: true, entry });
+        return;
+      }
+      // office/agent/handoff：移交 —— 把交接说明真实递进双方会话（接手方先检查对方产出再推进；移交方收到交接提醒）
+      if (officeEndpoint === 'office/agent/handoff') {
+        const fromId = typeof officeBody.fromId === 'string' ? officeBody.fromId : '';
+        const toId = typeof officeBody.toId === 'string' ? officeBody.toId : '';
+        const note = typeof officeBody.note === 'string' ? officeBody.note.trim() : '';
+        const fromSlot = officeAgents.get(fromId);
+        const toSlot = officeAgents.get(toId);
+        if (!fromSlot?.handle || !toSlot?.handle) {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: '该同事没有进行中的会话' } });
+          return;
+        }
+        if (fromId === toId) {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: '移交对象不能是自己' } });
+          return;
+        }
+        if (note === '') {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: 'note 必填' } });
+          return;
+        }
+        try {
+          toSlot.handle.agent.followup({
+            content: [
+              {
+                type: 'text',
+                text: `[移交] 同事 ${fromSlot.entry.name}(${fromSlot.entry.role}) 把工作移交给你：${note}。请先检查对方产出的相关文件/结论，再继续推进，完成后按你的规矩汇报。`,
+              },
+            ],
+            source: { kind: 'user' },
+          });
+          toSlot.entry.status = 'working';
+          toSlot.entry.updatedAt = Date.now();
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : '移交失败';
+          send(res, 500, { ok: false, error: { code: 'handoff-failed', message: msg } });
+          return;
+        }
+        // 移交方也要知道：真实递话写进其会话（互相监督 v1：双方会话里都有这条 note）；失败仅记日志不影响移交成立
+        try {
+          fromSlot.handle.agent.followup({
+            content: [
+              {
+                type: 'text',
+                text: `[移交] 你已把当前工作移交给同事 ${toSlot.entry.name}(${toSlot.entry.role})。交接事项：${note}。请简要回应未尽事项与对方接手需注意的点；没有就回复「已交接完毕」。`,
+              },
+            ],
+            source: { kind: 'user' },
+          });
+          fromSlot.entry.status = 'working';
+        } catch (err) {
+          deps.log.warn(`[personal-workbench] office handoff 移交方递话失败: ${err instanceof Error ? err.message : '未知错误'}`);
+        }
+        fromSlot.entry.lastText = `${fromSlot.entry.lastText} →已移交(${toSlot.entry.name})`.slice(-240);
+        fromSlot.entry.updatedAt = Date.now();
+        send(res, 200, { ok: true, from: { id: fromId, name: fromSlot.entry.name }, to: { id: toId, name: toSlot.entry.name } });
         return;
       }
       // SSE 流式回复公共骨架：llm 软探测 + 默认模型 + 断连中止 + data: delta/[DONE]
