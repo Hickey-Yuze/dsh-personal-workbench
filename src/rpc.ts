@@ -152,10 +152,13 @@ type OfficeAgentEntry = {
   task: string;
   status: 'working' | 'idle' | 'stopped';
   lastText: string;
+  /** 最近一次完整汇报（turn 正常结束时的 assistant 全文，尾部 4000 字） */
+  report?: string;
+  reportAt?: number;
   startedAt: number;
   updatedAt: number;
 };
-const officeAgents = new Map<string, { entry: OfficeAgentEntry; handle: OfficeAgentHandle | null }>();
+const officeAgents = new Map<string, { entry: OfficeAgentEntry; handle: OfficeAgentHandle | null; turnText: string }>();
 /** 流帧防御式抽取：start/end 帧切 working/idle，chunk 帧尽量掏出文本增量拼进 lastText（尾部 240 字）。 */
 function officeAgentCapture(npcId: string): (payload: unknown) => void {
   return (payload: unknown) => {
@@ -173,17 +176,29 @@ function officeAgentCapture(npcId: string): (payload: unknown) => void {
       outcome?: { kind?: string };
     };
     if (fr.type === 'start') {
+      slot.turnText = '';
       slot.entry.status = 'working';
       slot.entry.updatedAt = Date.now();
       return;
     }
     if (fr.type === 'end') {
-      slot.entry.status = fr.outcome?.kind === 'committed' ? 'idle' : 'working';
+      if (fr.outcome?.kind === 'committed') {
+        // turn 正常收尾：把本轮 assistant 全文存为 report，客户端轮询到 reportAt 变化即带回聊天区
+        const rep = slot.turnText.trim();
+        if (rep !== '') {
+          slot.entry.report = rep;
+          slot.entry.reportAt = Date.now();
+        }
+        slot.entry.status = 'idle';
+      } else {
+        slot.entry.status = 'working';
+      }
       slot.entry.updatedAt = Date.now();
       return;
     }
     const raw = fr.chunk?.text ?? fr.delta?.text ?? fr.text;
     if (typeof raw === 'string' && raw !== '' && fr.chunk?.type !== 'reasoning' && fr.chunk?.type !== 'thinking') {
+      slot.turnText = (slot.turnText + raw).slice(-4000);
       slot.entry.lastText = (slot.entry.lastText + raw).slice(-240);
       slot.entry.status = 'working';
       slot.entry.updatedAt = Date.now();
@@ -1290,6 +1305,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
           officeAgents.set(npcId, {
             handle,
             entry: { name, role, task, status: 'working', lastText: '', startedAt: Date.now(), updatedAt: Date.now() },
+            turnText: '',
           });
           handle.agent.followup({
             content: [{ type: 'text', text: `${officeWorkerSystem(name, role)}\n\n任务：${task}` }],

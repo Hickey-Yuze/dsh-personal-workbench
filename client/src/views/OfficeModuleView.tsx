@@ -37,7 +37,7 @@ const ACTIONS_URL = '/api/personal-workbench/office/actions';
 const AGENTS_URL = '/api/personal-workbench/office/agents';
 
 /** 真工位会话快照（office/agents 轮询返回的NPC 条目）。 */
-type AgentRow = { npcId: string; name?: string; status: string; lastText: string; task?: string };
+type AgentRow = { npcId: string; name?: string; status: string; lastText: string; task?: string; report?: string; reportAt?: number };
 
 /** 读取 SSE 流，逐 delta 回调，返回完整文本；非流式/空流都在气泡里给出原因。 */
 async function readSse(res: Response, onDelta: (d: string) => void, onErr: (e: string) => void): Promise<string> {
@@ -133,6 +133,22 @@ export function OfficeModuleView(): ReactElement {
       window.clearInterval(id);
     };
   }, [engine]);
+
+  /* 干完活的完整汇报回聊天区：reportAt 前进 → 头顶冒泡 + 写入当前私聊（每条只投递一次） */
+  const deliveredReportRef = useRef(new Map<string, number>());
+  useEffect(() => {
+    for (const row of Object.values(agentRows)) {
+      if (row.report === undefined || row.reportAt === undefined || row.report.trim() === '') continue;
+      if ((deliveredReportRef.current.get(row.npcId) ?? 0) >= row.reportAt) continue;
+      deliveredReportRef.current.set(row.npcId, row.reportAt);
+      engine.setBubble(row.npcId, row.report.trim().slice(-60), 8000);
+      if (chatTarget.kind === 'npc' && chatTarget.id === row.npcId) {
+        const speaker = members.find((m) => m.id === row.npcId)?.name ?? row.npcId;
+        const content = row.report;
+        setChatMsgs((prev) => [...prev, { role: 'assistant', speaker, content }]);
+      }
+    }
+  }, [agentRows, chatTarget, engine, members]);
 
   const postAgent = useCallback(
     (path: 'office/agent/start' | 'office/agent/say' | 'office/agent/stop', body: Record<string, string>): void => {
