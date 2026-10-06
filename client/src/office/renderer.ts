@@ -7,7 +7,6 @@ import type { Character, Furniture } from './types.js';
 
 const FLOOR_A = '#efeae0';
 const FLOOR_B = '#e7e1d3';
-const WALL = '#5b6472';
 
 function rr(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
   ctx.beginPath();
@@ -204,17 +203,17 @@ export function renderOffice(
   const oy = (cssH - scale * MAP_H) / 2;
   const showNames = opts?.showNames ?? scale >= 15;
 
-  // 墙体（整幅底色）+ 内室地板
-  ctx.fillStyle = WALL;
-  ctx.fillRect(0, 0, cssW, cssH);
-  for (let y = 1; y < MAP_H - 1; y++) {
-    for (let x = 1; x < MAP_W - 1; x++) {
+  // 地板满铺整幅（无墙体带），外墙只留一圈细描边
+  for (let y = 0; y < MAP_H; y++) {
+    for (let x = 0; x < MAP_W; x++) {
       ctx.fillStyle = (x + y) % 2 === 0 ? FLOOR_A : FLOOR_B;
       ctx.fillRect(ox + x * scale, oy + y * scale, scale + 0.5, scale + 0.5);
     }
   }
-  ctx.strokeStyle = 'rgba(255,255,255,0.14)';
-  ctx.strokeRect(ox + scale, oy + scale, (MAP_W - 2) * scale, (MAP_H - 2) * scale);
+  const rim = Math.max(1.5, scale * 0.1);
+  ctx.strokeStyle = 'rgba(91,100,114,0.5)';
+  ctx.lineWidth = rim;
+  ctx.strokeRect(rim / 2, rim / 2, cssW - rim, cssH - rim);
 
   // 家具
   for (const f of furniture) {
