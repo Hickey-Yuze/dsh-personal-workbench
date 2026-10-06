@@ -1289,8 +1289,9 @@ html { color-scheme: light !important; }
   border: 1px solid var(--pwb-border);
   background: #5b6472;
   overflow: hidden;
-  width: 100%;
-  aspect-ratio: 20 / 12; /* 与地图同比例：整行铺满，无灰边 */
+  /* 尺寸回到原始档：高约 460px，宽按地图 20:12 收紧——框内严丝合缝无灰边，也不放大 */
+  width: min(100%, calc(460px * 20 / 12));
+  aspect-ratio: 20 / 12;
 }
 .dsh-pwb-office-canvas {
   width: 100%;
