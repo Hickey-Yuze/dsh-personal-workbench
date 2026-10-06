@@ -1,7 +1,7 @@
 /**
  * 办公室引擎 —— 行为驱动场景（NPC 是行为循环状态机，不是贴图动画）：
  * 每个人物 工作/咖啡/拜访/闲逛 四态轮转，逻辑走整数格，渲染层拿浮点坐标插值。
- * P1 只内置自主行为循环；P2 在此追加公开互动方法（点击走位/拜访/会议）。
+ * P2 互动层：构造函数可注入存档地图；点击走位 / 点击 NPC 寒暄 / 白板会议 / 气泡系统。
  */
 import { deskChairCell, buildBlocked, defaultMap, findPath, isFree, MAP_H, MAP_W } from './map.js';
 import type { Character, Furniture, Intent, MemberStat, OfficeMap, Vec } from './types.js';
@@ -30,16 +30,48 @@ function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)] as T;
 }
 
+/** 按职业的自言自语台词（切状态时 ~8% 概率冒 3-6 秒，key = NPC_DEFS.role）。 */
+const MUMBLE_LINES: Record<string, string[]> = {
+  前端工程师: ['在改 bug', '样式怎么又飘了', '这个兼容性真烦'],
+  产品经理: ['需求又变了', '再对一版需求', '先写个 PRD'],
+  架构师: ['这个要重构', '得抽个公共层', '耦合还是太重'],
+  测试工程师: ['又复现不了', '先提个 bug 单', '回归再跑一遍'],
+  设计师: ['配色再看看', '间距再调一调', '出两版对比下'],
+  运营: ['数据拉一下', '日报还没整', '复盘一下转化'],
+};
+
+/** 点击 NPC 时自己冒泡的打招呼台词。 */
+const GREETING_LINES = ['你好呀', '忙不忙？', '进展咋样？'];
+
+/** NPC 按职业冒泡的回复台词（key = NPC_DEFS.role）。 */
+const REPLY_LINES: Record<string, string[]> = {
+  前端工程师: ['在改 bug', '这个 bug 挺诡异'],
+  产品经理: ['需求又变了', '对齐下排期？'],
+  架构师: ['这个要重构', '模块边界得理一下'],
+  测试工程师: ['又复现不了', '环境我再看看'],
+  设计师: ['配色再看看', '这版视觉再打磨'],
+  运营: ['数据拉一下', '活动数据还行'],
+};
+
 export class OfficeEngine {
   map: OfficeMap;
   blocked: Uint8Array;
   chars: Character[] = [];
   time = 0;
+  /** 会议进行中（renderer 据此高亮白板）。 */
+  meetingActive = false;
+  /** 头顶气泡：charId → 文本 + 到期引擎时间（秒），tick 清到期。 */
+  bubbles = new Map<string, { text: string; until: number }>();
   private desks: Furniture[] = [];
   private coffee: Furniture | null = null;
+  private meetingUntil = 0;
+  /** 会议散点分配表（charId → 目标格），散会清空。 */
+  private meetingSpots = new Map<string, Vec>();
+  private chatTargetId: string | null = null;
 
-  constructor() {
-    this.map = defaultMap();
+  /** map 缺省 defaultMap()；外部可传存档地图替换（spawn 约定不变：desks 最后一座是自己）。 */
+  constructor(map?: OfficeMap) {
+    this.map = map ?? defaultMap();
     this.blocked = buildBlocked(this.map);
     this.desks = this.map.furniture.filter((f) => f.kind === 'desk');
     this.coffee = this.map.furniture.find((f) => f.kind === 'coffee') ?? null;
@@ -69,20 +101,189 @@ export class OfficeEngine {
         phase: Math.random() * Math.PI * 2,
       };
     };
-    // 自己：中央工位（P2 起改为可点击操控）
+    // 自己：中央工位（P2 起可点击操控）
     const selfDesk = this.desks[this.desks.length - 1] as Furniture;
     this.chars.push(
       mkChar('self', { name: 'Yuze', role: '老板', color: '#00B8D9', hair: '#26221e' }, true, selfDesk),
     );
     NPC_DEFS.forEach((def, i) => {
-      this.chars.push(mkChar(`npc-${i + 1}`, def, false, this.desks[i] as Furniture));
+      const desk = this.desks[i];
+      if (desk === undefined) return; // 存档地图工位不足时跳过多余 NPC
+      this.chars.push(mkChar(`npc-${i + 1}`, def, false, desk));
     });
   }
+
+  /* ───────────── P2 互动 API ───────────── */
+
+  /** 设置角色头顶气泡（durMs 毫秒后自动清除）。 */
+  setBubble(charId: string, text: string, durMs: number): void {
+    this.bubbles.set(charId, { text, until: this.time + Math.max(0.3, durMs / 1000) });
+  }
+
+  /**
+   * 点击格子互动：
+   * · NPC 所在格 / 其椅位 → 自己走到该工位旁，双方冒泡寒暄（按职业台词）
+   * · 白板前缘格 → 发起会议：自己先去，NPC 陆续到白板前集合，全员 state='meeting' 8~15s 后散会
+   * · 其他可走空地 → 自己 walkTo 过去，到达后回归正常 decide 循环
+   */
+  clickCell(x: number, y: number): void {
+    if (x <= 0 || y <= 0 || x >= MAP_W - 1 || y >= MAP_H - 1) return; // 墙环 / 界外
+    const npc = this.npcAt(x, y);
+    if (npc !== null) {
+      this.goChatWith(npc);
+      return;
+    }
+    const board = this.whiteboardFrontAt(x, y);
+    if (board !== null) {
+      this.startMeeting(board);
+      return;
+    }
+    this.walkSelfTo(x, y);
+  }
+
+  private self(): Character | null {
+    return this.chars.find((c) => c.isSelf) ?? null;
+  }
+
+  /** 命中 NPC：所在格或其工位椅位。 */
+  private npcAt(x: number, y: number): Character | null {
+    for (const c of this.chars) {
+      if (c.isSelf) continue;
+      if (c.cx === x && c.cy === y) return c;
+      const desk = this.desks.find((f) => f.id === c.deskId);
+      if (desk === undefined) continue;
+      const chair = deskChairCell(desk);
+      if (chair.x === x && chair.y === y) return c;
+    }
+    return null;
+  }
+
+  /** 命中白板前缘格（板正下方一排）。 */
+  private whiteboardFrontAt(x: number, y: number): Furniture | null {
+    for (const f of this.map.furniture) {
+      if (f.kind !== 'whiteboard') continue;
+      if (y === f.y + f.h && x >= f.x && x < f.x + f.w) return f;
+    }
+    return null;
+  }
+
+  /** 自己走到 (x,y)：闲逛意图，到达后自动回归 decide 循环。 */
+  private walkSelfTo(x: number, y: number): void {
+    const self = this.self();
+    if (self === null) return;
+    if (!isFree(this.map, this.blocked, x, y)) return; // 家具格 / 不可走点不动
+    if (self.cx === x && self.cy === y) {
+      self.intent = 'wander';
+      this.arrive(self);
+      return;
+    }
+    const path = findPath(this.map, this.blocked, { x: self.cx, y: self.cy }, { x, y });
+    if (path.length === 0) return;
+    this.startWalk(self, path, 'wander');
+  }
+
+  /** 走到 NPC 工位旁寒暄：到达后自己冒泡打招呼，NPC 按职业回一句。 */
+  private goChatWith(npc: Character): void {
+    const self = this.self();
+    if (self === null) return;
+    const desk = this.desks.find((f) => f.id === npc.deskId);
+    if (desk === undefined) return;
+    // 工位旁空位：椅位两侧 / 桌前一排
+    const spots: Vec[] = [
+      { x: desk.x + 1, y: desk.y + 1 },
+      { x: desk.x - 1, y: desk.y + 1 },
+      { x: desk.x, y: desk.y + 2 },
+      { x: desk.x + 1, y: desk.y + 2 },
+    ].filter((p) => isFree(this.map, this.blocked, p.x, p.y) && !this.occupied(self, p.x, p.y));
+    const spot = spots[0];
+    if (spot === undefined) return;
+    this.chatTargetId = npc.id;
+    if (self.cx === spot.x && self.cy === spot.y) {
+      self.intent = 'chat';
+      this.arrive(self);
+      return;
+    }
+    const path = findPath(this.map, this.blocked, { x: self.cx, y: self.cy }, spot);
+    if (path.length === 0) {
+      this.chatTargetId = null;
+      return;
+    }
+    this.startWalk(self, path, 'chat');
+  }
+
+  /** 发起白板会议：全员分配散点陆续出发，8~15 秒后散会（会议中重复点击忽略）。 */
+  private startMeeting(board: Furniture): void {
+    if (this.meetingActive) return;
+    const self = this.self();
+    if (self === null) return;
+    // 散点：白板正前方两排，前缘 / 居中优先
+    const frontY = board.y + board.h;
+    const midX = board.x + (board.w - 1) / 2;
+    const spots: Vec[] = [];
+    for (let dy = 0; dy <= 1; dy++) {
+      for (let dx = -1; dx <= board.w; dx++) {
+        spots.push({ x: board.x + dx, y: frontY + dy });
+      }
+    }
+    const pool = spots
+      .filter((p) => isFree(this.map, this.blocked, p.x, p.y))
+      .sort((a, b) => (a.y - frontY) * 10 + Math.abs(a.x - midX) - ((b.y - frontY) * 10 + Math.abs(b.x - midX)));
+    if (pool.length === 0) return;
+    this.meetingActive = true;
+    this.meetingUntil = this.time + rand(8, 15);
+    this.meetingSpots.clear();
+    const selfSpot = pool.shift();
+    if (selfSpot !== undefined) {
+      this.meetingSpots.set(self.id, selfSpot);
+      this.dispatchToMeeting(self); // 自己立即出发
+    }
+    for (const c of this.chars) {
+      if (c.isSelf) continue;
+      const spot = pool.shift();
+      if (spot === undefined) break; // 散点不足：多余的 NPC 不参会
+      this.meetingSpots.set(c.id, spot);
+      c.meetingAt = this.time + rand(0.2, 1.8); // 陆续出发
+    }
+  }
+
+  /** 按分配表走向会议散点；就位即进 meeting 态并冒泡「💬 会议中」。 */
+  private dispatchToMeeting(c: Character): void {
+    c.meetingAt = undefined;
+    const spot = this.meetingSpots.get(c.id);
+    if (spot === undefined) return;
+    if (c.cx === spot.x && c.cy === spot.y) {
+      c.intent = 'meeting';
+      this.arrive(c);
+      return;
+    }
+    const path = findPath(this.map, this.blocked, { x: c.cx, y: c.cy }, spot);
+    if (path.length === 0) return; // 不可达：不参会，保持原行为
+    this.startWalk(c, path, 'meeting');
+  }
+
+  /** 散会：会议相关角色清路径，立即回归 decide 循环。 */
+  private endMeeting(): void {
+    this.meetingActive = false;
+    this.meetingSpots.clear();
+    for (const c of this.chars) {
+      c.meetingAt = undefined;
+      if (c.intent === 'meeting') {
+        c.path = [];
+        this.decide(c);
+      }
+    }
+  }
+
+  /* ───────────── 行为循环 ───────────── */
 
   /** 每帧推进（dt 秒，建议 ≤0.05）。 */
   tick(dt: number): void {
     this.time += dt;
+    if (this.meetingActive && this.time >= this.meetingUntil) this.endMeeting();
     for (const c of this.chars) this.tickChar(c, dt);
+    for (const [id, b] of this.bubbles) {
+      if (b.until <= this.time) this.bubbles.delete(id);
+    }
   }
 
   /** 成员状态快照（状态栏 / P5 数据面板）。 */
@@ -90,9 +291,8 @@ export class OfficeEngine {
     return this.chars.map((c) => ({ id: c.id, name: c.name, role: c.role, state: c.state, isSelf: c.isSelf }));
   }
 
-  /* ───────────── 行为循环 ───────────── */
-
   private tickChar(c: Character, dt: number): void {
+    if (c.meetingAt !== undefined && this.time >= c.meetingAt) this.dispatchToMeeting(c);
     if (c.state === 'walking') {
       this.advance(c, dt);
       return;
@@ -121,6 +321,7 @@ export class OfficeEngine {
     if (c.cx === chair.x && c.cy === chair.y) {
       c.state = 'working';
       c.stateUntil = this.time + rand(14, 34);
+      this.mumble(c);
       return true;
     }
     const path = findPath(this.map, this.blocked, { x: c.cx, y: c.cy }, chair);
@@ -137,6 +338,7 @@ export class OfficeEngine {
     if (c.cx === use.x && c.cy === use.y) {
       c.state = 'coffee';
       c.stateUntil = this.time + rand(5, 11);
+      this.mumble(c);
       return true;
     }
     const path = findPath(this.map, this.blocked, { x: c.cx, y: c.cy }, use);
@@ -162,6 +364,7 @@ export class OfficeEngine {
     if (c.cx === spot.x && c.cy === spot.y) {
       c.state = 'visit';
       c.stateUntil = this.time + rand(3, 8);
+      this.mumble(c);
       return true;
     }
     const path = findPath(this.map, this.blocked, { x: c.cx, y: c.cy }, spot);
@@ -183,6 +386,7 @@ export class OfficeEngine {
     }
     c.state = 'idle';
     c.stateUntil = this.time + rand(2, 5);
+    this.mumble(c);
   }
 
   private startWalk(c: Character, path: Vec[], intent: Intent): void {
@@ -224,19 +428,48 @@ export class OfficeEngine {
       case 'work':
         c.state = 'working';
         c.stateUntil = this.time + rand(14, 34);
+        this.mumble(c);
         break;
       case 'coffee':
         c.state = 'coffee';
         c.stateUntil = this.time + rand(5, 11);
+        this.mumble(c);
         break;
       case 'visit':
         c.state = 'visit';
         c.stateUntil = this.time + rand(3, 8);
+        this.mumble(c);
+        break;
+      case 'chat': {
+        // 到达 NPC 工位旁：自己打招呼，NPC 按职业回一句，随后回归 decide
+        c.state = 'visit';
+        c.stateUntil = this.time + rand(3, 6);
+        const npc = this.chars.find((o) => o.id === this.chatTargetId);
+        if (npc !== undefined) {
+          this.setBubble(c.id, pick(GREETING_LINES), 3200);
+          this.setBubble(npc.id, pick(REPLY_LINES[npc.role] ?? ['嗯嗯']), 3200);
+        }
+        this.chatTargetId = null;
+        break;
+      }
+      case 'meeting':
+        // 就位：会议态持续到散会，冒泡覆盖全程
+        c.state = 'meeting';
+        c.stateUntil = this.meetingUntil;
+        this.setBubble(c.id, '💬 会议中', Math.max(0.5, (this.meetingUntil - this.time) * 1000));
         break;
       default:
         c.state = 'idle';
         c.stateUntil = this.time + rand(1.5, 4);
     }
     c.intent = null;
+  }
+
+  /** 切状态时的低频自言自语（~8%，3-6 秒，按职业；自己不冒）。 */
+  private mumble(c: Character): void {
+    if (c.isSelf || Math.random() > 0.08) return;
+    const lines = MUMBLE_LINES[c.role];
+    if (lines === undefined || lines.length === 0) return;
+    this.setBubble(c.id, pick(lines), rand(3, 6) * 1000);
   }
 }

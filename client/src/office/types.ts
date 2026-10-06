@@ -21,9 +21,11 @@ export interface Furniture {
   h: number;
 }
 
-export type CharState = 'idle' | 'walking' | 'working' | 'coffee' | 'visit';
+/** P2 新增 'meeting'（白板会议，文本映射：会议中）。 */
+export type CharState = 'idle' | 'walking' | 'working' | 'coffee' | 'visit' | 'meeting';
 
-export type Intent = 'work' | 'wander' | 'coffee' | 'visit';
+/** P2 新增 'chat'（点击 NPC 寒暄走位）与 'meeting'（走向会议散点）。 */
+export type Intent = 'work' | 'wander' | 'coffee' | 'visit' | 'chat' | 'meeting';
 
 export interface Character {
   id: string;
@@ -49,6 +51,8 @@ export interface Character {
   deskId: string | null;
   /** 动画相位偏移，避免全员同步摆动。 */
   phase: number;
+  /** 会议集结出发时间（引擎时间秒）；undefined = 未被召集（P2 会议用）。 */
+  meetingAt?: number;
 }
 
 export interface OfficeMap {
@@ -57,7 +61,10 @@ export interface OfficeMap {
   furniture: Furniture[];
 }
 
-/** 成员状态快照（状态栏 / 后续 P5 数据面板用）。 */
+/**
+ * 成员状态快照（状态栏 / 后续 P5 数据面板用）。
+ * state 文本映射：idle 待命 / walking 走动中 / working 工作中 / coffee 咖啡 / visit 串门 / meeting 会议中。
+ */
 export interface MemberStat {
   id: string;
   name: string;

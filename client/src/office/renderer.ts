@@ -1,9 +1,10 @@
 /**
  * canvas 2D 渲染器 —— 像素风自绘（零依赖、避开 PixOffice 版权素材）。
  * 只读引擎的浮点坐标做插值绘制；逻辑仍在整数格（renderer 不参与决策）。
+ * P2：气泡绘制（最上层）、会议中白板高亮、头顶 💬 兜底、cellAtPoint 点击换算。
  */
 import { MAP_H, MAP_W } from './map.js';
-import type { Character, Furniture } from './types.js';
+import type { Character, Furniture, Vec } from './types.js';
 
 const FLOOR_A = '#efeae0';
 const FLOOR_B = '#e7e1d3';
@@ -15,6 +16,24 @@ function rr(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: n
   } else {
     ctx.rect(x, y, w, h);
   }
+}
+
+/* ───────────── 点击换算 ───────────── */
+
+/**
+ * 点击坐标（CSS 像素）→ 地图格：scale = min(cssW/MAP_W, cssH/MAP_H) 居中，
+ * 与 renderOffice 完全同一套数学。墙环与界外返回 null（点击层不响应）。
+ */
+export function cellAtPoint(cssX: number, cssY: number, cssW: number, cssH: number): Vec | null {
+  const scale = Math.min(cssW / MAP_W, cssH / MAP_H);
+  if (!(scale > 0)) return null;
+  const ox = (cssW - scale * MAP_W) / 2;
+  const oy = (cssH - scale * MAP_H) / 2;
+  const x = Math.floor((cssX - ox) / scale);
+  const y = Math.floor((cssY - oy) / scale);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (x <= 0 || y <= 0 || x >= MAP_W - 1 || y >= MAP_H - 1) return null;
+  return { x, y };
 }
 
 /* ───────────── 家具 ───────────── */
@@ -97,9 +116,83 @@ function drawCoffee(ctx: CanvasRenderingContext2D, f: Furniture, s: number, ox: 
   }
 }
 
+/* ───────────── 气泡 ───────────── */
+
+/** 气泡文本按 maxW 折行：最多两行，仍超出在第二行截断加省略号。 */
+function wrapBubbleText(ctx: CanvasRenderingContext2D, text: string, maxW: number): [string, string] {
+  if (ctx.measureText(text).width <= maxW) return [text, ''];
+  let l1 = '';
+  let l2 = '';
+  let second = false;
+  for (const ch of text) {
+    if (!second) {
+      if (l1.length > 0 && ctx.measureText(l1 + ch).width > maxW) {
+        second = true;
+      } else {
+        l1 += ch;
+        continue;
+      }
+    }
+    if (l2.length > 0 && ctx.measureText(l2 + ch).width > maxW) {
+      return [l1, `${l2}…`];
+    }
+    l2 += ch;
+  }
+  return [l1, l2];
+}
+
+/** 头顶气泡：白底圆角矩形 + 小尾巴 + 深色字（调用方保证最后绘制，避免遮挡）。 */
+function drawBubble(ctx: CanvasRenderingContext2D, c: Character, text: string, s: number, ox: number, oy: number): void {
+  const px = ox + c.rx * s;
+  const py = oy + c.ry * s;
+  const fs = Math.min(11, Math.max(9, s * 0.26));
+  const maxW = Math.max(56, s * 5);
+  ctx.font = `${fs}px -apple-system, "PingFang SC", sans-serif`;
+  const [l1, l2] = wrapBubbleText(ctx, text, maxW);
+  const w1 = ctx.measureText(l1).width;
+  const w2 = l2 ? ctx.measureText(l2).width : 0;
+  const lineH = fs * 1.3;
+  const pad = fs * 0.45;
+  const bw = Math.max(w1, w2) + pad * 2;
+  const bh = pad * 2 + lineH * (l2 ? 2 : 1);
+  const bx = px - bw / 2;
+  const by = py - s * 0.6 - bh;
+  ctx.save();
+  // 尾巴（向下小三角，指向头顶；先画再压矩形保证衔接）
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(px - fs * 0.3, by + bh - 1);
+  ctx.lineTo(px + fs * 0.3, by + bh - 1);
+  ctx.lineTo(px, by + bh + fs * 0.45);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.16)';
+  ctx.stroke();
+  // 白底圆角矩形
+  rr(ctx, bx, by, bw, bh, fs * 0.55);
+  ctx.fill();
+  ctx.stroke();
+  // 深色文字（居中）
+  ctx.fillStyle = '#333';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(l1, px, by + pad + lineH * 0.5);
+  if (l2) ctx.fillText(l2, px, by + pad + lineH * 1.5);
+  ctx.restore();
+}
+
 /* ───────────── 人物 ───────────── */
 
-function drawChar(ctx: CanvasRenderingContext2D, c: Character, s: number, ox: number, oy: number, time: number, showNames: boolean): void {
+function drawChar(
+  ctx: CanvasRenderingContext2D,
+  c: Character,
+  s: number,
+  ox: number,
+  oy: number,
+  time: number,
+  showNames: boolean,
+  hasBubble: boolean,
+): void {
   const px = ox + c.rx * s;
   const py = oy + c.ry * s;
   const sitting = c.state === 'working' || c.state === 'coffee';
@@ -157,6 +250,15 @@ function drawChar(ctx: CanvasRenderingContext2D, c: Character, s: number, ox: nu
   ctx.fillRect(px - headR * 0.32, headCy + headR * 0.05, eye, eye * 1.4);
   ctx.fillRect(px + headR * 0.32 - eye, headCy + headR * 0.05, eye, eye * 1.4);
 
+  // 会议中且无气泡：头顶 💬 兜底标记
+  if (c.state === 'meeting' && !hasBubble) {
+    const efs = Math.min(12, Math.max(9, s * 0.3));
+    ctx.font = `${efs}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('💬', px, headCy - headR - efs * (showNames ? 2.4 : 0.4));
+    ctx.textAlign = 'left';
+  }
+
   // 名牌
   if (showNames) {
     const label = `${c.name}${c.isSelf ? '（我）' : ''}`;
@@ -182,7 +284,13 @@ export function renderOffice(
   furniture: Furniture[],
   chars: Character[],
   time: number,
-  opts?: { showNames?: boolean },
+  opts?: {
+    showNames?: boolean;
+    /** 引擎气泡表（未到期的会被绘制在最上层）。 */
+    bubbles?: ReadonlyMap<string, { text: string; until: number }>;
+    /** 会议进行中：白板高亮描边。 */
+    meeting?: boolean;
+  },
 ): void {
   const ctx = canvas.getContext('2d');
   if (ctx === null) return;
@@ -233,7 +341,34 @@ export function renderOffice(
     }
   }
 
+  // 会议进行中：白板高亮描边（家具之上、人物之下）
+  if (opts?.meeting === true) {
+    ctx.strokeStyle = 'rgba(242, 153, 74, 0.95)';
+    ctx.lineWidth = Math.max(2, scale * 0.12);
+    for (const f of furniture) {
+      if (f.kind !== 'whiteboard') continue;
+      rr(ctx, ox + f.x * scale + 1, oy + f.y * scale + 1, f.w * scale - 2, f.h * scale - 2, scale * 0.14);
+      ctx.stroke();
+    }
+    ctx.lineWidth = 1;
+  }
+
   // 人物按 y 排序（画家算法）
   const sorted = [...chars].sort((a, b) => a.ry - b.ry);
-  for (const c of sorted) drawChar(ctx, c, scale, ox, oy, time, showNames);
+  const bubbles = opts?.bubbles;
+  const hasBubble = (c: Character): boolean => {
+    const b = bubbles?.get(c.id);
+    return b !== undefined && b.until > time;
+  };
+  for (const c of sorted) drawChar(ctx, c, scale, ox, oy, time, showNames, hasBubble(c));
+
+  // 气泡最后绘制（最上层，避免遮挡角色）
+  if (bubbles !== undefined && bubbles.size > 0) {
+    for (const c of sorted) {
+      if (!hasBubble(c)) continue;
+      const b = bubbles.get(c.id);
+      if (b === undefined) continue;
+      drawBubble(ctx, c, b.text, scale, ox, oy);
+    }
+  }
 }
