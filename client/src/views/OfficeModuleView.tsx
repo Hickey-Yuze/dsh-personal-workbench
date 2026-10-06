@@ -338,15 +338,25 @@ export function OfficeModuleView(): ReactElement {
       const ctrl = new AbortController();
       chatAbortRef.current = ctrl;
       if (chatTarget.kind === 'ai') await sendAi(q, ctrl);
-      else if (chatTarget.kind === 'npc') await sendNpc(q, ctrl);
-      else await runGroupRound(q, ctrl);
+      else if (chatTarget.kind === 'npc') {
+        const row = agentRows[chatTarget.id];
+        if (row !== undefined && row.status !== 'stopped') {
+          // 干活中的同事：发送即递话进其真实会话（回复经 office/agents 轮询以气泡+进度条呈现）
+          setChatMsgs((prev) => [...prev, { role: 'user', content: q }]);
+          setChatBusy(false);
+          chatAbortRef.current = null;
+          workSend(q);
+          return;
+        }
+        await sendNpc(q, ctrl);
+      } else await runGroupRound(q, ctrl);
       setChatMsgs((prev) =>
         prev.map((m) => (m.streaming === true ? (m.content === '' ? { ...m, content: '（无回复内容）', streaming: false } : { ...m, streaming: false }) : m)),
       );
       setChatBusy(false);
       chatAbortRef.current = null;
     },
-    [chatBusy, chatTarget, runGroupRound, sendAi, sendNpc],
+    [agentRows, chatBusy, chatTarget, runGroupRound, sendAi, sendNpc, workSend],
   );
 
   /* 「让他们聊」：不输入话题，空转一轮互聊 */
@@ -560,19 +570,25 @@ export function OfficeModuleView(): ReactElement {
               <div className="dsh-pwb-office-chat-input">
                 <input
                   value={chatInput}
-                  placeholder={chatTarget.kind === 'npc' ? '找 TA 聊天，或输入任务点「派活」让 TA 真干活…' : '输入消息…'}
+                  placeholder={
+                    chatTarget.kind === 'npc'
+                      ? npcWorkActive
+                        ? 'TA 正在干活，消息会递进 TA 的真实会话…'
+                        : '找 TA 聊天，或输入任务点「派活」让 TA 真干活…'
+                      : '输入消息…'
+                  }
                   onChange={(e) => setChatInput(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') void sendChat(chatInput);
                   }}
                 />
-                {chatTarget.kind === 'npc' && !chatBusy && (
+                {chatTarget.kind === 'npc' && !chatBusy && !npcWorkActive && (
                   <button
                     className="dsh-pwb-office-chat-work"
                     disabled={chatInput.trim() === ''}
                     onClick={() => workSend(chatInput.trim())}
                   >
-                    {npcWorkActive ? '递话' : '派活'}
+                    派活
                   </button>
                 )}
                 {chatBusy ? (

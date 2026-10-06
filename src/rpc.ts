@@ -10,6 +10,7 @@
 import * as fs from 'node:fs';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { homedir } from 'node:os';
 import type { Context } from '@deepseek-ai/cordis';
 import type { PersonalWorkbenchConfig } from './config.js';
 import type { JsonStore } from './store.js';
@@ -140,6 +141,8 @@ interface OfficeAgentsService {
     agentOptions?: { provider?: string; model?: string; reasoningEffort?: unknown };
     setup?: (agentCtx: OfficeAgentCtx, agent: unknown) => void;
     sessionId?: unknown;
+    /** 写进 session header 的元数据；cwd 供 system-prompt {{cwd}} 变量组装 */
+    meta?: { cwd?: string };
   }): Promise<OfficeAgentHandle>;
   list?(): unknown[];
 }
@@ -154,26 +157,33 @@ type OfficeAgentEntry = {
 };
 const officeAgents = new Map<string, { entry: OfficeAgentEntry; handle: OfficeAgentHandle | null }>();
 /** 流帧防御式抽取：start/end 帧切 working/idle，chunk 帧尽量掏出文本增量拼进 lastText（尾部 240 字）。 */
-function officeAgentCapture(npcId: string): (frame: unknown) => void {
-  return (frame: unknown) => {
+function officeAgentCapture(npcId: string): (payload: unknown) => void {
+  return (payload: unknown) => {
     const slot = officeAgents.get(npcId);
     if (!slot) return;
-    const f = frame as
-      | { type?: string; text?: unknown; chunk?: { type?: string; text?: unknown }; delta?: { text?: unknown } }
-      | null;
+    // dsh-agent-loop 派发的是 { frame } 包装（dispatch.emit("agent/assistant-stream", { frame })），
+    // 帧本体：{type:'start'|'chunk'|'end', chunk?: <dsh-llm StreamChunk>, outcome?...}
+    const f = (payload as { frame?: unknown } | null | undefined)?.frame ?? payload;
     if (!f || typeof f !== 'object') return;
-    if (f.type === 'start') {
+    const fr = f as {
+      type?: string;
+      text?: unknown;
+      chunk?: { type?: string; text?: unknown };
+      delta?: { text?: unknown };
+      outcome?: { kind?: string };
+    };
+    if (fr.type === 'start') {
       slot.entry.status = 'working';
       slot.entry.updatedAt = Date.now();
       return;
     }
-    if (f.type === 'end') {
-      slot.entry.status = 'idle';
+    if (fr.type === 'end') {
+      slot.entry.status = fr.outcome?.kind === 'committed' ? 'idle' : 'working';
       slot.entry.updatedAt = Date.now();
       return;
     }
-    const raw = f.chunk?.text ?? f.delta?.text ?? f.text;
-    if (typeof raw === 'string' && raw !== '' && f.chunk?.type !== 'reasoning' && f.chunk?.type !== 'thinking') {
+    const raw = fr.chunk?.text ?? fr.delta?.text ?? fr.text;
+    if (typeof raw === 'string' && raw !== '' && fr.chunk?.type !== 'reasoning' && fr.chunk?.type !== 'thinking') {
       slot.entry.lastText = (slot.entry.lastText + raw).slice(-240);
       slot.entry.status = 'working';
       slot.entry.updatedAt = Date.now();
@@ -1247,6 +1257,14 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
           | undefined)?.currentSelection?.();
         const provider = typeof selection?.provider === 'string' && selection.provider !== '' ? selection.provider : undefined;
         const model = typeof selection?.model === 'string' && selection.model !== '' ? selection.model : undefined;
+        // 工作目录：客户端可传（须为已存在的绝对路径目录），缺省用用户主目录（宿主进程 cwd 可能是 /）。
+        let agentCwd = homedir();
+        if (typeof officeBody.cwd === 'string' && officeBody.cwd.startsWith('/')) {
+          try {
+            const st = await fs.promises.stat(officeBody.cwd);
+            if (st.isDirectory()) agentCwd = officeBody.cwd;
+          } catch { /* 不存在则回退宿主 cwd */ }
+        }
         const prev = officeAgents.get(npcId);
         if (prev?.handle) {
           try {
@@ -1258,6 +1276,10 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
             // sessionId 必传：agent.id 必须与 session.id 一致（AgentRegistry.enter 不变式），
             // 缺省时 agent id 为 undefined 而创建即抛错。
             sessionId: `session-office-${npcId}-${Date.now()}`,
+            // cwd 必须随 meta 写进 session header：system-prompt 组装 deployment:persona-suffix
+            // 需要 {{cwd}} 变量（variable("cwd", ctx => ctx.agent?.session.header.cwd)），
+            // 缺省会让 agent 第 1 步就报 "prompt variable \"{{cwd}}\" has no value" 而挂。
+            meta: { cwd: agentCwd },
             agentOptions: { ...(provider ? { provider } : {}), ...(model ? { model } : {}) },
             setup: (agentCtx) => {
               try {
