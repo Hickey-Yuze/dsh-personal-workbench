@@ -1190,6 +1190,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         try {
           const seenKinds = new Map<string, number>();
           let contentChars = 0;
+          let lastNonTextChunk: unknown = undefined;
           for await (const chunk of llm.stream({
             provider: officeProvider,
             model: officeModel,
@@ -1205,14 +1206,22 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
             if (chunk?.type === 'text-delta' && typeof chunk.text === 'string' && chunk.text !== '') {
               contentChars += chunk.text.length;
               res.write?.(`data: ${JSON.stringify({ delta: chunk.text })}\n\n`);
+            } else {
+              lastNonTextChunk = chunk;
             }
           }
           if (!officeCtrl.signal.aborted) {
             if (contentChars === 0) {
-              // 空流自诊断：把收到的 chunk 类型计数回给气泡，不再静默「无回复内容」
+              // 空流自诊断：chunk 类型计数 + finish/error chunk 的完整字段（可能内嵌真实原因）
               const kinds = [...seenKinds.entries()].map(([k, n]) => `${k}×${n}`).join(',') || '无chunk';
-              deps.log.warn(`[personal-workbench] office SSE 空流: ${kinds}`);
-              res.write?.(`data: ${JSON.stringify({ error: `模型未返回正文（chunk: ${kinds}）` })}\n\n`);
+              let detail = '';
+              try {
+                const raw = JSON.stringify(lastNonTextChunk ?? {});
+                if (raw && raw !== '{}') detail = raw.slice(0, 200);
+              } catch { /* 序列化失败忽略 */ }
+              const msg = `模型未返回正文（chunk: ${kinds}${detail ? `，字段: ${detail}` : ''}）`;
+              deps.log.warn(`[personal-workbench] office SSE 空流: ${msg}`);
+              res.write?.(`data: ${JSON.stringify({ error: msg })}\n\n`);
             }
             res.write?.('data: [DONE]\n\n');
           }
