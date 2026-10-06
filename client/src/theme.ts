@@ -1289,10 +1289,8 @@ html { color-scheme: light !important; }
   border: 1px solid var(--pwb-border);
   background: #5b6472;
   overflow: hidden;
-  aspect-ratio: 20 / 12; /* 与地图同比例：画布铺满，无灰边 */
-  /* 高度不超过 72vh 时按列宽铺满；超了就收窄宽度保持比例，同样无灰边 */
-  width: min(100%, calc(72vh * 20 / 12));
-  margin: 0 auto;
+  width: 100%;
+  aspect-ratio: 20 / 12; /* 与地图同比例：整行铺满，无灰边 */
 }
 .dsh-pwb-office-canvas {
   width: 100%;
