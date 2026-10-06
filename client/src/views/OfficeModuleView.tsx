@@ -34,6 +34,10 @@ type OfficeAction = { id: number; type: 'desk_visit' | 'desk_visit_tour' | 'set_
 const CHAT_URL = '/api/personal-workbench/office/chat';
 const NPC_CHAT_URL = '/api/personal-workbench/office/npc/chat';
 const ACTIONS_URL = '/api/personal-workbench/office/actions';
+const AGENTS_URL = '/api/personal-workbench/office/agents';
+
+/** 真工位会话快照（office/agents 轮询返回的NPC 条目）。 */
+type AgentRow = { npcId: string; name?: string; status: string; lastText: string; task?: string };
 
 /** 读取 SSE 流，逐 delta 回调，返回完整文本；非流式/空流都在气泡里给出原因。 */
 async function readSse(res: Response, onDelta: (d: string) => void, onErr: (e: string) => void): Promise<string> {
@@ -88,6 +92,75 @@ export function OfficeModuleView(): ReactElement {
   /** NPC 对话记忆：私聊按 charId 存，群聊统一 'group'。 */
   const npcMemRef = useRef(new Map<string, MemEntry[]>());
   const actionsDeadRef = useRef(false);
+  /** 真工位：npcId → 会话快照；bubbledRef 记录已冒泡过的 lastText 尾部，避免每轮重复弹。 */
+  const [agentRows, setAgentRows] = useState<Record<string, AgentRow>>({});
+  const [workInput, setWorkInput] = useState('');
+  const agentsDeadRef = useRef(false);
+  const bubbledRef = useRef(new Map<string, string>());
+
+  /* office/agents 轮询：2.5s；干活中的 NPC 把最新输出尾部冒泡到头顶 */
+  useEffect(() => {
+    let stopped = false;
+    const poll = (): void => {
+      if (stopped || agentsDeadRef.current) return;
+      fetch(AGENTS_URL)
+        .then((res) => {
+          if (res.status === 404) {
+            agentsDeadRef.current = true;
+            return null;
+          }
+          return res.ok ? (res.json() as Promise<{ agents?: AgentRow[] }>) : null;
+        })
+        .then((data) => {
+          if (data === null || data === undefined) return;
+          const next: Record<string, AgentRow> = {};
+          for (const row of data.agents ?? []) next[row.npcId] = row;
+          setAgentRows(next);
+          for (const row of data.agents ?? []) {
+            if (row.status !== 'working' || row.lastText.trim() === '') continue;
+            const tail = row.lastText.trim().slice(-60);
+            if (bubbledRef.current.get(row.npcId) === tail) continue;
+            bubbledRef.current.set(row.npcId, tail);
+            engine.setBubble(row.npcId, tail, 7000);
+          }
+        })
+        .catch(() => undefined);
+    };
+    poll();
+    const id = window.setInterval(poll, 2500);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+    };
+  }, [engine]);
+
+  const postAgent = useCallback(
+    (path: 'office/agent/start' | 'office/agent/say' | 'office/agent/stop', body: Record<string, string>): void => {
+      void fetch(`/api/personal-workbench/${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      }).catch(() => undefined);
+    },
+    [],
+  );
+
+  /** 派活/递话/停止 的统一入口：无会话→start；有会话→say；输入为空且有会话→仅忽略。 */
+  const workSend = useCallback(
+    (npc: { id: string; name: string; role: string }): void => {
+      const text = workInput.trim();
+      if (text === '') return;
+      const row = agentRows[npc.id];
+      if (row !== undefined && row.status !== 'stopped') {
+        postAgent('office/agent/say', { npcId: npc.id, text });
+      } else {
+        bubbledRef.current.delete(npc.id);
+        postAgent('office/agent/start', { npcId: npc.id, name: npc.name, role: npc.role, task: text });
+      }
+      setWorkInput('');
+    },
+    [agentRows, postAgent, workInput],
+  );
 
   useEffect(() => {
     const id = window.setInterval(() => setMembers(engine.members()), 900);
@@ -391,7 +464,10 @@ export function OfficeModuleView(): ReactElement {
             <span key={m.id} className={`dsh-pwb-office-chip${m.isSelf ? ' dsh-pwb-office-chip-self' : ''}`}>
               <b>{m.name}</b>
               <i>{m.role}</i>
-              <em>{STATE_TEXT[m.state]}</em>
+              <em>
+                {STATE_TEXT[m.state]}
+                {agentRows[m.id]?.status === 'working' ? ' ⚒' : ''}
+              </em>
             </span>
           ))}
         </div>
@@ -426,6 +502,9 @@ export function OfficeModuleView(): ReactElement {
                       返回 AI
                     </button>
                   )}
+                  {chatTarget.kind === 'npc' && agentRows[chatTarget.id] !== undefined && agentRows[chatTarget.id].status !== 'stopped' && (
+                    <button onClick={() => postAgent('office/agent/stop', { npcId: chatTarget.id })}>停工</button>
+                  )}
                   <button
                     onClick={() => {
                       chatAbortRef.current?.abort();
@@ -437,6 +516,38 @@ export function OfficeModuleView(): ReactElement {
                   <button onClick={() => setChatOpen(false)}>收起</button>
                 </span>
               </div>
+              {chatTarget.kind === 'npc' && (
+                <div className="dsh-pwb-office-work">
+                  <input
+                    value={workInput}
+                    placeholder={
+                      agentRows[chatTarget.id] !== undefined && agentRows[chatTarget.id].status !== 'stopped'
+                        ? '给 TA 递话或追加指示…'
+                        : '派真实任务，如：统计本项目代码行数并写个报告'
+                    }
+                    onChange={(e) => setWorkInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') workSend(chatTarget);
+                    }}
+                  />
+                  <button disabled={workInput.trim() === ''} onClick={() => workSend(chatTarget)}>
+                    {agentRows[chatTarget.id] !== undefined && agentRows[chatTarget.id].status !== 'stopped' ? '递话' : '派活'}
+                  </button>
+                </div>
+              )}
+              {chatTarget.kind === 'npc' && agentRows[chatTarget.id] !== undefined && (
+                <div className="dsh-pwb-office-work-status">
+                  ⚒{' '}
+                  {agentRows[chatTarget.id].status === 'working'
+                    ? '真实工作中'
+                    : agentRows[chatTarget.id].status === 'idle'
+                      ? '真实会话空闲'
+                      : '已停工'}
+                  {(agentRows[chatTarget.id]?.lastText.trim() ?? '') !== '' && (
+                    <span> · {agentRows[chatTarget.id]?.lastText.trim().slice(-120)}</span>
+                  )}
+                </div>
+              )}
               <div className="dsh-pwb-office-chat-body" ref={chatBodyRef}>
                 {chatMsgs.length === 0 && <div className="dsh-pwb-office-chat-empty">{emptyText}</div>}
                 {chatMsgs.map((m, i) => (

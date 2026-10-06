@@ -123,6 +123,67 @@ const OFFICE_ACTION_MAX = 50;
 const OFFICE_ACTION_TYPES: readonly OfficeActionType[] = ['desk_visit', 'desk_visit_tour', 'set_state'];
 const officeActions: OfficeAction[] = [];
 let officeActionSeq = 0;
+
+/* ── 办公室真工位：NPC 绑定宿主真实 agent 会话（ctx.agents.create 拉起、followup 派活、流事件抓进度）── */
+interface OfficeAgentHandle {
+  agent: {
+    followup(msg: { content: Array<{ type: 'text'; text: string }>; source: { kind: string } }): unknown;
+    whenIdle?(): Promise<void>;
+  };
+  dispose(): unknown;
+}
+interface OfficeAgentCtx {
+  on?(event: string, fn: (frame: unknown) => void): unknown;
+}
+interface OfficeAgentsService {
+  create(opts: {
+    agentOptions?: { provider?: string; model?: string; reasoningEffort?: unknown };
+    setup?: (agentCtx: OfficeAgentCtx, agent: unknown) => void;
+    sessionId?: unknown;
+  }): Promise<OfficeAgentHandle>;
+  list?(): unknown[];
+}
+type OfficeAgentEntry = {
+  name: string;
+  role: string;
+  task: string;
+  status: 'working' | 'idle' | 'stopped';
+  lastText: string;
+  startedAt: number;
+  updatedAt: number;
+};
+const officeAgents = new Map<string, { entry: OfficeAgentEntry; handle: OfficeAgentHandle | null }>();
+/** 流帧防御式抽取：start/end 帧切 working/idle，chunk 帧尽量掏出文本增量拼进 lastText（尾部 240 字）。 */
+function officeAgentCapture(npcId: string): (frame: unknown) => void {
+  return (frame: unknown) => {
+    const slot = officeAgents.get(npcId);
+    if (!slot) return;
+    const f = frame as
+      | { type?: string; text?: unknown; chunk?: { type?: string; text?: unknown }; delta?: { text?: unknown } }
+      | null;
+    if (!f || typeof f !== 'object') return;
+    if (f.type === 'start') {
+      slot.entry.status = 'working';
+      slot.entry.updatedAt = Date.now();
+      return;
+    }
+    if (f.type === 'end') {
+      slot.entry.status = 'idle';
+      slot.entry.updatedAt = Date.now();
+      return;
+    }
+    const raw = f.chunk?.text ?? f.delta?.text ?? f.text;
+    if (typeof raw === 'string' && raw !== '' && f.chunk?.type !== 'reasoning' && f.chunk?.type !== 'thinking') {
+      slot.entry.lastText = (slot.entry.lastText + raw).slice(-240);
+      slot.entry.status = 'working';
+      slot.entry.updatedAt = Date.now();
+    }
+  };
+}
+/** 真工位员工 system 指示：直接干活、干完简短中文汇报。 */
+function officeWorkerSystem(name: string, role: string): string {
+  return `你是用户工作台「办公室」里的同事 ${name}（${role}），现在被老板派了一个真实工作任务。请直接动手完成（可以读写文件、运行命令、写代码），不要反问老板，遇到小决策自己拿主意；完成后用中文简短汇报：做了什么、改了哪些文件、结果如何。不要寒暄与任务无关的内容。`;
+}
 /** llm.stream 的 StreamChunk 最小结构面（text-delta 携带正文增量；字段名经 @deepseek-ai/dsh-llm types.d.ts 查证）。 */
 type OfficeStreamChunk = { type?: string; text?: unknown };
 /** 解析 URL 得 office/<name> 端点名；非 office 端点返回空串，交还既有分发逻辑。 */
@@ -1117,6 +1178,15 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         send(res, 200, { ok: true, actions: officeActions.splice(0, officeActions.length) });
         return;
       }
+      if (officeEndpoint === 'office/agents') {
+        if (officeMethod !== 'GET') {
+          send(res, 405, { ok: false, error: { code: 'method-not-allowed', message: '仅支持 GET' } });
+          return;
+        }
+        const list = [...officeAgents.entries()].map(([npcId, slot]) => ({ npcId, ...slot.entry }));
+        send(res, 200, { ok: true, agents: list });
+        return;
+      }
       if (officeMethod !== 'POST') {
         send(res, 405, { ok: false, error: { code: 'method-not-allowed', message: '仅支持 POST' } });
         return;
@@ -1155,6 +1225,98 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         });
         if (officeActions.length > OFFICE_ACTION_MAX) officeActions.splice(0, officeActions.length - OFFICE_ACTION_MAX);
         send(res, 200, { ok: true, id: officeActionSeq });
+        return;
+      }
+      // office/agent/start：给 NPC 拉起宿主真实 agent 会话并派活（真读写、真执行）
+      if (officeEndpoint === 'office/agent/start') {
+        const npcId = typeof officeBody.npcId === 'string' ? officeBody.npcId : '';
+        const name = typeof officeBody.name === 'string' ? officeBody.name : '';
+        const role = typeof officeBody.role === 'string' ? officeBody.role : '';
+        const task = typeof officeBody.task === 'string' ? officeBody.task.trim() : '';
+        if (npcId === '' || task === '') {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: 'npcId 与 task 必填' } });
+          return;
+        }
+        const agents = ctx.get('agents') as OfficeAgentsService | undefined;
+        if (!agents || typeof agents.create !== 'function') {
+          send(res, 501, { ok: false, error: { code: 'unavailable', message: 'agents 服务不可用' } });
+          return;
+        }
+        const selection = (ctx.get('agentDefaultModel') as
+          | { currentSelection?: () => { provider?: unknown; model?: unknown } }
+          | undefined)?.currentSelection?.();
+        const provider = typeof selection?.provider === 'string' && selection.provider !== '' ? selection.provider : undefined;
+        const model = typeof selection?.model === 'string' && selection.model !== '' ? selection.model : undefined;
+        const prev = officeAgents.get(npcId);
+        if (prev?.handle) {
+          try {
+            void prev.handle.dispose();
+          } catch { /* 旧句柄清理失败忽略 */ }
+        }
+        try {
+          const handle = await agents.create({
+            agentOptions: { ...(provider ? { provider } : {}), ...(model ? { model } : {}) },
+            setup: (agentCtx) => {
+              try {
+                agentCtx.on?.('agent/assistant-stream', officeAgentCapture(npcId));
+              } catch { /* 监听失败仅影响进度显示 */ }
+            },
+          });
+          officeAgents.set(npcId, {
+            handle,
+            entry: { name, role, task, status: 'working', lastText: '', startedAt: Date.now(), updatedAt: Date.now() },
+          });
+          handle.agent.followup({
+            content: [{ type: 'text', text: `${officeWorkerSystem(name, role)}\n\n任务：${task}` }],
+            source: { kind: 'user' },
+          });
+          send(res, 200, { ok: true });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'agent 会话创建失败';
+          deps.log.warn(`[personal-workbench] office agent spawn 失败: ${msg}`);
+          send(res, 500, { ok: false, error: { code: 'spawn-failed', message: msg } });
+        }
+        return;
+      }
+      // office/agent/say：给干活中的 NPC 递话（排队下一轮）
+      if (officeEndpoint === 'office/agent/say') {
+        const npcId = typeof officeBody.npcId === 'string' ? officeBody.npcId : '';
+        const text = typeof officeBody.text === 'string' ? officeBody.text.trim() : '';
+        const slot = officeAgents.get(npcId);
+        if (!slot?.handle) {
+          send(res, 404, { ok: false, error: { code: 'not-found', message: '该同事没有进行中的真实会话' } });
+          return;
+        }
+        if (text === '') {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: 'text 必填' } });
+          return;
+        }
+        try {
+          slot.handle.agent.followup({ content: [{ type: 'text', text }], source: { kind: 'user' } });
+          slot.entry.status = 'working';
+          slot.entry.updatedAt = Date.now();
+          send(res, 200, { ok: true });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : '递话失败';
+          send(res, 500, { ok: false, error: { code: 'say-failed', message: msg } });
+        }
+        return;
+      }
+      // office/agent/stop：拆掉 NPC 的真实会话
+      if (officeEndpoint === 'office/agent/stop') {
+        const npcId = typeof officeBody.npcId === 'string' ? officeBody.npcId : '';
+        const slot = officeAgents.get(npcId);
+        if (slot?.handle) {
+          try {
+            void slot.handle.dispose();
+          } catch { /* dispose 失败忽略 */ }
+        }
+        if (slot) {
+          slot.handle = null;
+          slot.entry.status = 'stopped';
+          slot.entry.updatedAt = Date.now();
+        }
+        send(res, 200, { ok: true });
         return;
       }
       // SSE 流式回复公共骨架：llm 软探测 + 默认模型 + 断连中止 + data: delta/[DONE]
