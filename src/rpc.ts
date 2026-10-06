@@ -1212,14 +1212,20 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
           }
           if (!officeCtrl.signal.aborted) {
             if (contentChars === 0) {
-              // 空流自诊断：chunk 类型计数 + finish/error chunk 的完整字段（可能内嵌真实原因）
+              // 空流自诊断：finish.reason 内嵌真实失败（{kind:'error'|'aborted', failure:{message,code}}）
               const kinds = [...seenKinds.entries()].map(([k, n]) => `${k}×${n}`).join(',') || '无chunk';
               let detail = '';
-              try {
-                const raw = JSON.stringify(lastNonTextChunk ?? {});
-                if (raw && raw !== '{}') detail = raw.slice(0, 200);
-              } catch { /* 序列化失败忽略 */ }
-              const msg = `模型未返回正文（chunk: ${kinds}${detail ? `，字段: ${detail}` : ''}）`;
+              const fin = lastNonTextChunk as { type?: string; reason?: { kind?: string; failure?: { message?: string; code?: string } } } | undefined;
+              if (fin?.type === 'finish' && fin.reason && typeof fin.reason === 'object') {
+                const f = fin.reason.failure;
+                detail = `，原因: ${fin.reason.kind ?? 'unknown'}${f?.code ? `/${f.code}` : ''}${f?.message ? `：${String(f.message).slice(0, 160)}` : ''}`;
+              } else if (lastNonTextChunk !== undefined) {
+                try {
+                  const raw = JSON.stringify(lastNonTextChunk);
+                  if (raw && raw !== '{}') detail = `，字段: ${raw.slice(0, 200)}`;
+                } catch { /* 序列化失败忽略 */ }
+              }
+              const msg = `模型未返回正文（chunk: ${kinds}${detail}）`;
               deps.log.warn(`[personal-workbench] office SSE 空流: ${msg}`);
               res.write?.(`data: ${JSON.stringify({ error: msg })}\n\n`);
             }
