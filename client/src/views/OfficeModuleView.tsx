@@ -78,7 +78,7 @@ export function OfficeModuleView(): ReactElement {
   const [engine, setEngine] = useState<OfficeEngine>(() => new OfficeEngine(loadOfficeMap() ?? undefined));
   const [members, setMembers] = useState<MemberStat[]>(() => engine.members());
   const [tab, setTab] = useState<Tab>('scene');
-  const [chatOpen, setChatOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(true);
   const [chatTarget, setChatTarget] = useState<ChatTarget>({ kind: 'ai' });
   const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
   const [chatInput, setChatInput] = useState('');
@@ -357,7 +357,7 @@ export function OfficeModuleView(): ReactElement {
 
   return (
     <div className="dsh-pwb-view">
-      <div className="dsh-pwb-view-body">
+      <div className="dsh-pwb-view-body dsh-pwb-office-viewbody">
         <div className="dsh-pwb-office-tabs">
           <button className={`dsh-pwb-office-tab${tab === 'scene' ? ' dsh-pwb-office-tab-active' : ''}`} onClick={() => setTab('scene')}>
             场景
