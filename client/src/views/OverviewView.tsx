@@ -24,6 +24,7 @@ import { WoodenFishWidget } from './overview/wooden-fish.js';
 import { SalaryWidget } from './overview/salary.js';
 import { WeatherWidget } from './overview/weather.js';
 import { TodoWidget } from './overview/todo.js';
+import { OfficeWidget } from './overview/office.js';
 import type { RpcFn } from '../rpc.js';
 
 /** 默认布局：对齐原版截图的排布（12 列 × 5 行内）。 */
@@ -208,6 +209,7 @@ export function OverviewView({
       { id: 'todo', title: '待办事项', render: () => <TodoWidget rpc={rpc} onOpen={onOpen} /> },
       { id: 'notes', title: '便签', render: () => <NotesWidget rpc={rpc} /> },
       { id: 'calendar', title: '日历', render: () => <CalendarWidget events={events} onOpen={onOpen} rpc={rpc} /> },
+      { id: 'office', title: '办公室', render: () => <OfficeWidget onOpen={onOpen} /> },
     ],
     [rpc, onOpen, events],
   );

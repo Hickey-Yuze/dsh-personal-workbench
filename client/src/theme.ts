@@ -1282,6 +1282,64 @@ html { color-scheme: light !important; }
   color: var(--pwb-dim);
   max-width: 640px;
 }
+
+/* ── 办公室（像素场景）── */
+.dsh-pwb-office-stage {
+  border-radius: 16px;
+  border: 1px solid var(--pwb-border);
+  background: #5b6472;
+  overflow: hidden;
+  height: min(58vh, 460px);
+}
+.dsh-pwb-office-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.dsh-pwb-office-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.dsh-pwb-office-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--pwb-card);
+  border: 1px solid var(--pwb-border);
+  font-size: 12px;
+  line-height: 1;
+}
+.dsh-pwb-office-chip b {
+  font-weight: 650;
+  color: var(--pwb-text);
+}
+.dsh-pwb-office-chip i {
+  font-style: normal;
+  color: var(--pwb-dim);
+}
+.dsh-pwb-office-chip em {
+  font-style: normal;
+  color: #2f9e63;
+}
+.dsh-pwb-office-chip-self {
+  border-color: rgba(0, 210, 106, 0.55);
+}
+.dsh-pwb-office-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--pwb-dim);
+}
+.dsh-pwb-office-mini {
+  height: 150px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #5b6472;
+  cursor: pointer;
+}
 `;
 
 export function ensureThemeStyle(): void {

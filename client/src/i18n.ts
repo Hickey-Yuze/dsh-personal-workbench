@@ -35,6 +35,8 @@ const zh: Record<string, string> = {
   'mod.entertainment.desc': '摸鱼小工具',
   'mod.knowledge.label': '知识库',
   'mod.knowledge.desc': '浏览与搜索本机 Obsidian 笔记',
+  'mod.office.label': '办公室',
+  'mod.office.desc': '像素办公室 · 同事实时动态',
 
   'pending.archive': '文件归档需要选定归档根目录（本机路径）。等你确认要浏览哪个目录，我接上 Host 侧的文件读取。',
   'mod.wip.label': '开发中…',
@@ -164,6 +166,8 @@ const en: Record<string, string> = {
   'mod.entertainment.desc': 'Small offline toys',
   'mod.knowledge.label': 'Knowledge base',
   'mod.knowledge.desc': 'Browse and search local Obsidian notes',
+  'mod.office.label': 'Office',
+  'mod.office.desc': 'Pixel office · Live coworker activity',
 
   'pending.archive': 'File archive needs an archive root directory on this machine.',
   'mod.wip.label': 'In Progress…',

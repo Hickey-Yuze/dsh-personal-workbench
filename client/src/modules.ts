@@ -77,6 +77,12 @@ export const MODULES: ModuleDef[] = [
     pendingKey: 'pending.wip',
     icon: 'M14.7 6.3a4.5 4.5 0 0 0-6.4 6.4L3 18l3 3 5.3-5.3a4.5 4.5 0 0 0 6.4-6.4l-3.2 3.2-2.8-2.8 3.2-3.2Z',
   },
+  {
+    id: 'office',
+    accent: '#FB923C',
+    ready: true,
+    icon: 'M4 21V5.5A1.5 1.5 0 0 1 5.5 4h7A1.5 1.5 0 0 1 14 5.5V21M14 10h4.5A1.5 1.5 0 0 1 20 11.5V21M3 21h18M7 8h4M7 12h4M7 16h4M16.5 14h.01M16.5 17h.01',
+  },
 ];
 
 export function moduleById(id: string): ModuleDef | undefined {
