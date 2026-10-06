@@ -1284,15 +1284,6 @@ html { color-scheme: light !important; }
 }
 
 /* ── 办公室（像素场景）── */
-.dsh-pwb-office-stage {
-  border-radius: 16px;
-  border: 1px solid var(--pwb-border);
-  background: #5b6472;
-  overflow: hidden;
-  /* 舞台与地图同比例（40:12）：整行铺满、人物保持原始大小、无灰边无放大 */
-  width: 100%;
-  aspect-ratio: 40 / 12;
-}
 .dsh-pwb-office-canvas {
   width: 100%;
   height: 100%;
@@ -1343,8 +1334,17 @@ html { color-scheme: light !important; }
   cursor: pointer;
 }
 /* ── 办公室 P2-P5：页签 / 对话面板 / 编辑器 / 数据面板 ── */
-.dsh-pwb-office-scenewrap { position: relative; }
-.dsh-pwb-office-tabs {
+/* 舞台撑满左列剩余高度（flex:1）：renderer 把延伸地板铺满整个画布，不再留白 */
+.dsh-pwb-office-scenewrap { position: relative; flex: 1 1 auto; min-height: 260px; display: flex; }
+.dsh-pwb-office-stage {
+  border-radius: 16px;
+  border: 1px solid var(--pwb-border);
+  background: #ece7da;
+  overflow: hidden;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+}.dsh-pwb-office-tabs {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1370,7 +1370,7 @@ html { color-scheme: light !important; }
 .dsh-pwb-office-tab-spacer { flex: 1; }
 /* AI 对话面板（PixOffice 同款：底部悬浮输入、对话向上展开、流式彩边）；viewbody 左右分栏：左列内容 / 拖拽分隔条 / 右列聊天 */
 .dsh-pwb-office-viewbody { display: flex; flex-direction: row; align-items: stretch; min-height: 0; }
-.dsh-pwb-office-left { flex: 1 1 auto; min-width: 0; }
+.dsh-pwb-office-left { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
 .dsh-pwb-office-right { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
 .dsh-pwb-office-splitter {
   flex: 0 0 6px;

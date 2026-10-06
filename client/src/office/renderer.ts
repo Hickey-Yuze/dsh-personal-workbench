@@ -45,25 +45,21 @@ function cellHash(x: number, y: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-/** 斑块类型表：0 无 / 1 浅色亮斑 / 2 暖色暗斑 / 3 细走线。模块加载时预计算一次。 */
-const FLOOR_PATCH: Uint8Array = (() => {
-  const t = new Uint8Array(MAP_W * MAP_H);
-  for (let y = 0; y < MAP_H; y++) {
-    for (let x = 0; x < MAP_W; x++) {
-      const h = cellHash(x, y);
-      if (h < 0.05) t[y * MAP_W + x] = 1;
-      else if (h < 0.1) t[y * MAP_W + x] = 2;
-      else if (h < 0.14) t[y * MAP_W + x] = 3;
-    }
-  }
-  return t;
-})();
+/** 斑点类型（按格子坐标稳定哈希）：0 无 / 1 浅色亮斑 / 2 暖色暗斑 / 3 细走线。地图内外同一规则，地板可无限延伸。 */
+function patchTypeAt(x: number, y: number): number {
+  const h = cellHash(x, y);
+  if (h < 0.05) return 1;
+  if (h < 0.1) return 2;
+  if (h < 0.14) return 3;
+  return 0;
+}
 
 /* ───────────── 点击换算 ───────────── */
 
 /**
  * 点击坐标（CSS 像素）→ 地图格：scale = min(cssW/MAP_W, cssH/MAP_H) 居中，
- * 与 renderOffice 完全同一套数学。墙环与界外返回 null（点击层不响应）。
+ * 与 renderOffice 完全同一套数学。舞台延伸区（地图外的连续地板）点击时
+ * 钳制到最近的可走格——地板看着连成一片，走位也自然贴到边上。
  */
 export function cellAtPoint(cssX: number, cssY: number, cssW: number, cssH: number): Vec | null {
   const scale = Math.min(cssW / MAP_W, cssH / MAP_H);
@@ -73,8 +69,9 @@ export function cellAtPoint(cssX: number, cssY: number, cssW: number, cssH: numb
   const x = Math.floor((cssX - ox) / scale);
   const y = Math.floor((cssY - oy) / scale);
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-  if (x <= 0 || y <= 0 || x >= MAP_W - 1 || y >= MAP_H - 1) return null;
-  return { x, y };
+  const cx = Math.min(Math.max(x, 1), MAP_W - 2);
+  const cy = Math.min(Math.max(y, 1), MAP_H - 2);
+  return { x: cx, y: cy };
 }
 
 /* ───────────── 静态层（地板 + 斑块 + 圆角外框阴影，离屏缓存） ───────────── */
@@ -112,17 +109,22 @@ function buildStaticLayer(pxW: number, pxH: number, dpr: number, cssW: number, c
   const ox = (cssW - scale * MAP_W) / 2;
   const oy = (cssH - scale * MAP_H) / 2;
 
-  // 柔和双色棋盘（对比弱化的暖白）
-  for (let y = 0; y < MAP_H; y++) {
-    for (let x = 0; x < MAP_W; x++) {
+  // 柔和双色棋盘（对比弱化的暖白）：铺满整个画布——地图外的延伸区画成连续地板，
+  // 舞台被拉高/拉宽时不再留白边，视觉上是办公室的开阔地面。
+  const x0 = Math.floor(-ox / scale) - 1;
+  const x1 = Math.ceil((cssW - ox) / scale) + 1;
+  const y0 = Math.floor(-oy / scale) - 1;
+  const y1 = Math.ceil((cssH - oy) / scale) + 1;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
       c.fillStyle = (x + y) % 2 === 0 ? FLOOR_A : FLOOR_B;
       c.fillRect(ox + x * scale, oy + y * scale, scale + 0.5, scale + 0.5);
     }
   }
-  // 确定性斑块点缀（查预计算表，位置由哈希决定，永不出现在边框墙环外）
-  for (let y = 1; y < MAP_H - 1; y++) {
-    for (let x = 1; x < MAP_W - 1; x++) {
-      const t = FLOOR_PATCH[y * MAP_W + x] as number;
+  // 确定性斑块点缀（查格子哈希，地图内外同一规则，永无随机闪动）
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const t = patchTypeAt(x, y);
       if (t === 0) continue;
       const px = ox + x * scale;
       const py = oy + y * scale;
@@ -140,22 +142,20 @@ function buildStaticLayer(pxW: number, pxH: number, dpr: number, cssW: number, c
     }
   }
 
-  // 圆角外框 + 轻阴影（围绕地图区域；贴边方向被 canvas 自然裁剪）
+  // 圆角外框 + 轻阴影（围绕整个画布=房间边界；延伸地板一直铺到墙边）
   const fr = Math.max(6, scale * 0.5);
-  const mw = MAP_W * scale;
-  const mh = MAP_H * scale;
   c.fillStyle = 'rgba(70,62,48,0.08)';
-  rr(c, ox + 1.5, oy + 3, mw - 3, mh - 3, fr);
+  rr(c, 1.5, 3, cssW - 3, cssH - 3, fr);
   c.fill();
   const lw = Math.max(1.5, scale * 0.08);
   c.strokeStyle = 'rgba(122,112,92,0.30)';
   c.lineWidth = lw;
-  rr(c, ox + lw / 2, oy + lw / 2, mw - lw, mh - lw, fr);
+  rr(c, lw / 2, lw / 2, cssW - lw, cssH - lw, fr);
   c.stroke();
   // 框内 1px 高光，柔和过渡
   c.strokeStyle = 'rgba(255,255,255,0.5)';
   c.lineWidth = 1;
-  rr(c, ox + 1.5, oy + 1.5, mw - 3, mh - 3, Math.max(4, fr - 1.5));
+  rr(c, 1.5, 1.5, cssW - 3, cssH - 3, Math.max(4, fr - 1.5));
   c.stroke();
   return layer;
 }
