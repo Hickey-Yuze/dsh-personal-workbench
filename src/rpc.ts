@@ -1188,6 +1188,8 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
           'x-accel-buffering': 'no',
         });
         try {
+          const seenKinds = new Map<string, number>();
+          let contentChars = 0;
           for await (const chunk of llm.stream({
             provider: officeProvider,
             model: officeModel,
@@ -1198,11 +1200,22 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
               : {}),
           })) {
             if (officeCtrl.signal.aborted) break;
+            const kind = typeof chunk?.type === 'string' ? chunk.type : 'unknown';
+            seenKinds.set(kind, (seenKinds.get(kind) ?? 0) + 1);
             if (chunk?.type === 'text-delta' && typeof chunk.text === 'string' && chunk.text !== '') {
+              contentChars += chunk.text.length;
               res.write?.(`data: ${JSON.stringify({ delta: chunk.text })}\n\n`);
             }
           }
-          if (!officeCtrl.signal.aborted) res.write?.('data: [DONE]\n\n');
+          if (!officeCtrl.signal.aborted) {
+            if (contentChars === 0) {
+              // 空流自诊断：把收到的 chunk 类型计数回给气泡，不再静默「无回复内容」
+              const kinds = [...seenKinds.entries()].map(([k, n]) => `${k}×${n}`).join(',') || '无chunk';
+              deps.log.warn(`[personal-workbench] office SSE 空流: ${kinds}`);
+              res.write?.(`data: ${JSON.stringify({ error: `模型未返回正文（chunk: ${kinds}）` })}\n\n`);
+            }
+            res.write?.('data: [DONE]\n\n');
+          }
         } catch (officeErr) {
           if (!officeCtrl.signal.aborted) {
             res.write?.(`data: ${JSON.stringify({ error: officeErr instanceof Error ? officeErr.message : String(officeErr) })}\n\n`);

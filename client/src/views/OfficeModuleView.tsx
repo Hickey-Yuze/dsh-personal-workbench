@@ -35,12 +35,12 @@ const CHAT_URL = '/api/personal-workbench/office/chat';
 const NPC_CHAT_URL = '/api/personal-workbench/office/npc/chat';
 const ACTIONS_URL = '/api/personal-workbench/office/actions';
 
-/** 读取 SSE 流，逐 delta 回调，返回完整文本。 */
+/** 读取 SSE 流，逐 delta 回调，返回完整文本；非流式/空流都在气泡里给出原因。 */
 async function readSse(res: Response, onDelta: (d: string) => void, onErr: (e: string) => void): Promise<string> {
   let full = '';
   if (!res.ok || res.body === null) {
     const detail = await res.text().catch(() => '');
-    onErr(`对话服务不可用（${res.status}）${detail ? `：${detail.slice(0, 120)}` : ''}`);
+    onErr(`对话服务不可用（${res.status}）${detail ? `：${detail.slice(0, 140)}` : ''}`);
     return full;
   }
   const reader = res.body.getReader();
@@ -69,6 +69,8 @@ async function readSse(res: Response, onDelta: (d: string) => void, onErr: (e: s
       }
     }
   }
+  const leftover = buf.trim();
+  if (full === '' && leftover !== '') onErr(`服务返回非流式响应：${leftover.slice(0, 140)}`);
   return full;
 }
 
