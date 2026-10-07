@@ -1,12 +1,13 @@
 /**
  * 办公室画布：把引擎接到 <canvas>（rAF 驱动 + 自适应尺寸）。
- * 点击：cellAtPoint 换算地图格（延伸区自动钳到最近可走格）。
+ * 点击：cellAtPoint 换算地图格（延伸带地板真实可走，引擎按延伸走位区判定）。
  * 视口：view（zoom/pan）由父组件持有；滚轮以鼠标为锚点缩放、拖拽平移
  * （拖拽后抑制紧随的 click，避免误触发拜访/走位），钳制用 clampViewPan。
  */
 import { useCallback, useEffect, useRef } from 'react';
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactElement } from 'react';
 import type { OfficeEngine } from './engine.js';
+import { MAP_H, MAP_W } from './map.js';
 import { cellAtPoint, clampViewPan, renderOffice } from './renderer.js';
 import type { OfficeView } from './renderer.js';
 import type { Vec } from './types.js';
@@ -83,6 +84,26 @@ export function OfficeCanvas({
     const loop = (now: number): void => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
+      // 延伸走位区对齐：按当前视口算地图四边可见的延伸格数喂给引擎（内部幂等，区间收 0..24）。
+      // 角色因此能走进画布上下左右的延伸地板带；BFS 在扩展坐标空间寻路。
+      const cw = canvas.clientWidth;
+      const ch = canvas.clientHeight;
+      const v = viewRef.current ?? {};
+      const zoom = v.zoom !== undefined && Number.isFinite(v.zoom) && v.zoom > 0 ? v.zoom : 1;
+      const panX = v.panX !== undefined && Number.isFinite(v.panX) ? v.panX : 0;
+      const panY = v.panY !== undefined && Number.isFinite(v.panY) ? v.panY : 0;
+      const fit = Math.min(cw / MAP_W, ch / MAP_H);
+      const scale = fit * zoom;
+      if (scale > 0) {
+        const ox = (cw - scale * MAP_W) / 2 + panX;
+        const oy = (ch - scale * MAP_H) / 2 + panY;
+        engine.setArena(
+          Math.ceil(oy / scale),
+          Math.ceil((ch - (oy + scale * MAP_H)) / scale),
+          Math.ceil(ox / scale),
+          Math.ceil((cw - (ox + scale * MAP_W)) / scale),
+        );
+      }
       engine.tick(dt);
       const moving = engine.chars.some((c) => c.state === 'walking' || c.state === 'visit');
       acc += dt;

@@ -101,9 +101,8 @@ export function cellAtPoint(cssX: number, cssY: number, cssW: number, cssH: numb
   const x = Math.floor((cssX - ox) / scale);
   const y = Math.floor((cssY - oy) / scale);
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-  const cx = Math.min(Math.max(x, 1), MAP_W - 2);
-  const cy = Math.min(Math.max(y, 1), MAP_H - 2);
-  return { x: cx, y: cy };
+  // 不再钳进 40×12：延伸带地板真实可走（引擎 arena 判定），原样返回让引擎决定走不走。
+  return { x, y };
 }
 
 /* ───────────── 静态层（地板 + 斑块 + 圆角外框阴影，离屏缓存） ───────────── */

@@ -3,7 +3,7 @@
  * 每个人物 工作/咖啡/拜访/闲逛 四态轮转，逻辑走整数格，渲染层拿浮点坐标插值。
  * P2 互动层：构造函数可注入存档地图；点击走位 / 点击 NPC 寒暄 / 白板会议 / 气泡系统。
  */
-import { deskChairCell, buildBlocked, defaultMap, findPath, isFree, MAP_H, MAP_W } from './map.js';
+import { deskChairCell, buildBlocked, defaultMap, isFree, MAP_H, MAP_W } from './map.js';
 import type { Character, Furniture, Intent, MemberStat, OfficeMap, Vec } from './types.js';
 
 const SPEED = 2.4; // 格 / 秒
@@ -89,6 +89,87 @@ export class OfficeEngine {
     this.spawn();
   }
 
+  /** 延伸走位区：地图四边外圈动态扩的虚拟可走格数（画布可视范围驱动，OfficeCanvas 每帧对齐）。
+   *  地板渲染是无限铺的，角色可以走进上下左右延伸带；存档地图仍是 40×12 不受影响。 */
+  private arenaTop = 0;
+  private arenaBottom = 0;
+  private arenaLeft = 0;
+  private arenaRight = 0;
+
+  /** 对齐延伸走位区（OfficeCanvas 传可视范围换算的格数，各边收 0..24）；无变化时幂等返回。 */
+  setArena(top: number, bottom: number, left: number, right: number): void {
+    const t = Math.min(Math.max(Math.round(top), 0), 24);
+    const b = Math.min(Math.max(Math.round(bottom), 0), 24);
+    const l = Math.min(Math.max(Math.round(left), 0), 24);
+    const r = Math.min(Math.max(Math.round(right), 0), 24);
+    if (t === this.arenaTop && b === this.arenaBottom && l === this.arenaLeft && r === this.arenaRight) return;
+    this.arenaTop = t;
+    this.arenaBottom = b;
+    this.arenaLeft = l;
+    this.arenaRight = r;
+    // 区缩小把站在外面的角色钳回区内
+    for (const c of this.chars) {
+      c.cx = Math.min(Math.max(c.cx, -l), MAP_W - 1 + r);
+      c.cy = Math.min(Math.max(c.cy, -t), MAP_H - 1 + b);
+    }
+  }
+
+  /** 延伸区感知的可走判定：地图内走 blocked，地图外看 arena 圈（延伸带全可走）。 */
+  private free(x: number, y: number): boolean {
+    if (x >= 0 && y >= 0 && x < MAP_W && y < MAP_H) return this.free(x, y);
+    return (
+      x >= -this.arenaLeft && x < MAP_W + this.arenaRight &&
+      y >= -this.arenaTop && y < MAP_H + this.arenaBottom
+    );
+  }
+
+  /** 延伸区感知 BFS（坐标可为负；地图内外统一 4 邻接）。 */
+  private path(from: Vec, to: Vec): Vec[] {
+    if (from.x === to.x && from.y === to.y) return [];
+    if (!this.free(from.x, from.y) || !this.free(to.x, to.y)) return [];
+    const w = MAP_W + this.arenaLeft + this.arenaRight;
+    const h = MAP_H + this.arenaTop + this.arenaBottom;
+    const start = (from.y + this.arenaTop) * w + (from.x + this.arenaLeft);
+    const target = (to.y + this.arenaTop) * w + (to.x + this.arenaLeft);
+    const prev = new Int32Array(w * h).fill(-1);
+    const seen = new Uint8Array(w * h);
+    seen[start] = 1;
+    const queue: number[] = [start];
+    let head = 0;
+    while (head < queue.length) {
+      const cur = queue[head] as number;
+      head += 1;
+      if (cur === target) break;
+      const cx = cur % w;
+      const cy = (cur - cx) / w;
+      const nexts: Array<[number, number]> = [
+        [cx + 1, cy],
+        [cx - 1, cy],
+        [cx, cy + 1],
+        [cx, cy - 1],
+      ];
+      for (const [nx, ny] of nexts) {
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        if (!this.free(nx - this.arenaLeft, ny - this.arenaTop)) continue;
+        const ni = ny * w + nx;
+        if (seen[ni] === 1) continue;
+        seen[ni] = 1;
+        prev[ni] = cur;
+        queue.push(ni);
+      }
+    }
+    if (seen[target] !== 1) return [];
+    const path: Vec[] = [];
+    let cur = target;
+    while (cur !== start) {
+      const x = cur % w;
+      path.push({ x: x - this.arenaLeft, y: (cur - x) / w - this.arenaTop });
+      cur = prev[cur] as number;
+    }
+    path.reverse();
+    return path;
+  }
+
   private spawn(): void {
     const mkChar = (id: string, def: NpcDef, isSelf: boolean, desk: Furniture): Character => {
       const chair = deskChairCell(desk);
@@ -148,7 +229,7 @@ export class OfficeEngine {
       for (let i = 0; i < 200; i++) {
         const x = 1 + Math.floor(Math.random() * (MAP_W - 2));
         const y = 1 + Math.floor(Math.random() * (MAP_H - 2));
-        if (!isFree(this.map, this.blocked, x, y)) continue;
+        if (!this.free(x, y)) continue;
         if (this.chars.some((c) => c.cx === x && c.cy === y)) continue;
         spotX = x;
         spotY = y;
@@ -189,10 +270,10 @@ export class OfficeEngine {
   private addAutoDesk(deskId: string): Furniture | undefined {
     for (let y = 2; y <= MAP_H - 4; y++) {
       for (let x = 1; x <= MAP_W - 4; x++) {
-        if (!isFree(this.map, this.blocked, x, y)) continue;
-        if (!isFree(this.map, this.blocked, x + 1, y)) continue;
-        if (!isFree(this.map, this.blocked, x, y + 1)) continue;
-        if (!isFree(this.map, this.blocked, x + 1, y + 1)) continue;
+        if (!this.free(x, y)) continue;
+        if (!this.free(x + 1, y)) continue;
+        if (!this.free(x, y + 1)) continue;
+        if (!this.free(x + 1, y + 1)) continue;
         const desk: Furniture = { id: deskId, kind: 'desk', x, y, w: 2, h: 2 };
         this.map.furniture.push(desk);
         this.blocked[y * this.map.w + x] = 1;
@@ -227,7 +308,7 @@ export class OfficeEngine {
    * · 其他可走空地 → 自己 walkTo 过去，到达后回归正常 decide 循环
    */
   clickCell(x: number, y: number): void {
-    if (x <= 0 || y <= 0 || x >= MAP_W - 1 || y >= MAP_H - 1) return; // 墙环 / 界外
+    if (x < -this.arenaLeft || y < -this.arenaTop || x >= MAP_W + this.arenaRight || y >= MAP_H + this.arenaBottom) return; // 延伸区外的界外；墙环/家具格由 free 判定
     const npc = this.npcAt(x, y);
     if (npc !== null) {
       this.goChatWith(npc);
@@ -271,13 +352,13 @@ export class OfficeEngine {
   private walkSelfTo(x: number, y: number): void {
     const self = this.self();
     if (self === null) return;
-    if (!isFree(this.map, this.blocked, x, y)) return; // 家具格 / 不可走点不动
+    if (!this.free(x, y)) return; // 家具格 / 不可走点不动
     if (self.cx === x && self.cy === y) {
       self.intent = 'wander';
       this.arrive(self);
       return;
     }
-    const path = findPath(this.map, this.blocked, { x: self.cx, y: self.cy }, { x, y });
+    const path = this.path({ x: self.cx, y: self.cy }, { x, y });
     if (path.length === 0) return;
     this.startWalk(self, path, 'wander');
   }
@@ -294,7 +375,7 @@ export class OfficeEngine {
       { x: desk.x - 1, y: desk.y + 1 },
       { x: desk.x, y: desk.y + 2 },
       { x: desk.x + 1, y: desk.y + 2 },
-    ].filter((p) => isFree(this.map, this.blocked, p.x, p.y) && !this.occupied(self, p.x, p.y));
+    ].filter((p) => this.free(p.x, p.y) && !this.occupied(self, p.x, p.y));
     const spot = spots[0];
     if (spot === undefined) return;
     this.chatTargetId = npc.id;
@@ -303,7 +384,7 @@ export class OfficeEngine {
       this.arrive(self);
       return;
     }
-    const path = findPath(this.map, this.blocked, { x: self.cx, y: self.cy }, spot);
+    const path = this.path({ x: self.cx, y: self.cy }, spot);
     if (path.length === 0) {
       this.chatTargetId = null;
       return;
@@ -326,7 +407,7 @@ export class OfficeEngine {
       }
     }
     const pool = spots
-      .filter((p) => isFree(this.map, this.blocked, p.x, p.y))
+      .filter((p) => this.free(p.x, p.y))
       .sort((a, b) => (a.y - frontY) * 10 + Math.abs(a.x - midX) - ((b.y - frontY) * 10 + Math.abs(b.x - midX)));
     if (pool.length === 0) return;
     this.meetingActive = true;
@@ -356,7 +437,7 @@ export class OfficeEngine {
       this.arrive(c);
       return;
     }
-    const path = findPath(this.map, this.blocked, { x: c.cx, y: c.cy }, spot);
+    const path = this.path({ x: c.cx, y: c.cy }, spot);
     if (path.length === 0) return; // 不可达：不参会，保持原行为
     this.startWalk(c, path, 'meeting');
   }
@@ -424,7 +505,7 @@ export class OfficeEngine {
       this.mumble(c);
       return true;
     }
-    const path = findPath(this.map, this.blocked, { x: c.cx, y: c.cy }, chair);
+    const path = this.path({ x: c.cx, y: c.cy }, chair);
     if (path.length === 0) return false;
     this.startWalk(c, path, 'work');
     return true;
@@ -441,7 +522,7 @@ export class OfficeEngine {
       this.mumble(c);
       return true;
     }
-    const path = findPath(this.map, this.blocked, { x: c.cx, y: c.cy }, use);
+    const path = this.path({ x: c.cx, y: c.cy }, use);
     if (path.length === 0) return false;
     this.startWalk(c, path, 'coffee');
     return true;
@@ -458,7 +539,7 @@ export class OfficeEngine {
       { x: desk.x + 1, y: desk.y + 1 },
       { x: desk.x, y: desk.y + 2 },
       { x: desk.x + 1, y: desk.y + 2 },
-    ].filter((p) => isFree(this.map, this.blocked, p.x, p.y) && !this.occupied(c, p.x, p.y));
+    ].filter((p) => this.free(p.x, p.y) && !this.occupied(c, p.x, p.y));
     if (spots.length === 0) return false;
     const spot = spots[0] as Vec;
     if (c.cx === spot.x && c.cy === spot.y) {
@@ -467,7 +548,7 @@ export class OfficeEngine {
       this.mumble(c);
       return true;
     }
-    const path = findPath(this.map, this.blocked, { x: c.cx, y: c.cy }, spot);
+    const path = this.path({ x: c.cx, y: c.cy }, spot);
     if (path.length === 0) return false;
     this.startWalk(c, path, 'visit');
     return true;
@@ -477,9 +558,9 @@ export class OfficeEngine {
     for (let tries = 0; tries < 12; tries++) {
       const x = 1 + Math.floor(Math.random() * (MAP_W - 2));
       const y = 1 + Math.floor(Math.random() * (MAP_H - 2));
-      if (!isFree(this.map, this.blocked, x, y)) continue;
+      if (!this.free(x, y)) continue;
       if (x === c.cx && y === c.cy) continue;
-      const path = findPath(this.map, this.blocked, { x: c.cx, y: c.cy }, { x, y });
+      const path = this.path({ x: c.cx, y: c.cy }, { x, y });
       if (path.length === 0) continue;
       this.startWalk(c, path, 'wander');
       return;
