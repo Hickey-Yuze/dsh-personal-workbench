@@ -350,7 +350,7 @@ async function dispatchToColleague(parentId: string, parentName: string, colleag
     ctl.log.warn(`[personal-workbench] office 派活 spawn 失败 ${colleague.name}: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
-/** 真工位员工 system 指示：直接干活、干完简短中文汇报。 */
+/** 真工位员工 system 指示：分工纪律优先（职务外环节必须派活），干完汇报。 */
 function officeWorkerSystem(name: string, role: string, opts?: { level?: 0 | 1; teammates?: string; parentName?: string }): string {
   const level = opts?.level ?? 0;
   if (level === 1) {
@@ -358,9 +358,11 @@ function officeWorkerSystem(name: string, role: string, opts?: { level?: 0 | 1; 
   }
   const teammateLine = opts?.teammates !== undefined && opts.teammates !== '' ? opts.teammates : '（暂无其他同事）';
   return [
-    `你是用户工作台「办公室」里的同事 ${name}（${role}），现在被老板派了一个真实工作任务。请直接动手完成（可以读写文件、运行命令、写代码），不要反问老板，遇到小决策自己拿主意；完成后用中文简短汇报：做了什么、改了哪些文件、结果如何。不要寒暄与任务无关的内容。`,
-    `你手头的任务可以拆给其他同事协作。同事花名册：${teammateLine}。`,
-    '派活方法：在回复里单独写一行【派活】同事名：任务描述（≤200字，写清要产出什么、在哪做）。系统会把子任务真实派给那位同事，TA 完成后你会收到验收请求，请实际检查产出后单独写一行【验收结论】通过：理由 或 【验收结论】不通过：缺什么。老板只看你的验收结论和最终汇报。',
+    `你是用户工作台「办公室」里的同事 ${name}（${role}），老板派给你一个真实工作任务。`,
+    '【分工纪律——最重要】你只亲自做你职务范围内的环节；任务里属于其他职务的环节（例如你不是前端工程师却要写代码实现整个项目、不是测试工程师却要自己测试），不要自己做，拆成子任务派给花名册里对应的同事，你负责拆解、跟进和验收。整个任务完全在你职务范围内时才自己动手。',
+    `同事花名册：${teammateLine}。`,
+    '派活方法：在回复里单独写一行【派活】同事名：任务描述（≤200字，写清要产出什么、在哪做）。系统会把子任务真实派给那位同事，TA 完成后你会收到【验收请求】，请实际检查产出（读文件、跑命令都可以）后单独写一行【验收结论】通过：理由 或 【验收结论】不通过：缺什么。老板只看你的验收结论和最终汇报。',
+    '可以读写文件、运行命令、写代码；遇到小决策自己拿主意，不要反问老板。完成后用中文简短汇报：做了什么、派了哪些活给谁、验收结果如何。不要寒暄与任务无关的内容。',
   ].join('\n');
 }
 
@@ -404,8 +406,9 @@ async function officeSpawnAgent(
   const override = builtinOverrideOf(npcId);
   const handle = await agents.create({
     // sessionId 必传：agent.id 必须与 session.id 一致（AgentRegistry.enter 不变式），
-    // 缺省时 agent id 为 undefined 而创建即抛错。
-    sessionId: `session-office-${npcId}-${Date.now()}`,
+    // 缺省时 agent id 为 undefined 而创建即抛错。id 里带员工姓名（宿主会话列表可读），
+    // 时间戳后缀保证改名/重复派活时 id 唯一。
+    sessionId: `office-${name}-${Date.now()}`,
     // cwd 必须随 meta 写进 session header：system-prompt 组装 deployment:persona-suffix
     // 需要 {{cwd}} 变量（variable("cwd", ctx => ctx.agent?.session.header.cwd)），
     // 缺省会让 agent 第 1 步就报 "prompt variable \"{{cwd}}\" has no value" 而挂。
