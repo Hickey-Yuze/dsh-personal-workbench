@@ -1737,6 +1737,7 @@ html { color-scheme: light !important; }
   flex: none;
   padding: 5px 10px;
   border-radius: 8px;
+  corner-shape: round;
   border: 1px solid var(--pwb-border);
   background: var(--pwb-card, #f6f7f9);
   font-size: 11.5px;
@@ -1744,11 +1745,14 @@ html { color-scheme: light !important; }
   cursor: pointer;
 }
 .dsh-pwb-office-cwd-browse:hover { border-color: rgba(0, 200, 120, 0.55); }
-/* 工作区浏览选择器：工作区行上方的内嵌面板（目录逐级进入 + 用这个目录） */
+/* 工作区浏览选择器：工作区行上方的内嵌面板（目录逐级进入 + 用这个目录）。
+ * 每个圆角元素都显式 corner-shape: round——宿主全局注入 superellipse(1.5)，
+ * 会把 border-radius+overflow 的按钮按超椭圆裁剪出文字拦腰切片的渲染毛刺（前例：圆形头像、员工卡）。 */
 .dsh-pwb-office-cwd-picker {
   margin: 0 12px 6px;
   border: 1px solid var(--pwb-border);
   border-radius: 10px;
+  corner-shape: round;
   background: var(--pwb-card, #fff);
   overflow: hidden;
 }
@@ -1768,13 +1772,12 @@ html { color-scheme: light !important; }
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--pwb-muted, #8a919c);
-  direction: rtl;
-  text-align: left;
 }
 .dsh-pwb-office-cwd-picker-bar button {
   flex: none;
   padding: 3px 9px;
   border-radius: 7px;
+  corner-shape: round;
   border: 1px solid var(--pwb-border);
   background: var(--pwb-card, #f6f7f9);
   font-size: 11px;
@@ -1789,17 +1792,19 @@ html { color-scheme: light !important; }
   gap: 2px;
 }
 .dsh-pwb-office-cwd-picker-item {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
   text-align: left;
+  line-height: 1.45;
   padding: 6px 9px;
   border: none;
   border-radius: 7px;
+  corner-shape: round;
   background: transparent;
   font-size: 12px;
   color: var(--pwb-text);
   cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .dsh-pwb-office-cwd-picker-item:hover { background: rgba(0, 200, 120, 0.10); }
 .dsh-pwb-office-cwd-picker-empty {
@@ -1827,6 +1832,7 @@ html { color-scheme: light !important; }
   flex: none;
   padding: 5px 12px;
   border-radius: 8px;
+  corner-shape: round;
   border: none;
   background: var(--pwb-accent, #00c853);
   color: #fff;
@@ -1834,9 +1840,6 @@ html { color-scheme: light !important; }
   cursor: pointer;
 }
 .dsh-pwb-office-cwd-pick-use:disabled { opacity: 0.5; cursor: default; }
-/* 滚动区独立合成层：避免与高频重绘的 canvas/流式动画相邻时出现内容重影发糊 */
-.dsh-pwb-office-chat-body { transform: translateZ(0); }
-.dsh-pwb-office-cwd-picker-list { transform: translateZ(0); }
 .dsh-pwb-office-chat-send {
   padding: 8px 14px;
   border-radius: 10px;
