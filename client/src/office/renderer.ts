@@ -445,16 +445,16 @@ function drawBubble(
   const pad = fs * 0.45;
   const bw = Math.max(w1, w2) + pad * 2;
   const bh = pad * 2 + lineH * (l2 ? 2 : 1);
-  // 侧挂：默认头右侧（尾巴指向头顶右侧），贴右缘翻左侧，两侧都放不下再回到头顶高位
+  // 侧挂：默认头左侧（尾巴指向头顶左侧），贴左缘翻右侧，两侧都放不下再回到头顶高位
   const gap = s * 0.62;
   const tx = px + s * 0.34;
   const ty = py - s * 0.5;
-  let bx = px + gap;
+  let bx = px - gap - bw;
   let by = py - s * 0.9;
-  let side: 'right' | 'left' | 'top' = 'right';
-  if (bx + bw > cw - 4) {
-    bx = px - gap - bw;
-    side = bx >= 4 ? 'left' : 'top';
+  let side: 'right' | 'left' | 'top' = 'left';
+  if (bx < 4) {
+    bx = px + gap;
+    side = bx + bw <= cw - 4 ? 'right' : 'top';
     if (side === 'top') bx = px - bw / 2;
   }
   if (side === 'top') by = py - s * 1.55;
