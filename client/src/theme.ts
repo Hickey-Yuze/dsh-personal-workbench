@@ -1299,10 +1299,12 @@ html { color-scheme: light !important; }
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 6px 12px;
+  padding: 7px 13px;
   border-radius: 999px;
-  background: var(--pwb-card);
-  border: 1px solid var(--pwb-border);
+  corner-shape: round;
+  background: #ffffff;
+  border: 1px solid rgba(20, 20, 30, 0.05);
+  box-shadow: 0 1px 3px rgba(20, 20, 30, 0.06);
   font-size: 12px;
   line-height: 1;
 }
@@ -1319,7 +1321,8 @@ html { color-scheme: light !important; }
   color: #2f9e63;
 }
 .dsh-pwb-office-chip-self {
-  border-color: rgba(0, 210, 106, 0.55);
+  border-color: rgba(0, 210, 106, 0.35);
+  box-shadow: 0 1px 6px rgba(0, 200, 106, 0.18);
 }
 .dsh-pwb-office-hint {
   margin-top: 10px;
@@ -1328,18 +1331,19 @@ html { color-scheme: light !important; }
 }
 .dsh-pwb-office-mini {
   aspect-ratio: 40 / 12;
-  border-radius: 10px;
+  border-radius: 12px;
   overflow: hidden;
-  background: #5b6472;
+  background: #f6f7f8;
   cursor: pointer;
 }
 /* ── 办公室 P2-P5：页签 / 对话面板 / 编辑器 / 数据面板 ── */
 /* 舞台撑满左列剩余高度（flex:1）：renderer 把延伸地板铺满整个画布，不再留白 */
 .dsh-pwb-office-scenewrap { position: relative; flex: 1 1 auto; min-height: 260px; display: flex; }
 .dsh-pwb-office-stage {
-  border-radius: 16px;
-  border: 1px solid var(--pwb-border);
-  background: #ece7da;
+  border-radius: 18px;
+  border: 1px solid rgba(20, 20, 30, 0.05);
+  box-shadow: 0 2px 14px rgba(20, 20, 30, 0.07);
+  background: #f6f7f8;
   overflow: hidden;
   width: 100%;
   flex: 1 1 auto;
@@ -1534,21 +1538,25 @@ html { color-scheme: light !important; }
   margin-bottom: 12px;
 }
 .dsh-pwb-office-tab {
-  padding: 6px 14px;
+  padding: 7px 15px;
   border-radius: 999px;
-  border: 1px solid var(--pwb-border);
-  background: var(--pwb-card);
+  corner-shape: round;
+  border: 1px solid rgba(20, 20, 30, 0.05);
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(20, 20, 30, 0.06);
   color: var(--pwb-text);
   font-size: 12.5px;
   line-height: 1;
   cursor: pointer;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }
-.dsh-pwb-office-tab:hover { border-color: rgba(0, 200, 120, 0.45); }
+.dsh-pwb-office-tab:hover { border-color: rgba(0, 200, 120, 0.35); box-shadow: 0 2px 8px rgba(0, 200, 106, 0.14); }
 .dsh-pwb-office-tab-active {
   background: #00c853;
   border-color: #00c853;
   color: #fff;
   font-weight: 650;
+  box-shadow: 0 2px 10px rgba(0, 200, 106, 0.32);
 }
 .dsh-pwb-office-tab-spacer { flex: 1; }
 /* AI 对话面板（PixOffice 同款：底部悬浮输入、对话向上展开、流式彩边）；viewbody 左右分栏：左列内容 / 拖拽分隔条 / 右列聊天 */
@@ -1610,9 +1618,9 @@ html { color-scheme: light !important; }
   flex: 1;
   min-height: 240px;
   background: #fff;
-  border: 1px solid var(--pwb-border);
-  border-radius: 14px;
-  box-shadow: 0 10px 28px rgba(15, 20, 30, 0.12);
+  border: 1px solid rgba(20, 20, 30, 0.05);
+  border-radius: 16px;
+  box-shadow: 0 2px 14px rgba(20, 20, 30, 0.07);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1621,8 +1629,8 @@ html { color-scheme: light !important; }
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 12px;
-  border-bottom: 1px solid var(--pwb-border);
+  padding: 10px 13px;
+  border-bottom: 1px solid rgba(20, 20, 30, 0.05);
   font-size: 12.5px;
   font-weight: 650;
   color: var(--pwb-text);
@@ -1633,20 +1641,23 @@ html { color-scheme: light !important; }
   gap: 6px;
 }
 .dsh-pwb-office-chat-act button {
-  padding: 4px 9px;
+  padding: 5px 10px;
   font-size: 11.5px;
-  border-radius: 8px;
-  border: 1px solid var(--pwb-border);
-  background: var(--pwb-card, #f6f7f9);
+  border-radius: 999px;
+  corner-shape: round;
+  border: 1px solid rgba(20, 20, 30, 0.06);
+  background: #f7f8f9;
   color: var(--pwb-text);
   cursor: pointer;
   line-height: 1.2;
+  transition: border-color 0.15s ease, color 0.15s ease;
 }
+.dsh-pwb-office-chat-act button:hover { border-color: rgba(0, 200, 120, 0.35); color: #0a9b4d; }
 .dsh-pwb-office-chat-body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 12px 13px;
   flex: 1;
   min-height: 120px;
   overflow-y: auto;
@@ -1654,8 +1665,8 @@ html { color-scheme: light !important; }
 }
 .dsh-pwb-office-chat-msg {
   max-width: 86%;
-  padding: 7px 10px;
-  border-radius: 11px;
+  padding: 8px 11px;
+  border-radius: 12px;
   line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
@@ -1664,10 +1675,11 @@ html { color-scheme: light !important; }
   align-self: flex-end;
   background: #00c853;
   color: #fff;
+  box-shadow: 0 1px 6px rgba(0, 200, 106, 0.22);
 }
 .dsh-pwb-office-chat-msg-ai {
   align-self: flex-start;
-  background: #f3f4f6;
+  background: #f4f5f7;
   color: #2b3038;
   border: 1.5px solid transparent;
 }
@@ -1692,28 +1704,28 @@ html { color-scheme: light !important; }
 .dsh-pwb-office-chat-input {
   display: flex;
   gap: 8px;
-  padding: 10px 12px;
-  border-top: 1px solid var(--pwb-border);
+  padding: 10px 13px;
+  border-top: 1px solid rgba(20, 20, 30, 0.05);
 }
 .dsh-pwb-office-chat-input input {
   flex: 1;
   min-width: 0;
   box-sizing: border-box;
-  padding: 8px 11px;
-  border-radius: 10px;
-  border: 1px solid var(--pwb-border);
-  background: var(--pwb-card, #f6f7f9);
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(20, 20, 30, 0.07);
+  background: #f7f8f9;
   font-size: 12.5px;
   color: var(--pwb-text);
   outline: none;
 }
-.dsh-pwb-office-chat-input input:focus { border-color: rgba(0, 200, 120, 0.55); }
+.dsh-pwb-office-chat-input input:focus { border-color: rgba(0, 200, 120, 0.45); background: #fff; }
 /* 派活工作区行：工作区标签 + 目录输入（写进 agent 会话 header，宿主按项目归组会话） */
 .dsh-pwb-office-chat-cwd {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px 0;
+  padding: 8px 13px 0;
 }
 .dsh-pwb-office-chat-cwd span {
   flex: none;
@@ -1724,33 +1736,33 @@ html { color-scheme: light !important; }
   flex: 1;
   min-width: 0;
   box-sizing: border-box;
-  padding: 5px 9px;
-  border-radius: 8px;
-  border: 1px solid var(--pwb-border);
-  background: var(--pwb-card, #f6f7f9);
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(20, 20, 30, 0.07);
+  background: #f7f8f9;
   font-size: 11.5px;
   color: var(--pwb-text);
   outline: none;
 }
-.dsh-pwb-office-chat-cwd input:focus { border-color: rgba(0, 200, 120, 0.55); }
+.dsh-pwb-office-chat-cwd input:focus { border-color: rgba(0, 200, 120, 0.45); background: #fff; }
 .dsh-pwb-office-cwd-browse {
   flex: none;
-  padding: 5px 10px;
-  border-radius: 8px;
+  padding: 6px 11px;
+  border-radius: 999px;
   corner-shape: round;
-  border: 1px solid var(--pwb-border);
-  background: var(--pwb-card, #f6f7f9);
+  border: 1px solid rgba(20, 20, 30, 0.07);
+  background: #f7f8f9;
   font-size: 11.5px;
   color: var(--pwb-text);
   cursor: pointer;
 }
-.dsh-pwb-office-cwd-browse:hover { border-color: rgba(0, 200, 120, 0.55); }
+.dsh-pwb-office-cwd-browse:hover { border-color: rgba(0, 200, 120, 0.4); color: #0a9b4d; }
 /* 工作区浏览选择器：工作区行上方的内嵌面板（目录逐级进入 + 用这个目录）。
  * 每个圆角元素都显式 corner-shape: round——宿主全局注入 superellipse(1.5)，
  * 会把 border-radius+overflow 的按钮按超椭圆裁剪出文字拦腰切片的渲染毛刺（前例：圆形头像、员工卡）。 */
 .dsh-pwb-office-chat-send {
-  padding: 8px 14px;
-  border-radius: 10px;
+  padding: 9px 16px;
+  border-radius: 12px;
   border: none;
   background: #00c853;
   color: #fff;
@@ -1758,13 +1770,14 @@ html { color-scheme: light !important; }
   font-weight: 650;
   cursor: pointer;
   flex-shrink: 0;
+  box-shadow: 0 1px 6px rgba(0, 200, 106, 0.24);
 }
-.dsh-pwb-office-chat-send:disabled { opacity: 0.55; cursor: default; }
+.dsh-pwb-office-chat-send:disabled { opacity: 0.55; cursor: default; box-shadow: none; }
 .dsh-pwb-office-chat-stop {
-  padding: 8px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--pwb-border);
-  background: var(--pwb-card, #f6f7f9);
+  padding: 9px 13px;
+  border-radius: 12px;
+  border: 1px solid rgba(20, 20, 30, 0.07);
+  background: #f7f8f9;
   color: var(--pwb-text);
   font-size: 12.5px;
   cursor: pointer;
@@ -1778,7 +1791,7 @@ html { color-scheme: light !important; }
   flex-direction: column;
   gap: 8px;
   padding: 10px;
-  border: 1px solid var(--pwb-border);
+  border: 1px solid rgba(20, 20, 30, 0.06);
   border-radius: 12px;
   background: var(--pwb-card);
 }
@@ -1789,7 +1802,7 @@ html { color-scheme: light !important; }
   gap: 8px;
   padding: 8px 9px;
   border-radius: 9px;
-  border: 1px solid var(--pwb-border);
+  border: 1px solid rgba(20, 20, 30, 0.06);
   background: var(--pwb-card-hi, #f6f7f9);
   font-size: 12px;
   color: var(--pwb-text);
@@ -1817,7 +1830,7 @@ html { color-scheme: light !important; }
 .dsh-pwb-office-ed-toolbar button {
   padding: 5px 11px;
   border-radius: 9px;
-  border: 1px solid var(--pwb-border);
+  border: 1px solid rgba(20, 20, 30, 0.06);
   background: var(--pwb-card);
   color: var(--pwb-text);
   font-size: 12px;
@@ -1830,7 +1843,7 @@ html { color-scheme: light !important; }
   min-height: 0;
   border-radius: 14px;
   overflow: hidden;
-  border: 1px solid var(--pwb-border);
+  border: 1px solid rgba(20, 20, 30, 0.06);
   background: #5b6472;
 }
 .dsh-pwb-office-ed-del {
@@ -1850,7 +1863,7 @@ html { color-scheme: light !important; }
 .dsh-pwb-office-ed-btn {
   padding: 7px 14px;
   border-radius: 10px;
-  border: 1px solid var(--pwb-border);
+  border: 1px solid rgba(20, 20, 30, 0.06);
   background: var(--pwb-card);
   color: var(--pwb-text);
   font-size: 12.5px;
@@ -1874,7 +1887,7 @@ html { color-scheme: light !important; }
   min-width: 130px;
   padding: 12px 14px;
   border-radius: 12px;
-  border: 1px solid var(--pwb-border);
+  border: 1px solid rgba(20, 20, 30, 0.06);
   background: var(--pwb-card);
 }
 .dsh-pwb-office-dp-metric-value { font-size: 22px; font-weight: 750; color: var(--pwb-text); line-height: 1.15; }
@@ -1888,7 +1901,7 @@ html { color-scheme: light !important; }
 .dsh-pwb-office-dp-col {
   flex: 1;
   min-width: 0;
-  border: 1px solid var(--pwb-border);
+  border: 1px solid rgba(20, 20, 30, 0.06);
   border-radius: 12px;
   background: var(--pwb-card);
   padding: 12px 14px;
