@@ -1494,6 +1494,33 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         send(res, 200, { ok: true, notes: loadMemoryNotes(memChar) });
         return;
       }
+      // office/workdir GET ?path=<绝对路径>：浏览目录树选派活工作区（只读、仅列子目录；缺省 = 主目录，路径不存在回退主目录）
+      if (officeEndpoint === 'office/workdir' && officeMethod === 'GET') {
+        const raw = new URL(req.url ?? '/', 'http://localhost').searchParams.get('path') ?? '';
+        let dir = homedir();
+        if (raw.startsWith('/')) {
+          try {
+            const real = fs.realpathSync(raw);
+            if (fs.statSync(real).isDirectory()) dir = real;
+          } catch {
+            /* 不存在/不可读则留在主目录 */
+          }
+        }
+        try {
+          const dirs = fs
+            .readdirSync(dir, { withFileTypes: true })
+            .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+            .slice(0, 200)
+            .map((e) => ({ name: e.name, path: `${dir === '/' ? '' : dir}/${e.name}` }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
+          const trimmed = dir.replace(/\/+$/, '');
+          const parent = trimmed === '' ? null : trimmed.replace(/\/[^/]+$/, '') || '/';
+          send(res, 200, { ok: true, path: dir, home: homedir(), parent, dirs });
+        } catch (err) {
+          send(res, 500, { ok: false, error: { code: 'list-failed', message: err instanceof Error ? err.message : '目录读取失败' } });
+        }
+        return;
+      }
       if (officeMethod !== 'POST') {
         send(res, 405, { ok: false, error: { code: 'method-not-allowed', message: '仅支持 POST' } });
         return;
