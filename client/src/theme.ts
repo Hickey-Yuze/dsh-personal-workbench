@@ -1834,6 +1834,9 @@ html { color-scheme: light !important; }
   cursor: pointer;
 }
 .dsh-pwb-office-cwd-pick-use:disabled { opacity: 0.5; cursor: default; }
+/* 滚动区独立合成层：避免与高频重绘的 canvas/流式动画相邻时出现内容重影发糊 */
+.dsh-pwb-office-chat-body { transform: translateZ(0); }
+.dsh-pwb-office-cwd-picker-list { transform: translateZ(0); }
 .dsh-pwb-office-chat-send {
   padding: 8px 14px;
   border-radius: 10px;

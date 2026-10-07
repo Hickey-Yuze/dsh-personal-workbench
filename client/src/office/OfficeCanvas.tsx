@@ -71,21 +71,29 @@ export function OfficeCanvas({
     return () => canvas.removeEventListener('wheel', handler);
   }, [applyView]);
 
-  /* rAF 渲染循环：tick 引擎 + 画一帧（view 从 ref 取，循环不因缩放/平移重建） */
+  /* rAF 渲染循环：tick 引擎 + 画一帧（view 从 ref 取，循环不因缩放/平移重建）。
+   * 无人在走动时降到 30fps：呼吸/冒泡动画依旧平滑，合成器压力减半，
+   * 避免 60fps 满帧重绘把右侧聊天滚动区拖出重影/发糊（GPU 合成纹理复用瑕疵）。 */
   useEffect(() => {
     const canvas = canvasRef.current;
     if (canvas === null) return;
     let raf = 0;
     let last = performance.now();
+    let acc = 0;
     const loop = (now: number): void => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       engine.tick(dt);
-      renderOffice(canvas, engine.map.furniture, engine.chars, engine.time, {
-        bubbles: engine.bubbles,
-        meeting: engine.meetingActive,
-        view: viewRef.current,
-      });
+      const moving = engine.chars.some((c) => c.state === 'walking' || c.state === 'visit');
+      acc += dt;
+      if (moving || acc >= 1 / 30) {
+        acc = 0;
+        renderOffice(canvas, engine.map.furniture, engine.chars, engine.time, {
+          bubbles: engine.bubbles,
+          meeting: engine.meetingActive,
+          view: viewRef.current,
+        });
+      }
       raf = window.requestAnimationFrame(loop);
     };
     raf = window.requestAnimationFrame(loop);
