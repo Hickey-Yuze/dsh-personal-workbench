@@ -459,7 +459,10 @@ export function OfficeEditor({ onSave, onCancel }: OfficeEditorProps): ReactElem
   };
 
   return (
-    <div className="dsh-pwb-office-ed" style={{ display: 'flex', gap: 12, width: '100%', alignItems: 'stretch' }}>
+    <div
+      className="dsh-pwb-office-ed"
+      style={{ display: 'flex', gap: 12, width: '100%', alignItems: 'stretch', flex: '1 1 0%', minHeight: 0, alignSelf: 'stretch' }}
+    >
       {/* 左侧家具目录 */}
       <aside
         className="dsh-pwb-office-ed-catalog"
@@ -510,7 +513,7 @@ export function OfficeEditor({ onSave, onCancel }: OfficeEditorProps): ReactElem
       </aside>
 
       {/* 右侧：工具条 + 画布 + 底部按钮 */}
-      <div className="dsh-pwb-office-ed-main" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div className="dsh-pwb-office-ed-main" style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div className="dsh-pwb-office-ed-toolbar" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
             type="button"

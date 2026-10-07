@@ -420,7 +420,7 @@ function wrapBubbleText(ctx: CanvasRenderingContext2D, text: string, maxW: numbe
   return [l1, l2];
 }
 
-/** 头顶气泡：白底圆角矩形 + 小尾巴 + 深色字；remaining<0.4s 线性渐隐（秒）。 */
+/** 头顶气泡：白底圆角矩形 + 小尾巴 + 深色字；挂在头部侧边（不遮姓名牌），右侧放不下翻左侧；remaining<0.4s 线性渐隐（秒）。 */
 function drawBubble(
   ctx: CanvasRenderingContext2D,
   c: Character,
@@ -429,6 +429,7 @@ function drawBubble(
   ox: number,
   oy: number,
   remaining: number,
+  cw: number,
 ): void {
   const alpha = Math.max(0, Math.min(1, remaining / 0.4));
   if (alpha <= 0) return;
@@ -444,20 +445,45 @@ function drawBubble(
   const pad = fs * 0.45;
   const bw = Math.max(w1, w2) + pad * 2;
   const bh = pad * 2 + lineH * (l2 ? 2 : 1);
-  const bx = px - bw / 2;
-  const by = py - s * 0.6 - bh;
+  // 侧挂：默认头右侧（尾巴指向头顶右侧），贴右缘翻左侧，两侧都放不下再回到头顶高位
+  const gap = s * 0.62;
+  const tx = px + s * 0.34;
+  const ty = py - s * 0.5;
+  let bx = px + gap;
+  let by = py - s * 0.9;
+  let side: 'right' | 'left' | 'top' = 'right';
+  if (bx + bw > cw - 4) {
+    bx = px - gap - bw;
+    side = bx >= 4 ? 'left' : 'top';
+    if (side === 'top') bx = px - bw / 2;
+  }
+  if (side === 'top') by = py - s * 1.55;
   ctx.save();
   ctx.globalAlpha = alpha;
-  // 尾巴（向下小三角，指向头顶；先画再压矩形保证衔接）
+  // 尾巴（指向头部；先画再压矩形保证衔接）
   ctx.fillStyle = '#ffffff';
-  ctx.beginPath();
-  ctx.moveTo(px - fs * 0.3, by + bh - 1);
-  ctx.lineTo(px + fs * 0.3, by + bh - 1);
-  ctx.lineTo(px, by + bh + fs * 0.45);
-  ctx.closePath();
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.16)';
-  ctx.stroke();
+  if (side === 'top') {
+    ctx.beginPath();
+    ctx.moveTo(px - fs * 0.3, by + bh - 1);
+    ctx.lineTo(px + fs * 0.3, by + bh - 1);
+    ctx.lineTo(px, by + bh + fs * 0.45);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.16)';
+    ctx.stroke();
+  } else {
+    const ex = side === 'right' ? bx : bx + bw;
+    const tipX = side === 'right' ? tx : px - s * 0.34;
+    const ey1 = Math.min(Math.max(ty - fs * 0.3, by + 4), by + bh - 4 - fs * 0.6);
+    ctx.beginPath();
+    ctx.moveTo(ex, ey1);
+    ctx.lineTo(ex, ey1 + fs * 0.6);
+    ctx.lineTo(tipX, ty);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.16)';
+    ctx.stroke();
+  }
   // 白底圆角矩形 + 底部 1px 阴影
   ctx.fillStyle = 'rgba(40,35,25,0.10)';
   rr(ctx, bx, by + 1.5, bw, bh, fs * 0.55);
@@ -467,12 +493,13 @@ function drawBubble(
   ctx.fill();
   ctx.strokeStyle = 'rgba(0,0,0,0.16)';
   ctx.stroke();
-  // 深色文字（居中）
+  // 深色文字（居中于气泡）
+  const btx = bx + bw / 2;
   ctx.fillStyle = '#333';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(l1, px, by + pad + lineH * 0.5);
-  if (l2) ctx.fillText(l2, px, by + pad + lineH * 1.5);
+  ctx.fillText(l1, btx, by + pad + lineH * 0.5);
+  if (l2) ctx.fillText(l2, btx, by + pad + lineH * 1.5);
   ctx.restore();
 }
 
@@ -731,7 +758,7 @@ export function renderOffice(
       if (!hasBubble(c)) continue;
       const b = bubbles.get(c.id);
       if (b === undefined) continue;
-      drawBubble(ctx, c, b.text, scale, ox, oy, b.until - time);
+      drawBubble(ctx, c, b.text, scale, ox, oy, b.until - time, cssW);
     }
   }
 }

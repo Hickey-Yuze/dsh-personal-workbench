@@ -74,7 +74,7 @@ export class OfficeEngine {
   /** 头顶气泡：charId → 文本 + 到期引擎时间（秒），tick 清到期。 */
   bubbles = new Map<string, { text: string; until: number }>();
   private desks: Furniture[] = [];
-  private coffee: Furniture | null = null;
+  private coffee: Furniture[] = [];
   private meetingUntil = 0;
   /** 会议散点分配表（charId → 目标格），散会清空。 */
   private meetingSpots = new Map<string, Vec>();
@@ -85,7 +85,7 @@ export class OfficeEngine {
     this.map = map ?? defaultMap();
     this.blocked = buildBlocked(this.map);
     this.desks = this.map.furniture.filter((f) => f.kind === 'desk');
-    this.coffee = this.map.furniture.find((f) => f.kind === 'coffee') ?? null;
+    this.coffee = this.map.furniture.filter((f) => f.kind === 'coffee');
     this.spawn();
   }
 
@@ -549,19 +549,23 @@ export class OfficeEngine {
   }
 
   private goCoffee(c: Character): boolean {
-    const cf = this.coffee;
-    if (cf === null) return false;
-    const use = { x: cf.x, y: cf.y + 1 }; // 咖啡机使用格 = 正下方
-    if (this.occupied(c, use.x, use.y)) return false;
-    if (c.cx === use.x && c.cy === use.y) {
-      c.state = 'coffee';
-      c.stateUntil = this.time + rand(5, 11);
-      this.mumble(c);
-      return true;
+    // 去最近的咖啡机：逐台算 BFS 路径取最短；站定在任何一台使用格上直接开喝
+    let best: Vec[] | null = null;
+    for (const cf of this.coffee) {
+      const use = { x: cf.x, y: cf.y + 1 }; // 咖啡机使用格 = 正下方
+      if (this.occupied(c, use.x, use.y)) continue;
+      if (c.cx === use.x && c.cy === use.y) {
+        c.state = 'coffee';
+        c.stateUntil = this.time + rand(5, 11);
+        this.mumble(c);
+        return true;
+      }
+      const path = this.path({ x: c.cx, y: c.cy }, use);
+      if (path.length === 0) continue;
+      if (best === null || path.length < best.length) best = path;
     }
-    const path = this.path({ x: c.cx, y: c.cy }, use);
-    if (path.length === 0) return false;
-    this.startWalk(c, path, 'coffee');
+    if (best === null) return false;
+    this.startWalk(c, best, 'coffee');
     return true;
   }
 
