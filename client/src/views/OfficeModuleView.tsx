@@ -149,6 +149,22 @@ export function OfficeModuleView(): ReactElement {
   const [workErr, setWorkErr] = useState('');
   const agentsDeadRef = useRef(false);
   const bubbledRef = useRef(new Map<string, string>());
+  /** 派活工作区：随 office/agent/start 传给宿主写进会话 header（宿主会话列表按项目归组，重启后会话仍归该项目）；
+   *  空 = 用户主目录。持久化 dsh-pwb:office_cwd_v1。 */
+  const [workCwd, setWorkCwd] = useState<string>(() => {
+    try {
+      return window.localStorage.getItem('dsh-pwb:office_cwd_v1') ?? '';
+    } catch {
+      return '';
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('dsh-pwb:office_cwd_v1', workCwd);
+    } catch {
+      /* 持久化失败不影响功能 */
+    }
+  }, [workCwd]);
 
   /* office/agents 轮询：2.5s；干活中的 NPC 把最新输出尾部冒泡到头顶 */
   useEffect(() => {
@@ -254,11 +270,19 @@ export function OfficeModuleView(): ReactElement {
         postAgent('office/agent/say', { npcId: chatTarget.id, text: t });
       } else {
         bubbledRef.current.delete(chatTarget.id);
-        postAgent('office/agent/start', { npcId: chatTarget.id, name: chatTarget.name, role: chatTarget.role, task: t });
+        // 派活带工作区：宿主 stat 校验目录，不存在回退主目录并继续
+        const cwd = workCwd.trim();
+        postAgent('office/agent/start', {
+          npcId: chatTarget.id,
+          name: chatTarget.name,
+          role: chatTarget.role,
+          task: t,
+          ...(cwd !== '' ? { cwd } : {}),
+        });
       }
       setChatInput('');
     },
-    [agentRows, chatTarget, postAgent],
+    [agentRows, chatTarget, postAgent, workCwd],
   );
 
   useEffect(() => {
@@ -790,6 +814,16 @@ export function OfficeModuleView(): ReactElement {
                     </div>
                   ))}
                 </div>
+                {chatTarget.kind === 'npc' && (
+                  <div className="dsh-pwb-office-chat-cwd">
+                    <span>工作区</span>
+                    <input
+                      value={workCwd}
+                      placeholder="派活前指定项目目录，如 /Users/yuze/gold-miner（子任务也落这里；留空 = 主目录）"
+                      onChange={(e) => setWorkCwd(e.target.value)}
+                    />
+                  </div>
+                )}
                 <div className="dsh-pwb-office-chat-input">
                   <input
                     value={chatInput}

@@ -180,6 +180,8 @@ type OfficeAgentEntry = {
   /** 派活方给出的验收结论（【验收结论】整行，≤200 字） */
   acceptance?: string;
   acceptanceAt?: number;
+  /** 会话工作目录（写进 session header 的 meta.cwd）；子任务派活与 autopilot 沿用同目录，宿主会话列表按项目归组 */
+  cwd?: string;
   startedAt: number;
   updatedAt: number;
 };
@@ -340,7 +342,9 @@ async function dispatchToColleague(parentId: string, parentName: string, colleag
     return;
   }
   try {
-    await officeSpawnAgent(ctl.ctx, ctl.log, colleagueId, colleague.name, colleague.role, task, undefined, {
+    // 子任务沿用派活方会话的工作区：老板在哪个目录派活，协助同事就在哪个目录干活
+    // （否则子会话落主目录，重启后宿主会话列表按项目归组时找不到）。
+    await officeSpawnAgent(ctl.ctx, ctl.log, colleagueId, colleague.name, colleague.role, task, officeAgents.get(parentId)?.entry.cwd, {
       level: 1,
       parentId,
       parentTask: task,
@@ -438,6 +442,7 @@ async function officeSpawnAgent(
       task,
       status: 'working',
       lastText: '',
+      cwd: agentCwd,
       startedAt: Date.now(),
       updatedAt: Date.now(),
       level: opts?.level ?? 0,
@@ -1916,7 +1921,8 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
       ctx,
       log: deps.log,
       isBusy: (id) => officeAgents.get(id)?.entry.status === 'working',
-      dispatch: (id, name, role, task) => officeSpawnAgent(ctx, deps.log, id, name, role, task),
+      // 微任务沿用该员工上次会话的工作区（老板派过活的目录），没派过活才落主目录
+      dispatch: (id, name, role, task) => officeSpawnAgent(ctx, deps.log, id, name, role, task, officeAgents.get(id)?.entry.cwd),
     });
     ctx.effect(() => stopOfficeAutopilot);
   } catch (err) {

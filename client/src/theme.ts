@@ -1708,6 +1708,31 @@ html { color-scheme: light !important; }
   outline: none;
 }
 .dsh-pwb-office-chat-input input:focus { border-color: rgba(0, 200, 120, 0.55); }
+/* 派活工作区行：工作区标签 + 目录输入（写进 agent 会话 header，宿主按项目归组会话） */
+.dsh-pwb-office-chat-cwd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 0;
+}
+.dsh-pwb-office-chat-cwd span {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--pwb-muted, #8a919c);
+}
+.dsh-pwb-office-chat-cwd input {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 5px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--pwb-border);
+  background: var(--pwb-card, #f6f7f9);
+  font-size: 11.5px;
+  color: var(--pwb-text);
+  outline: none;
+}
+.dsh-pwb-office-chat-cwd input:focus { border-color: rgba(0, 200, 120, 0.55); }
 .dsh-pwb-office-chat-send {
   padding: 8px 14px;
   border-radius: 10px;
