@@ -71,6 +71,27 @@ export function OfficeCanvas({
     return () => canvas.removeEventListener('wheel', handler);
   }, [applyView]);
 
+  /* rAF 渲染循环：tick 引擎 + 画一帧（view 从 ref 取，循环不因缩放/平移重建） */
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (canvas === null) return;
+    let raf = 0;
+    let last = performance.now();
+    const loop = (now: number): void => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      engine.tick(dt);
+      renderOffice(canvas, engine.map.furniture, engine.chars, engine.time, {
+        bubbles: engine.bubbles,
+        meeting: engine.meetingActive,
+        view: viewRef.current,
+      });
+      raf = window.requestAnimationFrame(loop);
+    };
+    raf = window.requestAnimationFrame(loop);
+    return () => window.cancelAnimationFrame(raf);
+  }, [engine]);
+
   const handlePointerDown = (e: ReactPointerEvent<HTMLCanvasElement>): void => {
     if (e.button !== 0) return;
     const v = viewRef.current ?? {};
