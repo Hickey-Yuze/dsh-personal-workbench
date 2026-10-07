@@ -114,9 +114,16 @@ export class OfficeEngine {
     }
   }
 
-  /** 延伸区感知的可走判定：地图内走 blocked，地图外看 arena 圈（延伸带全可走）。 */
+  /** 延伸区感知的可走判定：地图内走 blocked，但延伸开启的那一侧边框是「门口」；地图外看 arena 圈。 */
   private free(x: number, y: number): boolean {
-    if (x >= 0 && y >= 0 && x < MAP_W && y < MAP_H) return this.free(x, y);
+    if (x >= 0 && y >= 0 && x < MAP_W && y < MAP_H) {
+      if (this.blocked[y * MAP_W + x] === 0) return true;
+      if (y === 0 && this.arenaTop > 0) return true;
+      if (y === MAP_H - 1 && this.arenaBottom > 0) return true;
+      if (x === 0 && this.arenaLeft > 0) return true;
+      if (x === MAP_W - 1 && this.arenaRight > 0) return true;
+      return false;
+    }
     return (
       x >= -this.arenaLeft && x < MAP_W + this.arenaRight &&
       y >= -this.arenaTop && y < MAP_H + this.arenaBottom
