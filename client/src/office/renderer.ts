@@ -786,20 +786,33 @@ function renderTopDown(
   }
 }
 
-/* ═════════════ 等距 3D 渲染（场景 tab / mini widget；参考稿：iso 房间盒子 + 白家具 + 木地板） ═════════════ */
+/* ═════════ 等距 3D 渲染（软 3D 玩具风，对齐参考稿：白/灰房间 + 暖木托盘地板 + 纯白家具 + 玻璃隔断 + Q 版人物） ═════════ */
 
-const ISO_FLOOR_A = '#e2c497';
-const ISO_FLOOR_B = '#d6b788';
-const ISO_FLOOR_LINE = 'rgba(122,92,54,0.13)';
-const ISO_WALL_R = '#eef0f3';
-const ISO_WALL_L = '#e2e5ea';
+const ISO_BG = '#f6f7f8';
+const ISO_OUT_FLOOR = '#efe6d7';
+const ISO_FLOOR_A = '#dcbb8b';
+const ISO_FLOOR_B = '#d2af7d';
+const ISO_FLOOR_LINE = 'rgba(146,110,64,0.14)';
+const ISO_TRAY = '#ffffff';
+const ISO_TRAY_SIDE = '#e4e6e9';
+const ISO_WALL_R = '#f2f4f6';
+const ISO_WALL_L = '#e6eaee';
 const ISO_WALL_TOP = '#fbfcfd';
-const ISO_WALL_TRIM = '#d2d6dc';
-const ISO_BOX_TOP = '#f8f6f1';
-const ISO_BOX_LEFT = '#e3ded4';
-const ISO_BOX_RIGHT = '#cdc8bd';
-const ISO_CHAIR_TOP = '#f1f1ee';
-const ISO_CHAIR_SIDE = '#d3d3cf';
+const ISO_WALL_SKIRT = '#dbdfe4';
+const ISO_WHITE_TOP = '#ffffff';
+const ISO_WHITE_LEFT = '#edf0f2';
+const ISO_WHITE_RIGHT = '#d9dde2';
+const ISO_METAL = '#474e56';
+const ISO_SCREEN = '#2b3137';
+const ISO_SHADOW = 'rgba(88,78,62,0.15)';
+const ISO_LEAF_A = '#6cab5f';
+const ISO_LEAF_B = '#54904a';
+const ISO_LEAF_C = '#83c172';
+const ISO_POT = '#f6f7f8';
+const ISO_POT_SHADE = '#e0e3e6';
+const ISO_SKIN = '#f8d6b3';
+const ISO_PANTS = '#5c6570';
+const ISO_SHOE = '#f1f2f3';
 
 /** 每格半宽像素 k：格投影宽 2k、高 k（经典 2:1 等距）。 */
 function isoFit(cssW: number, cssH: number, zoom: number): number {
@@ -824,9 +837,21 @@ function isoPoly(ctx: CanvasRenderingContext2D, pts: Array<{ x: number; y: numbe
   ctx.closePath();
 }
 
+/** 柔和落地影：两层压扁椭圆，接近参考稿的低对比软影。 */
+function isoSoftShadow(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number, alpha = 0.15): void {
+  ctx.fillStyle = `rgba(88,78,62,${alpha.toFixed(3)})`;
+  ctx.beginPath();
+  ctx.ellipse(x, y, rx, rx * 0.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = `rgba(88,78,62,${(alpha * 0.55).toFixed(3)})`;
+  ctx.beginPath();
+  ctx.ellipse(x, y, rx * 0.68, rx * 0.34, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 /**
- * 等距长方体：底面 = 格矩形 (fx,fy,w,d)，高 hPx。
- * 画右前面、左前面、顶面（画家顺序），返回顶面中心投影点（供摆放物件）。
+ * 等距长方体：底面 = 格矩形 (fx,fy,w,d)，高 hPx；画左前面 → 右前面 → 顶面。
+ * 返回顶面中心投影点（供在其上摆物件）。
  */
 function isoBoxAt(
   ctx: CanvasRenderingContext2D,
@@ -846,15 +871,12 @@ function isoBoxAt(
   const c10 = isoCorner(ox, oy, k, fx + w, fy);
   const c11 = isoCorner(ox, oy, k, fx + w, fy + d);
   const c01 = isoCorner(ox, oy, k, fx, fy + d);
-  // 左前面（c01→c11）
   ctx.fillStyle = left;
   isoPoly(ctx, [c01, c11, { x: c11.x, y: c11.y - h }, { x: c01.x, y: c01.y - h }]);
   ctx.fill();
-  // 右前面（c11→c10）
   ctx.fillStyle = right;
   isoPoly(ctx, [c11, c10, { x: c10.x, y: c10.y - h }, { x: c11.x, y: c11.y - h }]);
   ctx.fill();
-  // 顶面
   ctx.fillStyle = top;
   isoPoly(ctx, [
     { x: c00.x, y: c00.y - h },
@@ -866,7 +888,7 @@ function isoBoxAt(
   return { x: (c00.x + c11.x) / 2, y: (c00.y + c11.y) / 2 - h };
 }
 
-/** 竖立平行四边形板（沿 gx 方向，底边在 gyBase，向上 hPx）：白板/玻璃隔断/椅背通用。 */
+/** 竖立平行四边形板（沿 gx 方向，底边在 gyBase，向上 hPx）。 */
 function isoSlabAlongX(
   ctx: CanvasRenderingContext2D,
   ox: number,
@@ -882,15 +904,17 @@ function isoSlabAlongX(
   isoPoly(ctx, [p1, p2, { x: p2.x, y: p2.y - h }, { x: p1.x, y: p1.y - h }]);
 }
 
-/** iso 底影（贴地椭圆，压扁 1/2）。 */
-function isoShadow(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number): void {
-  ctx.fillStyle = 'rgba(70,62,48,0.14)';
-  ctx.beginPath();
-  ctx.ellipse(x, y, rx, rx * 0.5, 0, 0, Math.PI * 2);
-  ctx.fill();
+/** 竖立四边形（任意底边两点 + 高度），玻璃隔断/靠背通用。 */
+function isoSlabAt(
+  ctx: CanvasRenderingContext2D,
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  h: number,
+): void {
+  isoPoly(ctx, [a, b, { x: b.x, y: b.y - h }, { x: a.x, y: a.y - h }]);
 }
 
-/** iso 静态层：木地板菱形网格 + 斑块 + 两面背墙 + 画布外框。 */
+/** iso 静态层：背景 + 延伸地板 + 房间托盘（白边+厚度）+ 木地板 + 两面墙。 */
 function buildIsoStaticLayer(pxW: number, pxH: number, dpr: number, cssW: number, cssH: number, view?: OfficeView): HTMLCanvasElement {
   const layer = document.createElement('canvas');
   layer.width = pxW;
@@ -903,7 +927,11 @@ function buildIsoStaticLayer(pxW: number, pxH: number, dpr: number, cssW: number
   const k = isoFit(cssW, cssH, v.zoom);
   const { ox, oy } = isoOrigin(cssW, cssH, k, v.panX, v.panY);
 
-  // 可见格范围：画布四角逆投影，外扩 2 格
+  // 背景（场景像摆在浅色台面上）
+  c.fillStyle = ISO_BG;
+  c.fillRect(0, 0, cssW, cssH);
+
+  // 延伸区淡木地板：铺满画布（地图外的通行区），比房间主体更淡
   const inv = (sx: number, sy: number): { gx: number; gy: number } => {
     const wx = sx - ox;
     const wy = sy - oy;
@@ -912,295 +940,429 @@ function buildIsoStaticLayer(pxW: number, pxH: number, dpr: number, cssW: number
     return { gx: (a + b) / 2, gy: (a - b) / 2 };
   };
   const corners = [inv(0, 0), inv(cssW, 0), inv(0, cssH), inv(cssW, cssH)];
-  const gxs = corners.map((p) => p.gx);
-  const gys = corners.map((p) => p.gy);
-  const x0 = Math.floor(Math.min(...gxs)) - 2;
-  const x1 = Math.ceil(Math.max(...gxs)) + 2;
-  const y0 = Math.floor(Math.min(...gys)) - 2;
-  const y1 = Math.ceil(Math.max(...gys)) + 2;
-
-  // 木地板：菱形双色 + 沿 gx 方向木纹线（参考稿暖木条）
-  for (let gy = y0; gy <= y1; gy++) {
-    for (let gx = x0; gx <= x1; gx++) {
+  const gxs = corners.map((pt) => pt.gx);
+  const gys = corners.map((pt) => pt.gy);
+  const gx0 = Math.floor(Math.min(...gxs)) - 1;
+  const gx1 = Math.ceil(Math.max(...gxs)) + 1;
+  const gy0 = Math.floor(Math.min(...gys)) - 1;
+  const gy1 = Math.ceil(Math.max(...gys)) + 1;
+  for (let gy = gy0; gy <= gy1; gy++) {
+    for (let gx = gx0; gx <= gx1; gx++) {
       const p00 = isoCorner(ox, oy, k, gx, gy);
       const p10 = isoCorner(ox, oy, k, gx + 1, gy);
       const p11 = isoCorner(ox, oy, k, gx + 1, gy + 1);
       const p01 = isoCorner(ox, oy, k, gx, gy + 1);
-      c.fillStyle = (gx + gy) % 2 === 0 ? ISO_FLOOR_A : ISO_FLOOR_B;
+      c.fillStyle = (gx + gy) % 2 === 0 ? ISO_OUT_FLOOR : '#eae0d0';
       isoPoly(c, [p00, p10, p11, p01]);
       c.fill();
-      c.strokeStyle = ISO_FLOOR_LINE;
-      c.lineWidth = 1;
-      c.beginPath();
-      c.moveTo(p00.x, p00.y);
-      c.lineTo(p10.x, p10.y);
-      c.stroke();
-      // 确定性斑块（同 2D 规则）：亮斑 / 暗斑
-      const t = patchTypeAt(gx, gy);
-      if (t === 1) {
-        c.fillStyle = 'rgba(255,255,255,0.30)';
-        const q = isoCorner(ox, oy, k, gx + 0.25, gy + 0.2);
-        isoPoly(c, [q, { x: q.x + k * 0.5, y: q.y + k * 0.25 }, { x: q.x, y: q.y + k * 0.5 }, { x: q.x - k * 0.5, y: q.y + k * 0.25 }]);
-        c.fill();
-      } else if (t === 2) {
-        c.fillStyle = 'rgba(140,105,60,0.14)';
-        const q = isoCorner(ox, oy, k, gx + 0.2, gy + 0.45);
-        isoPoly(c, [q, { x: q.x + k * 0.45, y: q.y + k * 0.22 }, { x: q.x, y: q.y + k * 0.44 }, { x: q.x - k * 0.45, y: q.y + k * 0.22 }]);
-        c.fill();
-      }
     }
   }
 
-  // 两面背墙：右后墙沿 gy=0（corner(0,0)→corner(W,0)），左后墙沿 gx=0（稍暗）；高 3k
-  const WALL_H = k * 3;
-  const wBase0 = isoCorner(ox, oy, k, 0, 0);
-  const wBaseW = isoCorner(ox, oy, k, MAP_W, 0);
-  const wBaseH = isoCorner(ox, oy, k, 0, MAP_H);
-  // 右后墙（面向左下）
-  c.fillStyle = ISO_WALL_R;
-  isoPoly(c, [wBase0, wBaseW, { x: wBaseW.x, y: wBaseW.y - WALL_H }, { x: wBase0.x, y: wBase0.y - WALL_H }]);
-  c.fill();
-  // 左后墙（面向右下）
-  c.fillStyle = ISO_WALL_L;
-  isoPoly(c, [wBase0, wBaseH, { x: wBaseH.x, y: wBaseH.y - WALL_H }, { x: wBase0.x, y: wBase0.y - WALL_H }]);
-  c.fill();
-  // 墙顶高光条 + 底部踢脚线
-  c.strokeStyle = ISO_WALL_TOP;
-  c.lineWidth = Math.max(2, k * 0.14);
+  // 房间外软影（把房间从背景里「托起」）
+  const roomMid = isoCorner(ox, oy, k, MAP_W / 2, MAP_H / 2);
+  c.fillStyle = 'rgba(88,78,62,0.10)';
   c.beginPath();
-  c.moveTo(wBaseH.x, wBaseH.y - WALL_H);
-  c.lineTo(wBase0.x, wBase0.y - WALL_H);
-  c.lineTo(wBaseW.x, wBaseW.y - WALL_H);
-  c.stroke();
-  c.strokeStyle = ISO_WALL_TRIM;
-  c.lineWidth = Math.max(1.5, k * 0.08);
-  c.beginPath();
-  c.moveTo(wBaseH.x, wBaseH.y - 1);
-  c.lineTo(wBase0.x, wBase0.y - 1);
-  c.lineTo(wBaseW.x, wBaseW.y - 1);
-  c.stroke();
+  c.ellipse(roomMid.x, roomMid.y + k * 0.5, k * (MAP_W + MAP_H) * 0.34, k * (MAP_W + MAP_H) * 0.13, 0, 0, Math.PI * 2);
+  c.fill();
 
-  // 画布圆角外框（同 2D，柔和收边）
-  const fr = Math.max(6, k * 0.5);
-  c.fillStyle = 'rgba(70,62,48,0.08)';
-  rr(c, 1.5, 3, cssW - 3, cssH - 3, fr);
+  // 房间托盘：白色外围（0.34 格宽）+ 台基厚度
+  const TRAY = 0.34;
+  const trayPts = [
+    isoCorner(ox, oy, k, -TRAY, -TRAY),
+    isoCorner(ox, oy, k, MAP_W + TRAY, -TRAY),
+    isoCorner(ox, oy, k, MAP_W + TRAY, MAP_H + TRAY),
+    isoCorner(ox, oy, k, -TRAY, MAP_H + TRAY),
+  ];
+  const trayThick = k * 0.26;
+  // 台基侧面（下缘两条边向下延伸）
+  c.fillStyle = ISO_TRAY_SIDE;
+  isoPoly(c, [trayPts[3] as { x: number; y: number }, trayPts[2] as { x: number; y: number }, { x: (trayPts[2] as { x: number; y: number }).x, y: (trayPts[2] as { x: number; y: number }).y + trayThick }, { x: (trayPts[3] as { x: number; y: number }).x, y: (trayPts[3] as { x: number; y: number }).y + trayThick }]);
   c.fill();
-  const lw = Math.max(1.5, k * 0.06);
-  c.strokeStyle = 'rgba(122,112,92,0.30)';
-  c.lineWidth = lw;
-  rr(c, lw / 2, lw / 2, cssW - lw, cssH - lw, fr);
+  c.fillStyle = '#d3d7db';
+  isoPoly(c, [{ x: (trayPts[2] as { x: number; y: number }).x, y: (trayPts[2] as { x: number; y: number }).y }, { x: (trayPts[1] as { x: number; y: number }).x, y: (trayPts[1] as { x: number; y: number }).y }, { x: (trayPts[1] as { x: number; y: number }).x, y: (trayPts[1] as { x: number; y: number }).y + trayThick }, { x: (trayPts[2] as { x: number; y: number }).x, y: (trayPts[2] as { x: number; y: number }).y + trayThick }]);
+  c.fill();
+  // 托盘面
+  c.fillStyle = ISO_TRAY;
+  isoPoly(c, trayPts);
+  c.fill();
+
+  // 房间木地板：沿 gy 行铺木条（参考稿是长条木地板）
+  for (let gy = 0; gy < MAP_H; gy++) {
+    const p0 = isoCorner(ox, oy, k, 0, gy);
+    const p1 = isoCorner(ox, oy, k, MAP_W, gy);
+    const p2 = isoCorner(ox, oy, k, MAP_W, gy + 1);
+    const p3 = isoCorner(ox, oy, k, 0, gy + 1);
+    c.fillStyle = gy % 2 === 0 ? ISO_FLOOR_A : ISO_FLOOR_B;
+    isoPoly(c, [p0, p1, p2, p3]);
+    c.fill();
+    // 板缝
+    c.strokeStyle = ISO_FLOOR_LINE;
+    c.lineWidth = 1;
+    c.beginPath();
+    c.moveTo(p0.x, p0.y);
+    c.lineTo(p1.x, p1.y);
+    c.stroke();
+    // 木板短缝（按格错位）
+    const segs = 8;
+    for (let i = 0; i < segs; i++) {
+      const t = (i + ((gy * 3) % segs) / segs) / segs;
+      if (t <= 0 || t >= 1) continue;
+      const a = isoCorner(ox, oy, k, MAP_W * t, gy);
+      const b = isoCorner(ox, oy, k, MAP_W * t, gy + 1);
+      c.strokeStyle = 'rgba(146,110,64,0.10)';
+      c.beginPath();
+      c.moveTo(a.x, a.y);
+      c.lineTo(b.x, b.y);
+      c.stroke();
+    }
+  }
+
+  // 两面墙：右后墙（gy=0）+ 左后墙（gx=0），墙高 3.1k，带墙顶厚度与踢脚
+  const WALL_H = k * 3.1;
+  const thick = { x: k * 0.16, y: -k * 0.08 };
+  const w00 = isoCorner(ox, oy, k, 0, 0);
+  const wW0 = isoCorner(ox, oy, k, MAP_W, 0);
+  const w0H = isoCorner(ox, oy, k, 0, MAP_H);
+  // 右后墙面
+  c.fillStyle = ISO_WALL_R;
+  isoPoly(c, [w00, wW0, { x: wW0.x, y: wW0.y - WALL_H }, { x: w00.x, y: w00.y - WALL_H }]);
+  c.fill();
+  // 左后墙面
+  c.fillStyle = ISO_WALL_L;
+  isoPoly(c, [w00, w0H, { x: w0H.x, y: w0H.y - WALL_H }, { x: w00.x, y: w00.y - WALL_H }]);
+  c.fill();
+  // 墙顶厚度（右后墙顶 + 左后墙顶）
+  c.fillStyle = ISO_WALL_TOP;
+  const t00 = { x: w00.x, y: w00.y - WALL_H };
+  const tW0 = { x: wW0.x, y: wW0.y - WALL_H };
+  const t0H = { x: w0H.x, y: w0H.y - WALL_H };
+  isoPoly(c, [t00, tW0, { x: tW0.x + thick.x, y: tW0.y + thick.y }, { x: t00.x + thick.x, y: t00.y + thick.y }]);
+  c.fill();
+  isoPoly(c, [t00, t0H, { x: t0H.x + thick.x, y: t0H.y + thick.y }, { x: t00.x + thick.x, y: t00.y + thick.y }]);
+  c.fill();
+  // 墙顶高光 + 墙面下缘踢脚
+  c.strokeStyle = 'rgba(255,255,255,0.9)';
+  c.lineWidth = Math.max(1.5, k * 0.06);
+  c.beginPath();
+  c.moveTo(t0H.x, t0H.y);
+  c.lineTo(t00.x, t00.y);
+  c.lineTo(tW0.x, tW0.y);
+  c.stroke();
+  c.strokeStyle = ISO_WALL_SKIRT;
+  c.lineWidth = Math.max(2, k * 0.1);
+  c.beginPath();
+  c.moveTo(w0H.x, w0H.y - k * 0.05);
+  c.lineTo(w00.x, w00.y - k * 0.05);
+  c.lineTo(wW0.x, wW0.y - k * 0.05);
   c.stroke();
   return layer;
 }
 
-/* ───────────── iso 家具 ───────────── */
+/* ───────────── iso 家具（纯白软 3D 风） ───────────── */
 
+/** 白色办公椅：五星脚 + 座垫 + 靠背（参考稿同款）。 */
+function isoDrawChair(ctx: CanvasRenderingContext2D, ox: number, oy: number, k: number, cx: number, cy: number): void {
+  const foot = isoCorner(ox, oy, k, cx + 0.5, cy + 0.5);
+  // 五星脚 + 轮
+  ctx.strokeStyle = '#b9bdc2';
+  ctx.lineWidth = Math.max(1.2, k * 0.05);
+  for (let i = 0; i < 5; i++) {
+    const ang = (Math.PI * 2 * i) / 5 - Math.PI / 2;
+    const ex = foot.x + Math.cos(ang) * k * 0.3;
+    const ey = foot.y + Math.sin(ang) * k * 0.16;
+    ctx.beginPath();
+    ctx.moveTo(foot.x, foot.y);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+    ctx.fillStyle = '#9aa0a7';
+    ctx.beginPath();
+    ctx.arc(ex, ey, Math.max(1, k * 0.04), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // 气压杆
+  ctx.fillStyle = '#c8ccd1';
+  ctx.fillRect(foot.x - k * 0.035, foot.y - k * 0.3, Math.max(1.5, k * 0.07), k * 0.3);
+  // 座垫
+  isoBoxAt(ctx, ox, oy, k, cx + 0.16, cy + 0.2, 0.68, 0.58, k * 0.44, ISO_WHITE_TOP, ISO_WHITE_LEFT, '#dde0e4');
+  // 靠背（竖板，带轻微斜角）
+  const b0 = isoCorner(ox, oy, k, cx + 0.2, cy + 0.76);
+  const b1 = isoCorner(ox, oy, k, cx + 0.8, cy + 0.76);
+  ctx.fillStyle = '#eef0f2';
+  isoSlabAt(ctx, { x: b0.x, y: b0.y - k * 0.42 }, { x: b1.x, y: b1.y - k * 0.42 }, k * 0.5);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  isoSlabAt(ctx, { x: b0.x, y: b0.y - k * 0.42 }, { x: b1.x, y: b1.y - k * 0.42 }, k * 0.1);
+  ctx.fill();
+}
+
+/** 白色办公桌 2×2：桌板 + 挡板 + 桌腿 + 显示器 + 键盘鼠标 + 笔筒 + 杯 + 椅。 */
 function isoDrawDesk(ctx: CanvasRenderingContext2D, f: Furniture, ox: number, oy: number, k: number, time: number): void {
-  const cFront = isoCorner(ox, oy, k, f.x + 1, f.y + 2);
-  isoShadow(ctx, cFront.x, cFront.y, k * 1.05);
-  // 桌腿（两个前角细柱）
-  const legH = k * 0.5;
-  ctx.strokeStyle = '#b8b2a6';
+  const X = f.x;
+  const Y = f.y;
+  const front = isoCorner(ox, oy, k, X + 1, Y + 2);
+  isoSoftShadow(ctx, front.x, front.y - k * 0.12, k * 1.2, 0.14);
+  // 桌腿（左右前角细柱）
+  ctx.strokeStyle = '#d7dade';
   ctx.lineWidth = Math.max(1.5, k * 0.07);
-  const legL = isoCorner(ox, oy, k, f.x + 0.12, f.y + 0.95);
-  const legR = isoCorner(ox, oy, k, f.x + 1.88, f.y + 0.95);
+  const legL = isoCorner(ox, oy, k, X + 0.1, Y + 0.88);
+  const legR = isoCorner(ox, oy, k, X + 1.9, Y + 0.88);
   ctx.beginPath();
   ctx.moveTo(legL.x, legL.y);
-  ctx.lineTo(legL.x, legL.y - legH);
+  ctx.lineTo(legL.x, legL.y - k * 0.52);
   ctx.moveTo(legR.x, legR.y);
-  ctx.lineTo(legR.x, legR.y - legH);
+  ctx.lineTo(legR.x, legR.y - k * 0.52);
   ctx.stroke();
-  // 桌板（2×1 顶行，厚 0.5k，白色顶面）
-  isoBoxAt(ctx, ox, oy, k, f.x, f.y, 2, 1, legH, ISO_BOX_TOP, ISO_BOX_LEFT, ISO_BOX_RIGHT);
-  // 显示器：立于桌板左半格，屏面（右前面）发光
-  const glow = 0.24 + 0.1 * Math.sin(time * 1.8 + f.x * 1.7 + f.y);
-  const monC = isoBoxAt(ctx, ox, oy, k, f.x + 0.25, f.y + 0.32, 0.62, 0.16, k * 0.4, '#3a414b', '#2e343c', '#2e343c');
-  // 屏幕发光面：显示器盒右前面内缩
-  const s1 = isoCorner(ox, oy, k, f.x + 0.31, f.y + 0.48);
-  const s2 = isoCorner(ox, oy, k, f.x + 0.81, f.y + 0.48);
-  ctx.fillStyle = `rgba(190,225,250,${(glow + 0.35).toFixed(3)})`;
-  isoPoly(ctx, [s1, s2, { x: s2.x, y: s2.y - k * 0.3 }, { x: s1.x, y: s1.y - k * 0.3 }]);
+  // 桌板（上排，白；前缘挡板由盒体侧面体现）
+  isoBoxAt(ctx, ox, oy, k, X, Y, 2, 1, k * 0.54, ISO_WHITE_TOP, ISO_WHITE_LEFT, ISO_WHITE_RIGHT);
+  // 桌板顶部高光
+  const tl = isoCorner(ox, oy, k, X + 0.05, Y + 0.05);
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.fillRect(tl.x, tl.y - k * 0.56, Math.max(1, k * 0.04), k * 0.2);
+  // 显示器：深灰壳 + 深屏 + 白支架（屏面朝左下）
+  const mon = isoBoxAt(ctx, ox, oy, k, X + 0.28, Y + 0.3, 0.66, 0.14, k * 0.42, '#3d444c', '#343a41', '#343a41');
+  const s1 = isoCorner(ox, oy, k, X + 0.33, Y + 0.44);
+  const s2 = isoCorner(ox, oy, k, X + 0.85, Y + 0.44);
+  ctx.fillStyle = ISO_SCREEN;
+  isoPoly(ctx, [s1, s2, { x: s2.x, y: s2.y - k * 0.32 }, { x: s1.x, y: s1.y - k * 0.32 }]);
   ctx.fill();
-  ctx.fillStyle = 'rgba(160,210,245,0.5)';
+  // 屏幕反光（呼吸感）
+  const glow = 0.10 + 0.05 * Math.sin(time * 1.6 + f.x * 1.3 + f.y);
+  ctx.fillStyle = `rgba(150,190,225,${glow.toFixed(3)})`;
   isoPoly(ctx, [s1, s2, { x: s2.x, y: s2.y - k * 0.12 }, { x: s1.x, y: s1.y - k * 0.12 }]);
   ctx.fill();
-  // 马克杯（桌板右侧）：小圆柱
-  const cup = isoCorner(ox, oy, k, f.x + 1.55, f.y + 0.45);
-  ctx.fillStyle = '#e8654f';
-  ctx.beginPath();
-  ctx.ellipse(cup.x, cup.y - k * 0.16, k * 0.09, k * 0.045, 0, 0, Math.PI * 2);
+  // 支架 + 底座
+  ctx.fillStyle = '#e8eaed';
+  ctx.fillRect(mon.x - k * 0.05, mon.y + k * 0.02, Math.max(2, k * 0.1), k * 0.2);
+  ctx.fillRect(mon.x - k * 0.16, mon.y + k * 0.2, Math.max(3, k * 0.32), Math.max(1.5, k * 0.05));
+  // 键盘 + 鼠标
+  const kb = isoCorner(ox, oy, k, X + 0.42, Y + 0.66);
+  ctx.fillStyle = '#f2f3f5';
+  isoPoly(ctx, [kb, { x: kb.x + k * 0.5, y: kb.y + k * 0.25 }, { x: kb.x + k * 0.62, y: kb.y + k * 0.19 }, { x: kb.x + k * 0.12, y: kb.y - k * 0.06 }]);
   ctx.fill();
-  ctx.fillRect(cup.x - k * 0.09, cup.y - k * 0.16, k * 0.18, k * 0.14);
-  ctx.beginPath();
-  ctx.ellipse(cup.x, cup.y - k * 0.02, k * 0.09, k * 0.045, 0, 0, Math.PI * 2);
+  ctx.fillStyle = '#e2e4e7';
+  isoPoly(ctx, [kb, { x: kb.x + k * 0.5, y: kb.y + k * 0.25 }, { x: kb.x + k * 0.5, y: kb.y + k * 0.29 }, { x: kb.x, y: kb.y + k * 0.04 }]);
   ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.4)';
-  ctx.fillRect(cup.x - k * 0.06, cup.y - k * 0.15, Math.max(1, k * 0.03), k * 0.12);
-  // 椅子（下排左格中心）：座垫小盒 + 椅背竖板（白椅）
-  const seat = isoBoxAt(ctx, ox, oy, k, f.x + 0.18, f.y + 1.25, 0.64, 0.5, k * 0.22, ISO_CHAIR_TOP, ISO_CHAIR_SIDE, ISO_CHAIR_SIDE);
-  ctx.strokeStyle = '#c4c4c0';
-  ctx.lineWidth = Math.max(1.5, k * 0.06);
+  ctx.fillStyle = '#f2f3f5';
   ctx.beginPath();
-  ctx.moveTo(seat.x, seat.y + k * 0.1);
-  ctx.lineTo(seat.x, seat.y + k * 0.34);
+  ctx.ellipse(kb.x + k * 0.78, kb.y + k * 0.24, k * 0.08, k * 0.05, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // 笔筒
+  const pen = isoCorner(ox, oy, k, X + 1.62, Y + 0.3);
+  ctx.fillStyle = '#eef0f2';
+  ctx.fillRect(pen.x - k * 0.07, pen.y - k * 0.18, k * 0.14, k * 0.18);
+  ctx.fillStyle = '#cfd3d8';
+  ctx.beginPath();
+  ctx.ellipse(pen.x, pen.y - k * 0.18, k * 0.07, k * 0.035, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#8d939b';
+  ctx.lineWidth = Math.max(1, k * 0.03);
+  ctx.beginPath();
+  ctx.moveTo(pen.x - k * 0.03, pen.y - k * 0.18);
+  ctx.lineTo(pen.x - k * 0.05, pen.y - k * 0.34);
+  ctx.moveTo(pen.x + k * 0.02, pen.y - k * 0.18);
+  ctx.lineTo(pen.x + k * 0.04, pen.y - k * 0.33);
   ctx.stroke();
-  isoSlabAlongX(ctx, ox, oy, k, f.x + 0.18, f.y + 1.72, 0.64, k * 0.5);
-  ctx.fillStyle = ISO_CHAIR_TOP;
+  // 马克杯
+  const cup = isoCorner(ox, oy, k, X + 1.2, Y + 0.62);
+  ctx.fillStyle = '#f4f5f6';
+  ctx.beginPath();
+  ctx.ellipse(cup.x, cup.y - k * 0.14, k * 0.085, k * 0.045, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = '#c9c9c5';
-  ctx.lineWidth = 1;
-  ctx.stroke();
+  ctx.fillRect(cup.x - k * 0.085, cup.y - k * 0.14, k * 0.17, k * 0.12);
+  ctx.beginPath();
+  ctx.ellipse(cup.x, cup.y - k * 0.02, k * 0.085, k * 0.045, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#d9b9a4';
+  ctx.beginPath();
+  ctx.ellipse(cup.x, cup.y - k * 0.14, k * 0.055, k * 0.03, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // 椅子（下排左格）
+  isoDrawChair(ctx, ox, oy, k, X, Y + 1);
 }
 
 function isoDrawWhiteboard(ctx: CanvasRenderingContext2D, f: Furniture, ox: number, oy: number, k: number): void {
-  const base = isoCorner(ox, oy, k, f.x + 1, f.y + 1.1);
-  isoShadow(ctx, base.x, base.y, k * 0.95);
-  // 支脚
-  ctx.strokeStyle = '#8b93a1';
+  const base = isoCorner(ox, oy, k, f.x + 1, f.y + 1.05);
+  isoSoftShadow(ctx, base.x, base.y, k * 0.95, 0.12);
+  // 支架腿
+  ctx.strokeStyle = '#c3c7cc';
   ctx.lineWidth = Math.max(1.5, k * 0.06);
-  const f1 = isoCorner(ox, oy, k, f.x + 0.15, f.y + 0.9);
-  const f2 = isoCorner(ox, oy, k, f.x + 1.85, f.y + 0.9);
+  const l1 = isoCorner(ox, oy, k, f.x + 0.2, f.y + 0.92);
+  const l2 = isoCorner(ox, oy, k, f.x + 1.8, f.y + 0.92);
   ctx.beginPath();
-  ctx.moveTo(f1.x, f1.y);
-  ctx.lineTo(f1.x, f1.y - k * 0.85);
-  ctx.moveTo(f2.x, f2.y);
-  ctx.lineTo(f2.x, f2.y - k * 0.85);
+  ctx.moveTo(l1.x, l1.y);
+  ctx.lineTo(l1.x, l1.y - k * 0.9);
+  ctx.moveTo(l2.x, l2.y);
+  ctx.lineTo(l2.x, l2.y - k * 0.9);
   ctx.stroke();
-  // 板面（2 格宽竖板）
-  isoSlabAlongX(ctx, ox, oy, k, f.x, f.y + 0.9, 2, k * 0.95);
-  ctx.fillStyle = '#5b6470';
+  // 板面：白底 + 浅灰边框
+  isoSlabAlongX(ctx, ox, oy, k, f.x - 0.02, f.y + 0.92, 2.04, k * 1.0);
+  ctx.fillStyle = '#dfe3e8';
   ctx.fill();
-  isoSlabAlongX(ctx, ox, oy, k, f.x + 0.06, f.y + 0.9, 1.88, k * 0.83);
+  isoSlabAlongX(ctx, ox, oy, k, f.x + 0.04, f.y + 0.92, 1.92, k * 0.9);
   ctx.fillStyle = '#fdfdfc';
   ctx.fill();
-  // 板书（沿板面方向的横线：蓝 + 红）
-  const line = (t0: number, t1: number, yUp: number, color: string): void => {
-    const a = isoCorner(ox, oy, k, f.x + t0, f.y + 0.88);
-    const b = isoCorner(ox, oy, k, f.x + t1, f.y + 0.88);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = Math.max(1.5, k * 0.06);
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y - yUp);
-    ctx.lineTo(b.x, b.y - yUp);
-    ctx.stroke();
+  // 板书（柔和色块，不用硬线）
+  const note = (t0: number, t1: number, yUp: number, color: string, th: number): void => {
+    const a = isoCorner(ox, oy, k, f.x + t0, f.y + 0.9);
+    const b = isoCorner(ox, oy, k, f.x + t1, f.y + 0.9);
+    ctx.fillStyle = color;
+    isoPoly(ctx, [a, b, { x: b.x, y: b.y - yUp }, { x: a.x, y: a.y - yUp }]);
+    ctx.fill();
   };
-  line(0.25, 0.75, k * 0.62, '#4a90d9');
-  line(0.25, 0.6, k * 0.45, '#4a90d9');
-  line(0.95, 1.35, k * 0.62, '#e14d4d');
-  line(0.95, 1.2, k * 0.45, '#e14d4d');
+  note(0.25, 0.72, k * 0.66, 'rgba(90,150,210,0.85)', k * 0.07);
+  note(0.25, 0.58, k * 0.5, 'rgba(90,150,210,0.55)', k * 0.07);
+  note(0.95, 1.35, k * 0.66, 'rgba(214,110,110,0.8)', k * 0.07);
+  note(0.95, 1.18, k * 0.5, 'rgba(214,110,110,0.5)', k * 0.07);
 }
 
 function isoDrawPlant(ctx: CanvasRenderingContext2D, f: Furniture, ox: number, oy: number, k: number): void {
-  const base = isoCorner(ox, oy, k, f.x + 0.5, f.y + 0.75);
-  isoShadow(ctx, base.x, base.y, k * 0.32);
-  // 花盆（梯形身 + 口沿）
-  ctx.fillStyle = POT_BODY;
+  const base = isoCorner(ox, oy, k, f.x + 0.5, f.y + 0.78);
+  isoSoftShadow(ctx, base.x, base.y, k * 0.34, 0.14);
+  // 白盆（梯形 + 口沿）
+  ctx.fillStyle = ISO_POT;
   ctx.beginPath();
-  ctx.moveTo(base.x - k * 0.2, base.y - k * 0.42);
-  ctx.lineTo(base.x + k * 0.2, base.y - k * 0.42);
-  ctx.lineTo(base.x + k * 0.14, base.y);
-  ctx.lineTo(base.x - k * 0.14, base.y);
+  ctx.moveTo(base.x - k * 0.21, base.y - k * 0.44);
+  ctx.lineTo(base.x + k * 0.21, base.y - k * 0.44);
+  ctx.lineTo(base.x + k * 0.15, base.y);
+  ctx.quadraticCurveTo(base.x, base.y + k * 0.06, base.x - k * 0.15, base.y);
   ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = POT_RIM;
+  ctx.fillStyle = ISO_POT_SHADE;
   ctx.beginPath();
-  ctx.ellipse(base.x, base.y - k * 0.42, k * 0.2, k * 0.09, 0, 0, Math.PI * 2);
+  ctx.ellipse(base.x, base.y - k * 0.44, k * 0.21, k * 0.085, 0, 0, Math.PI);
   ctx.fill();
-  // 叶片（三片大椭圆，不同角度）
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.ellipse(base.x, base.y - k * 0.44, k * 0.21, k * 0.085, 0, Math.PI, Math.PI * 2);
+  ctx.fill();
+  // 叶片：三片大阔叶放射（参考稿的龟背竹感）
   const leaf = (dx: number, dy: number, rw: number, rh: number, rot: number, color: string): void => {
+    ctx.save();
+    ctx.translate(base.x + dx, base.y - k * 0.55 + dy);
+    ctx.rotate(rot);
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.ellipse(base.x + dx, base.y - k * 0.62 + dy, rw, rh, rot, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, rw, rh, 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = Math.max(1, k * 0.02);
+    ctx.beginPath();
+    ctx.moveTo(0, -rh * 0.8);
+    ctx.lineTo(0, rh * 0.8);
+    ctx.stroke();
+    ctx.restore();
   };
-  leaf(-k * 0.22, -k * 0.1, k * 0.16, k * 0.34, -0.5, LEAF_BACK);
-  leaf(k * 0.2, -k * 0.06, k * 0.16, k * 0.36, 0.45, LEAF_MID);
-  leaf(0, -k * 0.22, k * 0.15, k * 0.4, 0, LEAF_FRONT);
-  leaf(-k * 0.05, -k * 0.14, k * 0.07, k * 0.18, -0.2, LEAF_LIT);
+  leaf(-k * 0.26, -k * 0.06, k * 0.17, k * 0.36, -0.62, ISO_LEAF_B);
+  leaf(k * 0.24, -k * 0.02, k * 0.17, k * 0.38, 0.55, ISO_LEAF_A);
+  leaf(0, -k * 0.24, k * 0.16, k * 0.42, 0.02, ISO_LEAF_C);
+  // 叶柄
+  ctx.strokeStyle = ISO_LEAF_B;
+  ctx.lineWidth = Math.max(1.2, k * 0.035);
+  ctx.beginPath();
+  ctx.moveTo(base.x, base.y - k * 0.44);
+  ctx.lineTo(base.x, base.y - k * 0.6);
+  ctx.stroke();
 }
 
 function isoDrawCoffee(ctx: CanvasRenderingContext2D, f: Furniture, ox: number, oy: number, k: number, time: number): void {
-  const base = isoCorner(ox, oy, k, f.x + 0.5, f.y + 0.8);
-  isoShadow(ctx, base.x, base.y, k * 0.36);
-  isoBoxAt(ctx, ox, oy, k, f.x + 0.16, f.y + 0.2, 0.68, 0.6, k * 0.55, '#77808f', '#5b6470', '#4b5563');
-  // 正面（右前面）出咖啡口 + 接杯台
-  const fr1 = isoCorner(ox, oy, k, f.x + 0.84, f.y + 0.66);
-  ctx.fillStyle = '#374151';
+  const base = isoCorner(ox, oy, k, f.x + 0.5, f.y + 0.82);
+  isoSoftShadow(ctx, base.x, base.y, k * 0.36, 0.14);
+  isoBoxAt(ctx, ox, oy, k, f.x + 0.18, f.y + 0.22, 0.64, 0.58, k * 0.62, '#f7f8f9', '#e3e6e9', '#cfd3d8');
+  // 面板 + 出水口（右前面）
+  const fp = isoCorner(ox, oy, k, f.x + 0.82, f.y + 0.64);
+  ctx.fillStyle = '#3f464e';
+  ctx.fillRect(fp.x - k * 0.16, fp.y - k * 0.5, Math.max(2, k * 0.16), k * 0.1);
+  ctx.fillRect(fp.x - k * 0.12, fp.y - k * 0.3, Math.max(1.5, k * 0.08), k * 0.14);
+  // 顶面杯 + 指示灯
+  ctx.fillStyle = '#f1f2f4';
   ctx.beginPath();
-  ctx.moveTo(fr1.x - k * 0.16, fr1.y - k * 0.4);
-  ctx.lineTo(fr1.x, fr1.y - k * 0.34);
-  ctx.lineTo(fr1.x, fr1.y - k * 0.16);
-  ctx.lineTo(fr1.x - k * 0.16, fr1.y - k * 0.22);
-  ctx.closePath();
+  ctx.ellipse(fp.x - k * 0.1, fp.y - k * 0.14, k * 0.07, k * 0.035, 0, 0, Math.PI * 2);
   ctx.fill();
-  // 指示灯（顶面）
-  const pulse = 0.3 + 0.25 * Math.sin(time * 2.4 + f.x);
-  const lamp = isoCorner(ox, oy, k, f.x + 0.3, f.y + 0.35);
-  ctx.fillStyle = `rgba(255,107,107,${pulse.toFixed(3)})`;
+  const pulse = 0.35 + 0.25 * Math.sin(time * 2.4 + f.x);
+  ctx.fillStyle = `rgba(240,120,110,${pulse.toFixed(3)})`;
   ctx.beginPath();
-  ctx.arc(lamp.x, lamp.y - k * 0.55, k * 0.06, 0, Math.PI * 2);
+  ctx.arc(fp.x - k * 0.05, fp.y - k * 0.62, Math.max(1.2, k * 0.045), 0, Math.PI * 2);
   ctx.fill();
 }
 
+/** 玻璃隔断（wall 家具）：深灰框 + 半透明玻璃 + 竖梃。 */
 function isoDrawWallSeg(ctx: CanvasRenderingContext2D, f: Furniture, ox: number, oy: number, k: number): void {
   const base = isoCorner(ox, oy, k, f.x + 0.5, f.y + 0.5);
-  isoShadow(ctx, base.x, base.y, k * 0.36);
-  // 玻璃板（沿 gx 方向，黑框 + 半透明玻璃）
-  isoSlabAlongX(ctx, ox, oy, k, f.x + 0.02, f.y + 0.5, 0.96, k * 1.1);
-  ctx.fillStyle = 'rgba(52,58,66,0.9)';
+  isoSoftShadow(ctx, base.x, base.y, k * 0.38, 0.12);
+  const a = isoCorner(ox, oy, k, f.x + 0.02, f.y + 0.5);
+  const b = isoCorner(ox, oy, k, f.x + 0.98, f.y + 0.5);
+  // 玻璃
+  ctx.fillStyle = 'rgba(206,222,232,0.45)';
+  isoSlabAt(ctx, a, b, k * 1.5);
   ctx.fill();
-  isoSlabAlongX(ctx, ox, oy, k, f.x + 0.08, f.y + 0.5, 0.84, k * 1.0);
-  ctx.fillStyle = 'rgba(188,208,222,0.5)';
+  // 玻璃反光斜条
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  isoPoly(ctx, [
+    { x: a.x + k * 0.12, y: a.y - k * 0.1 },
+    { x: a.x + k * 0.3, y: a.y - k * 0.1 },
+    { x: a.x + k * 0.12, y: a.y - k * 1.3 },
+    { x: a.x - k * 0.06, y: a.y - k * 1.3 },
+  ]);
   ctx.fill();
-  // 竖梃
-  const m1 = isoCorner(ox, oy, k, f.x + 0.36, f.y + 0.5);
-  const m2 = isoCorner(ox, oy, k, f.x + 0.64, f.y + 0.5);
-  ctx.strokeStyle = 'rgba(52,58,66,0.9)';
-  ctx.lineWidth = Math.max(1.5, k * 0.05);
+  // 框（四周 + 竖梃）
+  ctx.strokeStyle = '#4c535b';
+  ctx.lineWidth = Math.max(2, k * 0.09);
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y);
+  ctx.lineTo(b.x, b.y);
+  ctx.moveTo(a.x, a.y - k * 1.5);
+  ctx.lineTo(b.x, b.y - k * 1.5);
+  ctx.moveTo(a.x, a.y);
+  ctx.lineTo(a.x, a.y - k * 1.5);
+  ctx.moveTo(b.x, b.y);
+  ctx.lineTo(b.x, b.y - k * 1.5);
+  ctx.stroke();
+  ctx.lineWidth = Math.max(1.5, k * 0.06);
+  const m1 = isoCorner(ox, oy, k, f.x + 0.34, f.y + 0.5);
+  const m2 = isoCorner(ox, oy, k, f.x + 0.66, f.y + 0.5);
   ctx.beginPath();
   ctx.moveTo(m1.x, m1.y);
-  ctx.lineTo(m1.x, m1.y - k * 1.0);
+  ctx.lineTo(m1.x, m1.y - k * 1.5);
   ctx.moveTo(m2.x, m2.y);
-  ctx.lineTo(m2.x, m2.y - k * 1.0);
+  ctx.lineTo(m2.x, m2.y - k * 1.5);
   ctx.stroke();
 }
 
 function isoDrawMicrowave(ctx: CanvasRenderingContext2D, f: Furniture, ox: number, oy: number, k: number): void {
-  const base = isoCorner(ox, oy, k, f.x + 0.5, f.y + 0.8);
-  isoShadow(ctx, base.x, base.y, k * 0.36);
-  isoBoxAt(ctx, ox, oy, k, f.x + 0.12, f.y + 0.22, 0.76, 0.58, k * 0.42, '#f4f5f7', '#d9dce1', '#c2c6cd');
-  // 右前面：深色窗口 + 橙钮
-  const w1 = isoCorner(ox, oy, k, f.x + 0.88, f.y + 0.52);
-  ctx.fillStyle = '#3a4150';
-  ctx.beginPath();
-  ctx.moveTo(w1.x - k * 0.2, w1.y - k * 0.34);
-  ctx.lineTo(w1.x, w1.y - k * 0.28);
-  ctx.lineTo(w1.x, w1.y - k * 0.08);
-  ctx.lineTo(w1.x - k * 0.2, w1.y - k * 0.14);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = '#ff8a5c';
-  ctx.fillRect(w1.x - k * 0.05, w1.y - k * 0.26, Math.max(1.5, k * 0.05), k * 0.07);
+  const base = isoCorner(ox, oy, k, f.x + 0.5, f.y + 0.82);
+  isoSoftShadow(ctx, base.x, base.y, k * 0.36, 0.13);
+  isoBoxAt(ctx, ox, oy, k, f.x + 0.12, f.y + 0.24, 0.76, 0.56, k * 0.5, '#f8f9fa', '#e4e7ea', '#d0d4d9');
+  const w = isoCorner(ox, oy, k, f.x + 0.88, f.y + 0.56);
+  ctx.fillStyle = '#3d444c';
+  ctx.fillRect(w.x - k * 0.22, w.y - k * 0.4, Math.max(2, k * 0.2), k * 0.24);
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillRect(w.x - k * 0.19, w.y - k * 0.37, Math.max(1, k * 0.03), k * 0.18);
+  ctx.fillStyle = '#e6e9ec';
+  ctx.fillRect(w.x - k * 0.05, w.y - k * 0.4, Math.max(2, k * 0.05), k * 0.24);
 }
 
 function isoDrawFridge(ctx: CanvasRenderingContext2D, f: Furniture, ox: number, oy: number, k: number): void {
-  const base = isoCorner(ox, oy, k, f.x + 0.5, f.y + 0.8);
-  isoShadow(ctx, base.x, base.y, k * 0.36);
-  isoBoxAt(ctx, ox, oy, k, f.x + 0.18, f.y + 0.22, 0.64, 0.56, k * 1.0, '#e8ebef', '#c9d0d9', '#b4bcc6');
-  // 右前面门缝 + 双把手
-  const d1 = isoCorner(ox, oy, k, f.x + 0.82, f.y + 0.78);
-  ctx.strokeStyle = 'rgba(70,78,90,0.4)';
+  const base = isoCorner(ox, oy, k, f.x + 0.5, f.y + 0.82);
+  isoSoftShadow(ctx, base.x, base.y, k * 0.38, 0.14);
+  isoBoxAt(ctx, ox, oy, k, f.x + 0.16, f.y + 0.22, 0.68, 0.56, k * 1.15, '#f7f8f9', '#e2e5e9', '#ccd1d7');
+  const d = isoCorner(ox, oy, k, f.x + 0.84, f.y + 0.78);
+  ctx.strokeStyle = 'rgba(90,98,108,0.45)';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(d1.x - k * 0.22, d1.y - k * 0.5);
-  ctx.lineTo(d1.x, d1.y - k * 0.44);
+  ctx.moveTo(d.x - k * 0.24, d.y - k * 0.52);
+  ctx.lineTo(d.x, d.y - k * 0.46);
   ctx.stroke();
-  ctx.fillStyle = '#7c8593';
-  ctx.fillRect(d1.x - k * 0.07, d1.y - k * 0.88, Math.max(1.5, k * 0.045), k * 0.18);
-  ctx.fillRect(d1.x - k * 0.07, d1.y - k * 0.6, Math.max(1.5, k * 0.045), k * 0.3);
+  ctx.fillStyle = '#9aa1a9';
+  ctx.fillRect(d.x - k * 0.07, d.y - k * 0.98, Math.max(1.5, k * 0.045), k * 0.2);
+  ctx.fillRect(d.x - k * 0.07, d.y - k * 0.66, Math.max(1.5, k * 0.045), k * 0.32);
 }
 
-/* ───────────── iso 人物 / 气泡 ───────────── */
+/* ───────────── iso 人物（Q 版大头，软 3D 玩具风） ───────────── */
+
+/** 头发：从 c.hair 提亮成软 3D 观感（保留员工发色识别）。 */
+function isoHairColor(hair: string): string {
+  return hair === '' ? '#6b4a34' : hair;
+}
 
 function isoDrawChar(
   ctx: CanvasRenderingContext2D,
@@ -1216,125 +1378,169 @@ function isoDrawChar(
   const px = foot.x;
   const sitting = c.state === 'working' || c.state === 'coffee';
   const walking = c.state === 'walking';
-  const bob = walking ? Math.abs(Math.sin(time * 10 + c.phase)) * k * 0.07 : Math.sin(time * 2 + c.phase) * k * 0.015;
+  const bob = walking ? Math.abs(Math.sin(time * 10 + c.phase)) * k * 0.05 : Math.sin(time * 2 + c.phase) * k * 0.012;
   const bobN = walking ? Math.abs(Math.sin(time * 10 + c.phase)) : 0;
-  const bodyW = k * 0.5;
-  const bodyH = k * 0.36;
-  const headR = k * 0.21;
-  const legH = sitting ? 0 : k * 0.17;
-  const baseY = foot.y;
 
+  // 落地软影
+  const shadowK = 1 - bobN * 0.15;
+  ctx.fillStyle = 'rgba(88,78,62,0.20)';
+  ctx.beginPath();
+  ctx.ellipse(px, foot.y + k * 0.02, k * 0.3 * shadowK, k * 0.13 * shadowK, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // 自己：脚底绿圈
   if (c.isSelf) {
-    ctx.strokeStyle = 'rgba(0, 210, 106, 0.85)';
-    ctx.lineWidth = Math.max(1.5, k * 0.06);
+    ctx.strokeStyle = 'rgba(0, 200, 106, 0.9)';
+    ctx.lineWidth = Math.max(1.5, k * 0.055);
     ctx.beginPath();
-    ctx.ellipse(px, baseY + 1, k * 0.36, k * 0.16, 0, 0, Math.PI * 2);
+    ctx.ellipse(px, foot.y + k * 0.02, k * 0.38, k * 0.17, 0, 0, Math.PI * 2);
     ctx.stroke();
     ctx.lineWidth = 1;
   }
-  const shadowK = 1 - bobN * 0.15;
-  ctx.fillStyle = 'rgba(0,0,0,0.12)';
-  ctx.beginPath();
-  ctx.ellipse(px, baseY + 1, k * 0.26 * shadowK, k * 0.11 * shadowK, 0, 0, Math.PI * 2);
-  ctx.fill();
 
+  // 腿（Q 版短腿 + 白鞋）
+  const legH = sitting ? 0 : k * 0.2;
+  const bodyW = k * 0.5;
+  const bodyH = k * 0.42;
+  const headR = k * 0.3;
+  const baseY = foot.y;
   if (!sitting) {
     const swing = walking ? Math.sin(time * 10 + c.phase) * k * 0.08 : 0;
-    ctx.fillStyle = '#3a3f4a';
-    ctx.fillRect(px - bodyW * 0.38 + swing, baseY - legH, bodyW * 0.26, legH);
-    ctx.fillRect(px + bodyW * 0.12 - swing, baseY - legH, bodyW * 0.26, legH);
+    ctx.fillStyle = ISO_PANTS;
+    ctx.fillRect(px - bodyW * 0.36 + swing, baseY - legH, bodyW * 0.26, legH * 0.78);
+    ctx.fillRect(px + bodyW * 0.1 - swing, baseY - legH, bodyW * 0.26, legH * 0.78);
+    ctx.fillStyle = ISO_SHOE;
+    ctx.fillRect(px - bodyW * 0.4 + swing, baseY - legH * 0.24, bodyW * 0.34, legH * 0.24);
+    ctx.fillRect(px + bodyW * 0.06 - swing, baseY - legH * 0.24, bodyW * 0.34, legH * 0.24);
   }
 
+  // 身体（圆润）+ 两侧手臂
   const bodyTop = baseY - legH - bodyH + bob;
   ctx.fillStyle = c.color;
-  rr(ctx, px - bodyW / 2, bodyTop, bodyW, bodyH, k * 0.09);
+  rr(ctx, px - bodyW / 2, bodyTop, bodyW, bodyH, k * 0.16);
   ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.28)';
-  ctx.fillRect(px - bodyW / 2 + k * 0.04, bodyTop + 1, bodyW - k * 0.08, Math.max(1, k * 0.045));
+  ctx.fillStyle = 'rgba(255,255,255,0.22)';
+  rr(ctx, px - bodyW * 0.4, bodyTop + k * 0.04, bodyW * 0.8, bodyH * 0.28, k * 0.1);
+  ctx.fill();
+  // 手臂（略深）
+  ctx.fillStyle = c.color;
+  ctx.globalAlpha = 0.85;
+  rr(ctx, px - bodyW * 0.62, bodyTop + bodyH * 0.16, bodyW * 0.2, bodyH * 0.68, k * 0.09);
+  ctx.fill();
+  rr(ctx, px + bodyW * 0.42, bodyTop + bodyH * 0.16, bodyW * 0.2, bodyH * 0.68, k * 0.09);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  // 手
+  ctx.fillStyle = ISO_SKIN;
+  ctx.beginPath();
+  ctx.arc(px - bodyW * 0.52, bodyTop + bodyH * 0.84, k * 0.075, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(px + bodyW * 0.52, bodyTop + bodyH * 0.84, k * 0.075, 0, Math.PI * 2);
+  ctx.fill();
 
-  const headCy = bodyTop - headR * 0.85 + bob;
-  ctx.fillStyle = '#f5c99b';
+  // 头（Q 版大头）
+  const headCy = bodyTop - headR * 0.72 + bob;
+  ctx.fillStyle = ISO_SKIN;
   ctx.beginPath();
   ctx.arc(px, headCy, headR, 0, Math.PI * 2);
   ctx.fill();
-  // 头发：上半圆盖片
-  ctx.fillStyle = c.hair;
+  // 耳朵
   ctx.beginPath();
-  ctx.arc(px, headCy, headR + 0.5, Math.PI, Math.PI * 2);
+  ctx.arc(px - headR * 0.95, headCy + headR * 0.1, headR * 0.16, 0, Math.PI * 2);
+  ctx.arc(px + headR * 0.95, headCy + headR * 0.1, headR * 0.16, 0, Math.PI * 2);
+  ctx.fill();
+  // 头发：上半球盖 + 刘海
+  const hair = isoHairColor(c.hair);
+  ctx.fillStyle = hair;
+  ctx.beginPath();
+  ctx.arc(px, headCy, headR + k * 0.01, Math.PI, Math.PI * 2);
   ctx.closePath();
   ctx.fill();
-  const eyeShift = c.face * headR * 0.18;
-  ctx.fillStyle = '#2b2b2b';
-  const eye = Math.max(1, k * 0.045);
-  ctx.fillRect(px - headR * 0.32 + eyeShift, headCy + headR * 0.05, eye, eye * 1.4);
-  ctx.fillRect(px + headR * 0.32 - eye + eyeShift, headCy + headR * 0.05, eye, eye * 1.4);
-  ctx.fillStyle = 'rgba(232,140,120,0.4)';
-  ctx.fillRect(px + c.face * headR * 0.62 - eye * 0.5, headCy + headR * 0.28, eye, eye * 0.8);
+  ctx.beginPath();
+  ctx.ellipse(px, headCy - headR * 0.55, headR, headR * 0.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // 眼睛（朝向 face 偏移）+ 腮红 + 嘴
+  const eyeShift = c.face * headR * 0.1;
+  ctx.fillStyle = '#2c2a28';
+  const eyeR = Math.max(1.2, headR * 0.13);
+  ctx.beginPath();
+  ctx.arc(px - headR * 0.34 + eyeShift, headCy + headR * 0.12, eyeR, 0, Math.PI * 2);
+  ctx.arc(px + headR * 0.34 + eyeShift, headCy + headR * 0.12, eyeR, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(232,150,130,0.35)';
+  ctx.beginPath();
+  ctx.arc(px - headR * 0.62 + eyeShift, headCy + headR * 0.42, headR * 0.15, 0, Math.PI * 2);
+  ctx.arc(px + headR * 0.62 + eyeShift, headCy + headR * 0.42, headR * 0.15, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(120,90,80,0.5)';
+  ctx.lineWidth = Math.max(1, headR * 0.07);
+  ctx.beginPath();
+  ctx.arc(px + eyeShift, headCy + headR * 0.42, headR * 0.14, 0.2, Math.PI - 0.2);
+  ctx.stroke();
 
+  // 会议光环
   let haloTop = 0;
   if (c.state === 'meeting') {
-    const haloY = headCy - headR - k * 0.14 + Math.sin(time * 2.5 + c.phase) * k * 0.03;
-    ctx.strokeStyle = 'rgba(77,144,254,0.25)';
+    const haloY = headCy - headR - k * 0.12 + Math.sin(time * 2.5 + c.phase) * k * 0.03;
+    ctx.strokeStyle = 'rgba(77,144,254,0.3)';
     ctx.lineWidth = Math.max(2.5, k * 0.1);
     ctx.beginPath();
-    ctx.ellipse(px, haloY, k * 0.3, k * 0.12, 0, 0, Math.PI * 2);
+    ctx.ellipse(px, haloY, k * 0.32, k * 0.13, 0, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.strokeStyle = 'rgba(77,144,254,0.85)';
+    ctx.strokeStyle = 'rgba(77,144,254,0.9)';
     ctx.lineWidth = Math.max(1.2, k * 0.045);
     ctx.beginPath();
-    ctx.ellipse(px, haloY, k * 0.3, k * 0.12, 0, 0, Math.PI * 2);
+    ctx.ellipse(px, haloY, k * 0.32, k * 0.13, 0, 0, Math.PI * 2);
     ctx.stroke();
     ctx.lineWidth = 1;
     haloTop = haloY - k * 0.1;
   }
 
+  // 咖啡杯
   if (c.state === 'coffee') {
-    const cupW = Math.max(3, k * 0.14);
+    const cupW = Math.max(3, k * 0.15);
     const cupX = px + c.face * bodyW * 0.62 - cupW / 2;
-    const cupY = bodyTop + bodyH * 0.3;
-    ctx.fillStyle = '#ffffff';
-    rr(ctx, cupX, cupY, cupW, cupW * 0.85, cupW * 0.2);
+    const cupY = bodyTop + bodyH * 0.34;
+    ctx.fillStyle = '#fbfbfc';
+    rr(ctx, cupX, cupY, cupW, cupW * 0.9, cupW * 0.25);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
+    ctx.fillStyle = '#e7e9ec';
+    ctx.fillRect(cupX, cupY, cupW, cupW * 0.18);
     const steam = Math.sin(time * 3 + c.phase);
-    ctx.fillStyle = 'rgba(120,120,130,0.35)';
-    ctx.fillRect(cupX + cupW * 0.3 + steam * 1.2, cupY - cupW * 0.55, Math.max(1, cupW * 0.14), cupW * 0.4);
+    ctx.fillStyle = 'rgba(140,140,150,0.3)';
+    ctx.fillRect(cupX + cupW * 0.3 + steam * 1.2, cupY - cupW * 0.6, Math.max(1, cupW * 0.14), cupW * 0.45);
   }
 
   if (c.state === 'meeting' && !hasBubble) {
-    const efs = Math.min(12, Math.max(9, k * 0.3));
+    const efs = Math.min(12, Math.max(9, k * 0.32));
     ctx.font = `${efs}px sans-serif`;
     ctx.textAlign = 'center';
     const lift = haloTop > 0 ? headCy - haloTop + efs * 0.6 : 0;
-    ctx.fillText('💬', px, headCy - headR - efs * (showNames ? 2.4 : 0.4) - lift);
+    ctx.fillText('💬', px, headCy - headR - efs * (showNames ? 2.3 : 0.4) - lift);
     ctx.textAlign = 'left';
   }
 
+  // 名牌：无描边、柔影（软 3D 风）
   if (showNames) {
     const label = `${c.name}${c.isSelf ? '（我）' : ''}`;
     const fs = Math.min(12, Math.max(9, k * 0.3));
     ctx.font = `${fs}px -apple-system, "PingFang SC", sans-serif`;
     const tw = ctx.measureText(label).width;
-    const bx = px - tw / 2 - 4;
-    const by = headCy - headR - fs - 7;
-    ctx.fillStyle = 'rgba(40,35,25,0.10)';
-    rr(ctx, bx, by + 1.5, tw + 8, fs + 5, 4);
+    const bx = px - tw / 2 - 5;
+    const by = headCy - headR - fs - k * 0.24;
+    ctx.fillStyle = 'rgba(88,78,62,0.14)';
+    rr(ctx, bx, by + 1.5, tw + 10, fs + 6, (fs + 6) * 0.42);
     ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.94)';
-    rr(ctx, bx, by, tw + 8, fs + 5, 4);
+    ctx.fillStyle = 'rgba(255,255,255,0.96)';
+    rr(ctx, bx, by, tw + 10, fs + 6, (fs + 6) * 0.42);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(60,55,45,0.22)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    ctx.fillStyle = '#333';
-    ctx.fillText(label, px - tw / 2, by + fs + 1);
+    ctx.fillStyle = '#3a3a3c';
+    ctx.fillText(label, px - tw / 2, by + fs + 1.5);
   }
   return { headX: px, headY: headCy - headR };
 }
 
-/** iso 气泡：锚头顶点，默认头左侧，贴左缘翻右侧，两侧都放不下回头顶高位。 */
+/** iso 气泡：锚头顶点，默认挂左侧（不遮名牌），贴左缘翻右侧，两侧都放不下回头顶高位。 */
 function isoDrawBubble(ctx: CanvasRenderingContext2D, text: string, k: number, hx: number, hy: number, remaining: number, cw: number): void {
   const alpha = Math.max(0, Math.min(1, remaining / 0.4));
   if (alpha <= 0) return;
@@ -1345,53 +1551,50 @@ function isoDrawBubble(ctx: CanvasRenderingContext2D, text: string, k: number, h
   const w1 = ctx.measureText(l1).width;
   const w2 = l2 ? ctx.measureText(l2).width : 0;
   const lineH = fs * 1.3;
-  const pad = fs * 0.45;
+  const pad = fs * 0.5;
   const bw = Math.max(w1, w2) + pad * 2;
   const bh = pad * 2 + lineH * (l2 ? 2 : 1);
-  const gap = k * 0.62;
+  const gap = k * 0.6;
   let bx = hx - gap - bw;
-  let by = hy - bh + k * 0.1;
+  let by = hy - bh + k * 0.08;
   let side: 'right' | 'left' | 'top' = 'left';
   if (bx < 4) {
     bx = hx + gap;
     side = bx + bw <= cw - 4 ? 'right' : 'top';
     if (side === 'top') bx = hx - bw / 2;
   }
-  if (side === 'top') by = hy - bh - k * 0.55;
+  if (side === 'top') by = hy - bh - k * 0.5;
+  const radius = Math.min(bh, bw) * 0.42;
   ctx.save();
   ctx.globalAlpha = alpha;
+  // 尾巴
   ctx.fillStyle = '#ffffff';
   if (side === 'top') {
     ctx.beginPath();
     ctx.moveTo(hx - fs * 0.3, by + bh - 1);
     ctx.lineTo(hx + fs * 0.3, by + bh - 1);
-    ctx.lineTo(hx, by + bh + fs * 0.45);
+    ctx.lineTo(hx, by + bh + fs * 0.5);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.16)';
-    ctx.stroke();
   } else {
     const ex = side === 'left' ? bx + bw : bx;
-    const tipX = side === 'left' ? hx - k * 0.2 : hx + k * 0.2;
+    const tipX = side === 'left' ? hx - k * 0.16 : hx + k * 0.16;
     const ey1 = Math.min(Math.max(hy - fs * 0.3, by + 4), by + bh - 4 - fs * 0.6);
     ctx.beginPath();
     ctx.moveTo(ex, ey1);
     ctx.lineTo(ex, ey1 + fs * 0.6);
-    ctx.lineTo(tipX, hy - k * 0.05);
+    ctx.lineTo(tipX, hy - k * 0.04);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.16)';
-    ctx.stroke();
   }
-  ctx.fillStyle = 'rgba(40,35,25,0.10)';
-  rr(ctx, bx, by + 1.5, bw, bh, fs * 0.55);
+  // 气泡体：柔影 + 纯白（无描边）
+  ctx.fillStyle = 'rgba(88,78,62,0.16)';
+  rr(ctx, bx, by + 2, bw, bh, radius);
   ctx.fill();
   ctx.fillStyle = '#ffffff';
-  rr(ctx, bx, by, bw, bh, fs * 0.55);
+  rr(ctx, bx, by, bw, bh, radius);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.16)';
-  ctx.stroke();
-  ctx.fillStyle = '#333';
+  ctx.fillStyle = '#3a3a3c';
   ctx.textAlign = 'center';
   const btx = bx + bw / 2;
   ctx.fillText(l1, btx, by + pad + lineH * 0.5);
@@ -1432,7 +1635,7 @@ function renderIso(
   const { ox, oy } = isoOrigin(cssW, cssH, k, v.panX, v.panY);
   const showNames = opts?.showNames ?? k >= 13;
 
-  const staticKey = `iso:${pxW}x${pxH}@${dpr}@${v.zoom.toFixed(3)}@${Math.round(v.panX)}@${Math.round(v.panY)}`;
+  const staticKey = `iso3:${pxW}x${pxH}@${dpr}@${v.zoom.toFixed(3)}@${Math.round(v.panX)}@${Math.round(v.panY)}`;
   let cached = staticLayers.get(canvas);
   if (cached === undefined || cached.key !== staticKey) {
     cached = { key: staticKey, layer: buildIsoStaticLayer(pxW, pxH, dpr, cssW, cssH, opts?.view) };
@@ -1440,27 +1643,29 @@ function renderIso(
   }
   ctx.drawImage(cached.layer, 0, 0, cssW, cssH);
 
-  // 会议白板高亮（iso：白板板面外扩描边，呼吸）
+  // 会议白板高亮（板面外扩描边，呼吸）
   if (opts?.meeting === true) {
     const breath = 0.75 + 0.2 * Math.sin(time * 3);
     ctx.save();
     for (const f of furniture) {
       if (f.kind !== 'whiteboard') continue;
+      const a = isoCorner(ox, oy, k, f.x - 0.06, f.y + 0.9);
+      const b = isoCorner(ox, oy, k, f.x + 2.06, f.y + 0.9);
       ctx.strokeStyle = 'rgba(242, 153, 74, 0.95)';
       ctx.globalAlpha = breath;
-      ctx.lineWidth = Math.max(2, k * 0.1);
-      isoSlabAlongX(ctx, ox, oy, k, f.x - 0.06, f.y + 0.96, 2.12, k * 1.07);
+      ctx.lineWidth = Math.max(2, k * 0.09);
+      isoSlabAt(ctx, a, b, k * 1.04);
       ctx.stroke();
       ctx.strokeStyle = 'rgba(242, 153, 74, 1)';
-      ctx.globalAlpha = breath * 0.3;
-      ctx.lineWidth = Math.max(5, k * 0.22);
-      isoSlabAlongX(ctx, ox, oy, k, f.x - 0.06, f.y + 0.96, 2.12, k * 1.07);
+      ctx.globalAlpha = breath * 0.28;
+      ctx.lineWidth = Math.max(5, k * 0.2);
+      isoSlabAt(ctx, a, b, k * 1.04);
       ctx.stroke();
     }
     ctx.restore();
   }
 
-  // 画家算法：家具与人物按 (gx+gy) 深度混排；同深度人物在后（坐在椅前层次）
+  // 画家算法：家具与人物按 (gx+gy) 深度混排（人物 +0.01 后画，坐在椅前）
   type Renderable = { depth: number; kind: 'furn' | 'char'; f?: Furniture; c?: Character };
   const items: Renderable[] = [];
   for (const f of furniture) items.push({ depth: f.x + f.y, kind: 'furn', f });
@@ -1472,7 +1677,7 @@ function renderIso(
     const b = bubbles?.get(c.id);
     return b !== undefined && b.until > time;
   };
-  const bubbleAnchors = new Map<string, { headX: number; headY: number }>();
+  const anchors = new Map<string, { headX: number; headY: number }>();
   for (const it of items) {
     if (it.kind === 'furn' && it.f !== undefined) {
       const f = it.f;
@@ -1501,14 +1706,14 @@ function renderIso(
       }
     } else if (it.kind === 'char' && it.c !== undefined) {
       const anchor = isoDrawChar(ctx, it.c, ox, oy, k, time, showNames, hasBubble(it.c));
-      if (hasBubble(it.c)) bubbleAnchors.set(it.c.id, anchor);
+      if (hasBubble(it.c)) anchors.set(it.c.id, anchor);
     }
   }
 
   if (bubbles !== undefined && bubbles.size > 0) {
     for (const [id, b] of bubbles) {
       if (b.until <= time) continue;
-      const anchor = bubbleAnchors.get(id);
+      const anchor = anchors.get(id);
       if (anchor === undefined) continue;
       isoDrawBubble(ctx, b.text, k, anchor.headX, anchor.headY, b.until - time, cssW);
     }
