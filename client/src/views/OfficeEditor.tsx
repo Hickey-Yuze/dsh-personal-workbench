@@ -336,7 +336,7 @@ export function OfficeEditor({ onSave, onCancel }: OfficeEditorProps): ReactElem
         d === null
           ? furnRef.current
           : furnRef.current.map((f) => (f.id === d.id ? { ...f, x: d.cur.x, y: d.cur.y } : f));
-      renderOffice(canvas, drawList, [], time, { showNames: false });
+      renderOffice(canvas, drawList, [], time, { showNames: false, topDown: true });
       const ctx = canvas.getContext('2d');
       if (ctx === null) return;
       const { scale, ox, oy } = getLayout(canvas);
