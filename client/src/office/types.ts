@@ -9,7 +9,7 @@ export interface Vec {
   y: number;
 }
 
-export type FurnitureKind = 'desk' | 'whiteboard' | 'plant' | 'coffee';
+export type FurnitureKind = 'desk' | 'whiteboard' | 'plant' | 'coffee' | 'wall' | 'microwave' | 'fridge';
 
 export interface Furniture {
   id: string;

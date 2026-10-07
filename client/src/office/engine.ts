@@ -216,12 +216,16 @@ export class OfficeEngine {
    * 花名册新增的自定义员工进场景：优先分配工位（没被占的桌 → 没有空桌则确定性摆新桌），
    * 出生在工位椅格；id 已存在则忽略（重复调用幂等）。
    */
-  addRosterChar(id: string, name: string, role: string): void {
+  addRosterChar(id: string, name: string, role: string, preferredDeskId?: string): void {
     if (this.chars.some((c) => c.id === id)) return;
-    // 工位分配：优先复用没被占用的桌；没有空桌就在空地确定性摆一张新桌
+    // 工位分配：老板指定的桌优先（且没被别人占）→ 复用没被占用的桌；没有空桌就在空地确定性摆一张新桌
     // （扫描顺序固定 → 同一张花名册刷新后工位位置一致，不改动用户保存的地图）。
     const usedDeskIds = new Set(this.chars.map((c) => c.deskId).filter((d): d is string => d !== null));
-    let desk = this.map.furniture.find((f) => f.kind === 'desk' && !usedDeskIds.has(f.id));
+    let desk =
+      preferredDeskId !== undefined && preferredDeskId !== ''
+        ? this.map.furniture.find((f) => f.kind === 'desk' && f.id === preferredDeskId && !usedDeskIds.has(f.id))
+        : undefined;
+    if (desk === undefined) desk = this.map.furniture.find((f) => f.kind === 'desk' && !usedDeskIds.has(f.id));
     if (desk === undefined) desk = this.addAutoDesk(`desk-roster-${id}`);
     let spotX = -1;
     let spotY = -1;
@@ -267,6 +271,32 @@ export class OfficeEngine {
       deskId: desk?.id ?? null,
       phase: Math.random() * Math.PI * 2,
     });
+  }
+
+  /** 编辑卡工位下拉用：当前全部桌子（含自动摆的）。 */
+  listDesks(): Furniture[] {
+    return this.desks.slice();
+  }
+
+  /** 指定员工工位：deskId 空串 = 恢复自动分配（清 deskId）；非空 = 换到该桌，idle/working 的角色立即走过去。 */
+  assignDesk(charId: string, deskId: string): boolean {
+    const c = this.chars.find((x) => x.id === charId);
+    if (c === undefined) return false;
+    if (deskId === '') {
+      c.deskId = null;
+      return true;
+    }
+    const desk = this.map.furniture.find((f) => f.kind === 'desk' && f.id === deskId);
+    if (desk === undefined) return false;
+    c.deskId = desk.id;
+    if (c.state === 'idle' || c.state === 'working') {
+      const chair = deskChairCell(desk);
+      if (c.cx !== chair.x || c.cy !== chair.y) {
+        const path = this.path({ x: c.cx, y: c.cy }, chair);
+        if (path.length > 0) this.startWalk(c, path, 'work');
+      }
+    }
+    return true;
   }
 
   /**

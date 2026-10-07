@@ -12,8 +12,10 @@ import type { AgentRow, BuiltinOverride, MemoryNote, RosterEntry } from '../offi
 export type OfficeAgentPanelProps = {
   /** 派活入口：让老板切到该员工的聊天里派活（id 即 npcId，自定义员工为 custom-<序号>）。 */
   onOpenChat: (id: string, name: string, role: string) => void;
-  /** 编辑卡保存后回调（lead 用于同步场景 renameChar 与聊天标题）。 */
-  onBuiltinSaved?: (id: string, name?: string, role?: string) => void;
+  /** 编辑卡保存后回调（lead 用于同步场景 renameChar/assignDesk 与聊天标题）。 */
+  onBuiltinSaved?: (id: string, name?: string, role?: string, deskId?: string) => void;
+  /** 工位下拉选项（lead 从引擎实时取：id + 展示名）。 */
+  desks?: Array<{ id: string; label: string }>;
 };
 
 const POLL_MS = 2500;
@@ -71,7 +73,7 @@ function statusDot(row: AgentRow | undefined): { color: string; label: string } 
   return { color: '#d1d5db', label: '未派活' };
 }
 
-export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved }: OfficeAgentPanelProps): ReactElement {
+export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved, desks }: OfficeAgentPanelProps): ReactElement {
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [rosterErr, setRosterErr] = useState('');
   const [agentRows, setAgentRows] = useState<Record<string, AgentRow>>({});
@@ -85,7 +87,7 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved }: OfficeAgentPane
   const [handoffErr, setHandoffErr] = useState('');
   /** 编辑卡：展开的员工 id + 表单草稿 + 记忆区。 */
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [draft, setDraft] = useState({ name: '', role: '', persona: '', links: '' });
+  const [draft, setDraft] = useState({ name: '', role: '', persona: '', links: '', desk: '' });
   const [mem, setMem] = useState<{ loading: boolean; notes: MemoryNote[]; err: string }>({ loading: false, notes: [], err: '' });
   const [empErr, setEmpErr] = useState('');
   const [saving, setSaving] = useState(false);
@@ -161,7 +163,7 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved }: OfficeAgentPane
     (emp: { id: string; name: string; role: string }): void => {
       const ov = builtin?.[emp.id] ?? {};
       setExpandedId(emp.id);
-      setDraft({ name: ov.name ?? emp.name, role: ov.role ?? emp.role, persona: ov.persona ?? '', links: (ov.links ?? []).join('\n') });
+      setDraft({ name: ov.name ?? emp.name, role: ov.role ?? emp.role, persona: ov.persona ?? '', links: (ov.links ?? []).join('\n'), desk: ov.deskId ?? '' });
       setMem({ loading: true, notes: [], err: '' });
       setEmpErr('');
       setSavedHint('');
@@ -192,15 +194,23 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved }: OfficeAgentPane
     saveBuiltin(expandedId, {
       name,
       role,
+      deskId: draft.desk.trim(),
       ...(persona !== '' ? { persona } : {}),
       ...(links.length > 0 ? { links } : {}),
     })
       .then(() => {
         setBuiltin((prev) => ({
           ...(prev ?? {}),
-          [expandedId]: { ...(prev ?? {})[expandedId], name, role, ...(persona !== '' ? { persona } : {}), ...(links.length > 0 ? { links } : {}) },
+          [expandedId]: {
+            ...(prev ?? {})[expandedId],
+            name,
+            role,
+            ...(draft.desk.trim() !== '' ? { deskId: draft.desk.trim() } : {}),
+            ...(persona !== '' ? { persona } : {}),
+            ...(links.length > 0 ? { links } : {}),
+          },
         }));
-        onBuiltinSaved?.(expandedId, name, role);
+        onBuiltinSaved?.(expandedId, name, role, draft.desk.trim());
         setSavedHint('已保存 ✓');
         window.setTimeout(() => setSavedHint(''), 2500);
       })
@@ -323,6 +333,21 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved }: OfficeAgentPane
                     value={draft.links}
                     onChange={(e) => setDraft((d) => ({ ...d, links: e.target.value }))}
                   />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#374151' }}>
+                    工位
+                    <select
+                      value={draft.desk}
+                      onChange={(e) => setDraft((d) => ({ ...d, desk: e.target.value }))}
+                      style={{ flex: 1, minWidth: 0, padding: '5px 8px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12.5, background: '#fff', color: '#111827' }}
+                    >
+                      <option value="">自动分配</option>
+                      {(desks ?? []).map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <div className="dsh-pwb-office-emp-mem">
                     {mem.loading
                       ? '记忆加载中…'

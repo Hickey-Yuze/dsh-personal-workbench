@@ -314,9 +314,10 @@ export function OfficeModuleView(): ReactElement {
         if (dead) return;
         setRoster(res.roster);
         setBuiltinOverrides(res.builtin ?? {});
-        res.roster.forEach((r) => engine.addRosterChar(r.id, r.name, r.role));
+        res.roster.forEach((r) => engine.addRosterChar(r.id, r.name, r.role, res.builtin?.[r.id]?.deskId));
         for (const [id, ov] of Object.entries(res.builtin ?? {})) {
           engine.renameChar(id, ov.name, ov.role);
+          if (ov.deskId !== undefined) engine.assignDesk(id, ov.deskId);
         }
       })
       .catch(() => {
@@ -775,10 +776,20 @@ export function OfficeModuleView(): ReactElement {
                   setChatTarget({ kind: 'npc', id, name, role });
                   setChatOpen(true);
                 }}
-                onBuiltinSaved={(id, name, role) => {
-                  setBuiltinOverrides((prev) => ({ ...prev, [id]: { ...prev[id], ...(name !== undefined ? { name } : {}), ...(role !== undefined ? { role } : {}) } }));
+                onBuiltinSaved={(id, name, role, deskId) => {
+                  setBuiltinOverrides((prev) => ({
+                    ...prev,
+                    [id]: {
+                      ...prev[id],
+                      ...(name !== undefined ? { name } : {}),
+                      ...(role !== undefined ? { role } : {}),
+                      ...(deskId !== undefined ? { deskId: deskId !== '' ? deskId : undefined } : {}),
+                    },
+                  }));
                   engine.renameChar(id, name, role);
+                  if (deskId !== undefined) engine.assignDesk(id, deskId);
                 }}
+                desks={engine.listDesks().map((d, i) => ({ id: d.id, label: `工位${i + 1} · (${d.x},${d.y})` }))}
               />
               <div className="dsh-pwb-office-chat">
                 <div className="dsh-pwb-office-chat-head">

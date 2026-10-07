@@ -15,6 +15,9 @@ export const FURN_SIZE: Record<FurnitureKind, { w: number; h: number }> = {
   whiteboard: { w: 2, h: 1 },
   plant: { w: 1, h: 1 },
   coffee: { w: 1, h: 1 },
+  wall: { w: 1, h: 1 },
+  microwave: { w: 1, h: 1 },
+  fridge: { w: 1, h: 1 },
 };
 
 let furnSeq = 0;

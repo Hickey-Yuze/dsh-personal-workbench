@@ -1728,7 +1728,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         send(res, 200, { ok: true, from: { id: fromId, name: fromSlot.entry.name }, to: { id: toId, name: toSlot.entry.name } });
         return;
       }
-      // office/roster/builtin POST：员工属性覆盖（名称/职务/性格/同事链；内置六 NPC 与自定义员工通用）
+      // office/roster/builtin POST：员工属性覆盖（名称/职务/性格/同事链/工位；内置六 NPC 与自定义员工通用）
       if (officeEndpoint === 'office/roster/builtin') {
         const builtinId = typeof officeBody.id === 'string' ? officeBody.id.trim() : '';
         if (builtinId === '') {
@@ -1741,6 +1741,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
             role: officeBody.role,
             persona: officeBody.persona,
             links: officeBody.links,
+            deskId: officeBody.deskId,
           });
           send(res, 200, { ok: true, builtin });
         } catch (err) {

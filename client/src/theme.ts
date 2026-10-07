@@ -1771,7 +1771,7 @@ html { color-scheme: light !important; }
   flex-shrink: 0;
 }
 /* 地图编辑器 */
-.dsh-pwb-office-ed { display: flex; gap: 12px; align-items: stretch; }
+.dsh-pwb-office-ed { display: flex; gap: 12px; align-items: stretch; flex: 1; min-height: 0; width: 100%; }
 .dsh-pwb-office-ed-catalog {
   flex: 0 0 150px;
   display: flex;
@@ -1826,7 +1826,8 @@ html { color-scheme: light !important; }
 .dsh-pwb-office-ed-canvas-wrap {
   position: relative;
   width: 100%;
-  aspect-ratio: 40 / 12;
+  flex: 1;
+  min-height: 0;
   border-radius: 14px;
   overflow: hidden;
   border: 1px solid var(--pwb-border);

@@ -27,6 +27,8 @@ export type OfficeBuiltinOverride = {
   links?: string[];
   /** 自觉工作开关：开了不派活也自己找活干（autopilot）。 */
   autopilot?: boolean;
+  /** 指定工位：客户端地图里的桌子 id；空/缺省 = 自动分配。 */
+  deskId?: string;
 };
 
 /** 内置六名 NPC 的稳定身份（与客户端 client/src/office/engine.ts BUILTIN_STAFF 一致：npc-1..npc-6）。 */
@@ -84,6 +86,7 @@ export function loadOfficeRosterExt(): OfficeRosterExt {
           if (links.length > 0) clean.links = links;
         }
         if (o.autopilot === true) clean.autopilot = true;
+        if (typeof o.deskId === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(o.deskId.trim())) clean.deskId = o.deskId.trim();
         if (Object.keys(clean).length > 0) builtin[k] = clean;
       }
     }
@@ -116,7 +119,7 @@ function clampField(v: unknown, max: number): string | undefined {
  */
 export function upsertBuiltinOverride(
   id: string,
-  patch: { name?: unknown; role?: unknown; persona?: unknown; links?: unknown },
+  patch: { name?: unknown; role?: unknown; persona?: unknown; links?: unknown; deskId?: unknown },
 ): Record<string, OfficeBuiltinOverride> {
   if (!isValidCharId(id)) throw new Error('id 必须为合法员工 id');
   const ext = loadOfficeRosterExt();
@@ -145,6 +148,13 @@ export function upsertBuiltinOverride(
       .slice(0, 10);
     if (links.length === 0) delete cur.links;
     else cur.links = links;
+  }
+  if (patch.deskId !== undefined) {
+    if (typeof patch.deskId !== 'string') throw new Error('deskId 必须为字符串');
+    const deskId = patch.deskId.trim();
+    if (deskId === '') delete cur.deskId;
+    else if (!/^[A-Za-z0-9_-]{1,40}$/.test(deskId)) throw new Error('deskId 格式非法');
+    else cur.deskId = deskId;
   }
   if (Object.keys(cur).length > 0) ext.builtin[id] = cur;
   else delete ext.builtin[id];

@@ -36,6 +36,9 @@ const CATALOG: ReadonlyArray<{ kind: FurnitureKind; name: string }> = [
   { kind: 'whiteboard', name: '白板' },
   { kind: 'plant', name: '绿植' },
   { kind: 'coffee', name: '咖啡机' },
+  { kind: 'wall', name: '隔断墙' },
+  { kind: 'microwave', name: '微波炉' },
+  { kind: 'fridge', name: '冰箱' },
 ];
 
 const SWATCH: Record<FurnitureKind, string> = {
@@ -43,6 +46,9 @@ const SWATCH: Record<FurnitureKind, string> = {
   whiteboard: '#aab2c0',
   plant: '#4c8a48',
   coffee: '#4b5563',
+  wall: '#aeb6c2',
+  microwave: '#e5e7eb',
+  fridge: '#c9d0d9',
 };
 
 interface DragState {
@@ -532,7 +538,7 @@ export function OfficeEditor({ onSave, onCancel }: OfficeEditorProps): ReactElem
           </span>
         </div>
 
-        <div className="dsh-pwb-office-ed-canvas-wrap" style={{ position: 'relative', width: '100%', aspectRatio: '40 / 12' }}>
+        <div className="dsh-pwb-office-ed-canvas-wrap" style={{ position: 'relative', width: '100%', flex: 1, minHeight: 0 }}>
           <canvas
             ref={canvasRef}
             className="dsh-pwb-office-ed-canvas"
@@ -542,15 +548,22 @@ export function OfficeEditor({ onSave, onCancel }: OfficeEditorProps): ReactElem
             onPointerUp={handlePointerUp}
             onPointerLeave={handlePointerLeave}
           />
-          {selFurn !== undefined && !dragActive && (
+          {selFurn !== undefined && !dragActive && (() => {
+            // 删除按钮按实时布局定位（画布不再固定 40:12，地图垂直居中后百分比会错位）
+            const cw = canvasRef.current?.clientWidth ?? 0;
+            const chh = canvasRef.current?.clientHeight ?? 0;
+            const sc = Math.min(cw / MAP_W, chh / MAP_H);
+            const ox = (cw - sc * MAP_W) / 2;
+            const oy = (chh - sc * MAP_H) / 2;
+            return (
             <button
               type="button"
               className="dsh-pwb-office-ed-del"
               title="删除选中家具"
               style={{
                 position: 'absolute',
-                left: `calc(${(((selFurn.x + selFurn.w) / MAP_W) * 100).toFixed(3)}% - 24px)`,
-                top: `calc(${((selFurn.y / MAP_H) * 100).toFixed(3)}% + 3px)`,
+                left: ox + (selFurn.x + selFurn.w) * sc - 24,
+                top: oy + selFurn.y * sc + 3,
                 width: 20,
                 height: 20,
                 padding: 0,
@@ -572,7 +585,8 @@ export function OfficeEditor({ onSave, onCancel }: OfficeEditorProps): ReactElem
             >
               ×
             </button>
-          )}
+            );
+          })()}
         </div>
 
         <div className="dsh-pwb-office-ed-footer" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

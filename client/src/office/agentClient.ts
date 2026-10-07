@@ -18,6 +18,8 @@ export type BuiltinOverride = {
   links?: string[];
   /** 自觉工作开关：开了不派活也会自己找活干。 */
   autopilot?: boolean;
+  /** 指定工位：地图里的桌子 id；空串/缺省 = 自动分配。 */
+  deskId?: string;
 };
 
 export type RosterResult = { roster: RosterEntry[]; builtin?: Record<string, BuiltinOverride> };

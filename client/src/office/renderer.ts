@@ -327,6 +327,74 @@ function drawCoffee(ctx: CanvasRenderingContext2D, f: Furniture, s: number, ox: 
   ctx.fillRect(X + s * 0.68, Y + s * 0.22, s * 0.08, s * 0.08);
 }
 
+/** 隔断墙：灰蓝墙体 + 顶部高光 + 交错砖缝（1×1，阻挡走位）。 */
+function drawWall(ctx: CanvasRenderingContext2D, f: Furniture, s: number, ox: number, oy: number): void {
+  const X = ox + f.x * s;
+  const Y = oy + f.y * s;
+  softShadow(ctx, X + s * 0.5, Y + s * 0.92, s * 0.36, s * 0.07);
+  ctx.fillStyle = '#aeb6c2';
+  rr(ctx, X + s * 0.08, Y + s * 0.12, s * 0.84, s * 0.74, s * 0.05);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillRect(X + s * 0.08, Y + s * 0.12, s * 0.84, Math.max(1.5, s * 0.08));
+  ctx.strokeStyle = 'rgba(70,78,90,0.35)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(X + s * 0.08, Y + s * 0.37);
+  ctx.lineTo(X + s * 0.92, Y + s * 0.37);
+  ctx.moveTo(X + s * 0.08, Y + s * 0.62);
+  ctx.lineTo(X + s * 0.92, Y + s * 0.62);
+  ctx.moveTo(X + s * 0.5, Y + s * 0.12);
+  ctx.lineTo(X + s * 0.5, Y + s * 0.37);
+  ctx.moveTo(X + s * 0.3, Y + s * 0.37);
+  ctx.lineTo(X + s * 0.3, Y + s * 0.62);
+  ctx.moveTo(X + s * 0.7, Y + s * 0.37);
+  ctx.lineTo(X + s * 0.7, Y + s * 0.62);
+  ctx.moveTo(X + s * 0.5, Y + s * 0.62);
+  ctx.lineTo(X + s * 0.5, Y + s * 0.86);
+  ctx.stroke();
+}
+
+/** 微波炉：白机身 + 深色窗口 + 橙色控制钮（1×1）。 */
+function drawMicrowave(ctx: CanvasRenderingContext2D, f: Furniture, s: number, ox: number, oy: number): void {
+  const X = ox + f.x * s;
+  const Y = oy + f.y * s;
+  softShadow(ctx, X + s * 0.5, Y + s * 0.92, s * 0.36, s * 0.07);
+  ctx.fillStyle = '#f4f5f7';
+  rr(ctx, X + s * 0.08, Y + s * 0.2, s * 0.84, s * 0.62, s * 0.06);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(70,78,90,0.28)';
+  ctx.fillRect(X + s * 0.08, Y + s * 0.74, s * 0.84, Math.max(1, s * 0.06));
+  ctx.fillStyle = '#3a4150';
+  rr(ctx, X + s * 0.16, Y + s * 0.3, s * 0.42, s * 0.4, s * 0.04);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.fillRect(X + s * 0.2, Y + s * 0.34, s * 0.08, s * 0.32);
+  ctx.fillStyle = '#d6dae2';
+  ctx.fillRect(X + s * 0.64, Y + s * 0.3, s * 0.22, s * 0.4);
+  ctx.fillStyle = '#ff8a5c';
+  ctx.fillRect(X + s * 0.68, Y + s * 0.36, s * 0.14, s * 0.08);
+  ctx.fillStyle = '#9aa1ad';
+  ctx.fillRect(X + s * 0.68, Y + s * 0.52, s * 0.14, s * 0.05);
+}
+
+/** 冰箱：浅银双门 + 门缝 + 双把手（1×1）。 */
+function drawFridge(ctx: CanvasRenderingContext2D, f: Furniture, s: number, ox: number, oy: number): void {
+  const X = ox + f.x * s;
+  const Y = oy + f.y * s;
+  softShadow(ctx, X + s * 0.5, Y + s * 0.95, s * 0.34, s * 0.07);
+  ctx.fillStyle = '#c9d0d9';
+  rr(ctx, X + s * 0.16, Y + s * 0.06, s * 0.68, s * 0.86, s * 0.06);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(70,78,90,0.4)';
+  ctx.fillRect(X + s * 0.16, Y + s * 0.4, s * 0.68, Math.max(1, s * 0.03));
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.fillRect(X + s * 0.2, Y + s * 0.1, Math.max(1.5, s * 0.05), s * 0.78);
+  ctx.fillStyle = '#7c8593';
+  ctx.fillRect(X + s * 0.7, Y + s * 0.14, s * 0.06, s * 0.2);
+  ctx.fillRect(X + s * 0.7, Y + s * 0.46, s * 0.06, s * 0.34);
+}
+
 /* ───────────── 气泡 ───────────── */
 
 /** 气泡文本按 maxW 折行：最多两行，仍超出在第二行截断加省略号。 */
@@ -612,6 +680,15 @@ export function renderOffice(
         break;
       case 'coffee':
         drawCoffee(ctx, f, scale, ox, oy, time);
+        break;
+      case 'wall':
+        drawWall(ctx, f, scale, ox, oy);
+        break;
+      case 'microwave':
+        drawMicrowave(ctx, f, scale, ox, oy);
+        break;
+      case 'fridge':
+        drawFridge(ctx, f, scale, ox, oy);
         break;
     }
   }
