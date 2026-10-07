@@ -72,14 +72,18 @@ function resolveView(view?: OfficeView): { zoom: number; panX: number; panY: num
 }
 
 /**
- * 平移钳制：地图大于画布（放大）时允许在 [cssW-mapW, 0] 内拖动，小于画布时锁定 0（已居中）。
+ * 平移钳制：地图大于画布（放大）时，pan 围绕 0 对称 ±(mapW-cssW)/2——
+ * 渲染基准 ox=(cssW-mapW)/2 已居中，pan=±slack 恰好让地图边缘贴到画布边缘；
+ * 小于画布时锁定 0（已居中）。
  */
 export function clampViewPan(panX: number, panY: number, zoom: number, cssW: number, cssH: number): { panX: number; panY: number } {
   const scale = Math.min(cssW / MAP_W, cssH / MAP_H) * zoom;
   const mapW = scale * MAP_W;
   const mapH = scale * MAP_H;
-  const cx = mapW > cssW ? Math.min(Math.max(panX, cssW - mapW), 0) : 0;
-  const cy = mapH > cssH ? Math.min(Math.max(panY, cssH - mapH), 0) : 0;
+  const slackX = (mapW - cssW) / 2;
+  const slackY = (mapH - cssH) / 2;
+  const cx = mapW > cssW ? Math.min(Math.max(panX, -slackX), slackX) : 0;
+  const cy = mapH > cssH ? Math.min(Math.max(panY, -slackY), slackY) : 0;
   return { panX: cx, panY: cy };
 }
 
