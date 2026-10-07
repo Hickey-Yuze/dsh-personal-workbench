@@ -23,6 +23,8 @@ import {
   loadMemoryNotes,
   loadOfficeRosterExt,
   personaPromptSuffix,
+  resolveCharById,
+  rosterSummary,
   saveOfficeRosterList,
   setAutopilotFlag,
   upsertBuiltinOverride,
@@ -170,10 +172,45 @@ type OfficeAgentEntry = {
   /** 最近一次完整汇报（turn 正常结束时的 assistant 全文，尾部 4000 字） */
   report?: string;
   reportAt?: number;
+  /** 派活层级：0=老板/autopilot 直接派（可再往下派活），1=被同事派来协助（不再派活，防递归） */
+  level?: 0 | 1;
+  /** level=1 时：派活方员工 id 与原始任务（干完后宿主把产出回递给派活方验收） */
+  parentId?: string;
+  parentTask?: string;
+  /** 派活方给出的验收结论（【验收结论】整行，≤200 字） */
+  acceptance?: string;
+  acceptanceAt?: number;
   startedAt: number;
   updatedAt: number;
 };
 const officeAgents = new Map<string, { entry: OfficeAgentEntry; handle: OfficeAgentHandle | null; turnText: string }>();
+/** 派活/验收闭环的运行环境（officeSpawnAgent 首次执行时登记；capture 回调里用它 spawn/递话）。 */
+let officeDispatchCtl: { ctx: Context; log: { warn(m: string): void; info(m: string): void } } | null = null;
+/** 汇报文本里的派活行：`【派活】同事名：任务描述`（一行一条，每轮最多受理 3 条，防刷屏递归）。 */
+const OFFICE_DISPATCH_RE = /^【派活】\s*([^：:\n]{1,12}?)\s*[：:]\s*(.{1,200})$/gm;
+/** 汇报文本里的验收结论行：`【验收结论】通过：…` / `【验收结论】不通过：…`。 */
+const OFFICE_ACCEPT_RE = /^【验收结论】\s*(通过|不通过)\s*[：:]\s*(.{1,180})$/gm;
+/** 解析汇报里的全部派活请求（上限 3 条）。 */
+function parseDispatchLines(text: string): Array<{ name: string; task: string }> {
+  const out: Array<{ name: string; task: string }> = [];
+  for (const m of text.matchAll(OFFICE_DISPATCH_RE)) {
+    const name = (m[1] ?? '').trim();
+    const task = (m[2] ?? '').trim();
+    if (name !== '' && task !== '') out.push({ name, task });
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+/** 解析汇报里的验收结论（取最后一条）。 */
+function parseAcceptance(text: string): string | undefined {
+  let last: string | undefined;
+  for (const m of text.matchAll(OFFICE_ACCEPT_RE)) {
+    const verdict = m[1] ?? '';
+    const reason = (m[2] ?? '').trim();
+    if (verdict !== '') last = `【验收结论】${verdict}：${reason}`;
+  }
+  return last;
+}
 /** 流帧防御式抽取：start/end 帧切 working/idle，chunk 帧尽量掏出文本增量拼进 lastText（尾部 240 字）。 */
 function officeAgentCapture(npcId: string): (payload: unknown) => void {
   return (payload: unknown) => {
@@ -205,6 +242,12 @@ function officeAgentCapture(npcId: string): (payload: unknown) => void {
           slot.entry.reportAt = Date.now();
           // 自生长记忆闭环：工作记录入档（office_memory/<npcId>.json，静默失败）
           appendMemoryNote(npcId, `【工作记录】${rep.slice(0, 200)}`);
+          // 派活/验收闭环（全部静默失败，不影响主流程）
+          try {
+            handleOfficeTurnClose(npcId, slot, rep);
+          } catch (err) {
+            officeDispatchCtl?.log.warn(`[personal-workbench] office 派活闭环处理失败: ${err instanceof Error ? err.message : String(err)}`);
+          }
         }
         slot.entry.status = 'idle';
       } else {
@@ -222,21 +265,117 @@ function officeAgentCapture(npcId: string): (payload: unknown) => void {
     }
   };
 }
+/**
+ * 员工一轮真话收尾后的派活/验收处理（capture 内调用，异常自行消化）：
+ * ① 本轮汇报带【派活】且自己是 level 0 → 真实把子任务派给指定同事（空闲则 spawn 新会话，忙则递话排队）；
+ * ② 自己是 level 1（被派来协助的）且干完 → 把产出回递给派活方，请求验收；
+ * ③ 本轮汇报带【验收结论】→ 记录结论入档（派活方条目 + 记忆）。
+ */
+function handleOfficeTurnClose(npcId: string, slot: { entry: OfficeAgentEntry; handle: OfficeAgentHandle | null }, rep: string): void {
+  const ctl = officeDispatchCtl;
+  if (ctl === null) return;
+  // ③ 验收结论（派活方回复时先到这里）
+  const acceptance = parseAcceptance(rep);
+  if (acceptance !== undefined) {
+    slot.entry.acceptance = acceptance;
+    slot.entry.acceptanceAt = Date.now();
+    appendMemoryNote(npcId, acceptance);
+    ctl.log.info(`[personal-workbench] office 验收完成 ${slot.entry.name}: ${acceptance}`);
+  }
+  // ② 被派方干完 → 回递产出给派活方验收（只递一次：acceptance 请求由派活方下轮回复承载）
+  if (slot.entry.level === 1 && slot.entry.parentId !== undefined) {
+    const parent = officeAgents.get(slot.entry.parentId);
+    if (parent?.handle) {
+      try {
+        parent.handle.agent.followup({
+          content: [
+            {
+              type: 'text',
+              text: `【验收请求】你派给「${slot.entry.name}」的任务「${slot.entry.parentTask ?? ''}」已完成，TA 的汇报：\n${(slot.entry.report ?? rep).slice(0, 800)}\n请实际检查相关文件/结果（读文件、跑命令都可以），然后单独写一行验收结论，格式：【验收结论】通过：一句理由 或 【验收结论】不通过：缺什么。`,
+            },
+          ],
+          source: { kind: 'user' },
+        });
+        parent.entry.status = 'working';
+        parent.entry.updatedAt = Date.now();
+        ctl.log.info(`[personal-workbench] office 验收请求已回递 ${slot.entry.name} → ${parent.entry.name}`);
+      } catch (err) {
+        ctl.log.warn(`[personal-workbench] office 验收请求回递失败: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    return; // level 1 不再往下派活（防递归）
+  }
+  // ① level 0 派活
+  const level = slot.entry.level ?? 0;
+  if (level !== 0) return;
+  for (const d of parseDispatchLines(rep)) {
+    void dispatchToColleague(npcId, slot.entry.name, d.name, d.task);
+  }
+}
+/** 把子任务真实派给指定同事（按名字解析）：对方有会话就递话排队，没有就 spawn 新会话（level 1，挂 parentId 供验收回递）。 */
+async function dispatchToColleague(parentId: string, parentName: string, colleagueName: string, task: string): Promise<void> {
+  const ctl = officeDispatchCtl;
+  if (ctl === null) return;
+  const colleagueId = findCharIdByName(colleagueName);
+  if (colleagueId === undefined || colleagueId === parentId) {
+    ctl.log.warn(`[personal-workbench] office 派活失败：找不到同事「${colleagueName}」`);
+    return;
+  }
+  const colleague = resolveCharById(colleagueId);
+  if (colleague === undefined) return;
+  const colSlot = officeAgents.get(colleagueId);
+  if (colSlot?.handle) {
+    // 忙/已有会话：递话排队进 TA 的现有会话（不挂 parentId——TA 正在干别人的活，验收链不抢）
+    try {
+      colSlot.handle.agent.followup({
+        content: [{ type: 'text', text: `【协助请求】同事 ${parentName} 请你完成子任务：${task}。直接动手，完成后详细汇报产出（改了哪些文件/结论）。` }],
+        source: { kind: 'user' },
+      });
+      colSlot.entry.status = 'working';
+      colSlot.entry.updatedAt = Date.now();
+      ctl.log.info(`[personal-workbench] office 派活（递话）${parentName} → ${colleague.name}: ${task}`);
+    } catch (err) {
+      ctl.log.warn(`[personal-workbench] office 派活递话失败: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return;
+  }
+  try {
+    await officeSpawnAgent(ctl.ctx, ctl.log, colleagueId, colleague.name, colleague.role, task, undefined, {
+      level: 1,
+      parentId,
+      parentTask: task,
+    });
+    ctl.log.info(`[personal-workbench] office 派活（新会话）${parentName} → ${colleague.name}: ${task}`);
+  } catch (err) {
+    ctl.log.warn(`[personal-workbench] office 派活 spawn 失败 ${colleague.name}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
 /** 真工位员工 system 指示：直接干活、干完简短中文汇报。 */
-function officeWorkerSystem(name: string, role: string): string {
-  return `你是用户工作台「办公室」里的同事 ${name}（${role}），现在被老板派了一个真实工作任务。请直接动手完成（可以读写文件、运行命令、写代码），不要反问老板，遇到小决策自己拿主意；完成后用中文简短汇报：做了什么、改了哪些文件、结果如何。不要寒暄与任务无关的内容。`;
+function officeWorkerSystem(name: string, role: string, opts?: { level?: 0 | 1; teammates?: string; parentName?: string }): string {
+  const level = opts?.level ?? 0;
+  if (level === 1) {
+    return `你是用户工作台「办公室」里的同事 ${name}（${role}），同事 ${opts?.parentName ?? '其他同事'} 把一个子任务派给你协助完成。请直接动手完成（可以读写文件、运行命令、写代码），遇到小决策自己拿主意；完成后用中文详细汇报：做了什么、改了哪些文件（写清路径）、结果如何——你的汇报会被转给派活方验收。不要把任务再派给其他人。`;
+  }
+  const teammateLine = opts?.teammates !== undefined && opts.teammates !== '' ? opts.teammates : '（暂无其他同事）';
+  return [
+    `你是用户工作台「办公室」里的同事 ${name}（${role}），现在被老板派了一个真实工作任务。请直接动手完成（可以读写文件、运行命令、写代码），不要反问老板，遇到小决策自己拿主意；完成后用中文简短汇报：做了什么、改了哪些文件、结果如何。不要寒暄与任务无关的内容。`,
+    `你手头的任务可以拆给其他同事协作。同事花名册：${teammateLine}。`,
+    '派活方法：在回复里单独写一行【派活】同事名：任务描述（≤200字，写清要产出什么、在哪做）。系统会把子任务真实派给那位同事，TA 完成后你会收到验收请求，请实际检查产出后单独写一行【验收结论】通过：理由 或 【验收结论】不通过：缺什么。老板只看你的验收结论和最终汇报。',
+  ].join('\n');
 }
 
 /** 给员工拉起宿主真实 agent 会话并派首单任务（office/agent/start 端点与 autopilot 派活共用路径）。失败抛 Error。 */
 async function officeSpawnAgent(
   ctx: Context,
-  log: { warn(m: string): void },
+  log: { warn(m: string): void; info(m: string): void },
   npcId: string,
   name: string,
   role: string,
   task: string,
   cwd?: string,
+  opts?: { level?: 0 | 1; parentId?: string; parentTask?: string },
 ): Promise<void> {
+  officeDispatchCtl = { ctx, log };
   const agents = ctx.get('agents') as OfficeAgentsService | undefined;
   if (!agents || typeof agents.create !== 'function') throw new Error('agents 服务不可用');
   const selection = (ctx.get('agentDefaultModel') as
@@ -290,12 +429,31 @@ async function officeSpawnAgent(
   });
   officeAgents.set(npcId, {
     handle,
-    entry: { name, role, task, status: 'working', lastText: '', startedAt: Date.now(), updatedAt: Date.now() },
+    entry: {
+      name,
+      role,
+      task,
+      status: 'working',
+      lastText: '',
+      startedAt: Date.now(),
+      updatedAt: Date.now(),
+      level: opts?.level ?? 0,
+      ...(opts?.parentId !== undefined ? { parentId: opts.parentId, parentTask: opts.parentTask ?? task } : {}),
+    },
     turnText: '',
   });
   handle.agent.followup({
-    // 员工人设覆盖：builtin 有 persona/links 时追加「你的性格/团队协作」段
-    content: [{ type: 'text', text: `${officeWorkerSystem(name, role)}${personaPromptSuffix(override)}\n\n任务：${task}` }],
+    // 员工人设覆盖：builtin 有 persona/links 时追加「你的性格/团队协作」段；
+    // level 0 额外注入协作协议（花名册 + 派活/验收格式），level 1 是被同事派来协助的。
+    content: [
+      {
+        type: 'text',
+        text: `${officeWorkerSystem(name, role, {
+          level: opts?.level ?? 0,
+          ...(opts?.level === 1 ? { parentName: officeAgents.get(opts.parentId ?? '')?.entry.name } : { teammates: rosterSummary(npcId) }),
+        })}${personaPromptSuffix(override)}\n\n任务：${task}`,
+      },
+    ],
     source: { kind: 'user' },
   });
 }

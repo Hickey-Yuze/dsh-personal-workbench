@@ -171,6 +171,35 @@ export function builtinOverrideOf(id: string): OfficeBuiltinOverride | undefined
   return loadOfficeRosterExt().builtin[id];
 }
 
+/** 按 id 解析员工的展示名/职务：覆盖值 → 内置六 NPC 默认 → 自定义花名册（找不到返回 undefined）。 */
+export function resolveCharById(id: string): { id: string; name: string; role: string } | undefined {
+  const ext = loadOfficeRosterExt();
+  const ov = ext.builtin[id];
+  const base = OFFICE_BUILTIN_SIX.find((c) => c.id === id) ?? ext.roster.find((r) => r.id === id);
+  if (base === undefined && (ov?.name === undefined || ov.name === '')) return undefined;
+  return {
+    id,
+    name: ov?.name !== undefined && ov.name !== '' ? ov.name : (base?.name ?? ''),
+    role: ov?.role !== undefined && ov.role !== '' ? ov.role : (base?.role ?? '同事'),
+  };
+}
+
+/**
+ * 全员花名册一行文本（供员工真会话的协作协议用，让模型知道能派活给谁）：
+ * 「小周(前端工程师)、阿琳(产品经理)、…」；excludeId 自己除外。
+ */
+export function rosterSummary(excludeId: string): string {
+  const ext = loadOfficeRosterExt();
+  const all = [
+    ...OFFICE_BUILTIN_SIX.map((c) => ({ id: c.id, name: ext.builtin[c.id]?.name || c.name, role: ext.builtin[c.id]?.role || c.role })),
+    ...ext.roster.map((r) => ({ id: r.id, name: ext.builtin[r.id]?.name || r.name, role: ext.builtin[r.id]?.role || r.role })),
+  ];
+  return all
+    .filter((c) => c.id !== excludeId && c.name !== '')
+    .map((c) => `${c.name}(${c.role})`)
+    .join('、');
+}
+
 /**
  * 按名字定位员工 id（office/npc/chat 请求体只带 name/role，无 id）：
  * ① 覆盖后的名字（改过名的员工用新名字命中）→ ② 内置六 NPC 默认名 → ③ 自定义花名册名。
