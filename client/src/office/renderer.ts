@@ -394,6 +394,7 @@ function drawBubble(
   ctx.fillStyle = 'rgba(40,35,25,0.10)';
   rr(ctx, bx, by + 1.5, bw, bh, fs * 0.55);
   ctx.fill();
+  ctx.fillStyle = '#ffffff';
   rr(ctx, bx, by, bw, bh, fs * 0.55);
   ctx.fill();
   ctx.strokeStyle = 'rgba(0,0,0,0.16)';
