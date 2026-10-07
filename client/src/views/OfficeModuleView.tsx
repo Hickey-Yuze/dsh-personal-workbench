@@ -165,36 +165,21 @@ export function OfficeModuleView(): ReactElement {
       /* 持久化失败不影响功能 */
     }
   }, [workCwd]);
-  /** 工作区浏览选择器：宿主 office/workdir 只读列子目录，逐级点进去选，免手打路径。 */
-  const [cwdPickOpen, setCwdPickOpen] = useState(false);
-  const [cwdPickPath, setCwdPickPath] = useState('');
-  const [cwdPickHome, setCwdPickHome] = useState('');
-  const [cwdPickParent, setCwdPickParent] = useState<string | null>(null);
-  const [cwdPickDirs, setCwdPickDirs] = useState<Array<{ name: string; path: string }>>([]);
-  const [cwdPickErr, setCwdPickErr] = useState('');
-  const cwdPickLoad = useCallback((path: string): void => {
-    const q = path.trim() !== '' ? `?path=${encodeURIComponent(path.trim())}` : '';
-    fetch(`/api/personal-workbench/office/workdir${q}`)
+  /** 工作区选择：弹 macOS 原生「选择文件夹」对话框（与文件归档同款 osascript choose folder）。
+   *  取消静默；失败写 workErr；成功回填并持久化（已有 effect 落 dsh-pwb:office_cwd_v1）。 */
+  const pickWorkspace = useCallback((): void => {
+    fetch('/api/personal-workbench/office/workdir/pick', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
       .then(async (res) => {
-        const j = (await res.json().catch(() => null)) as {
-          ok?: boolean;
-          path?: string;
-          home?: string;
-          parent?: string | null;
-          dirs?: Array<{ name: string; path: string }>;
-          error?: { message?: string };
-        } | null;
-        if (j === null || j.ok !== true) {
-          setCwdPickErr(j?.error?.message ?? `目录读取失败（${res.status}）`);
+        const j = (await res.json().catch(() => null)) as { ok?: boolean; path?: string; code?: string; error?: { message?: string } } | null;
+        if (j !== null && j.ok === true && typeof j.path === 'string' && j.path !== '') {
+          setWorkCwd(j.path);
+          setWorkErr('');
           return;
         }
-        setCwdPickErr('');
-        setCwdPickPath(j.path ?? '');
-        setCwdPickHome(j.home ?? '');
-        setCwdPickParent(j.parent ?? null);
-        setCwdPickDirs(Array.isArray(j.dirs) ? j.dirs : []);
+        if (j !== null && j.code === 'cancelled') return;
+        setWorkErr(j?.error?.message ?? '系统目录选择器不可用（宿主需要 ⌘Q 重启）');
       })
-      .catch(() => setCwdPickErr('网络错误，无法连接宿主'));
+      .catch(() => setWorkErr('网络错误，无法连接宿主'));
   }, []);
 
   /* office/agents 轮询：2.5s；干活中的 NPC 把最新输出尾部冒泡到头顶 */
@@ -847,43 +832,6 @@ export function OfficeModuleView(): ReactElement {
                 </div>
                 {chatTarget.kind === 'npc' && (
                   <>
-                    {cwdPickOpen && (
-                      <div className="dsh-pwb-office-cwd-picker">
-                        <div className="dsh-pwb-office-cwd-picker-bar">
-                          <b>选择工作区</b>
-                          <span title={cwdPickPath}>{cwdPickPath}</span>
-                          <button onClick={() => setCwdPickOpen(false)}>关闭</button>
-                        </div>
-                        {cwdPickErr !== '' && <div className="dsh-pwb-office-cwd-picker-err">⚠️ {cwdPickErr}</div>}
-                        <div className="dsh-pwb-office-cwd-picker-list">
-                          {cwdPickParent !== null && (
-                            <button className="dsh-pwb-office-cwd-picker-item" onClick={() => cwdPickLoad(cwdPickParent)}>↩ 上一级</button>
-                          )}
-                          {cwdPickHome !== '' && (
-                            <button className="dsh-pwb-office-cwd-picker-item" onClick={() => cwdPickLoad(cwdPickHome)}>🏠 主目录</button>
-                          )}
-                          {cwdPickDirs.map((d) => (
-                            <button key={d.path} className="dsh-pwb-office-cwd-picker-item" title={d.path} onClick={() => cwdPickLoad(d.path)}>
-                              📁 {d.name}
-                            </button>
-                          ))}
-                          {cwdPickDirs.length === 0 && cwdPickErr === '' && <div className="dsh-pwb-office-cwd-picker-empty">没有子目录</div>}
-                        </div>
-                        <div className="dsh-pwb-office-cwd-picker-foot">
-                          <span>{cwdPickPath !== '' && cwdPickPath === workCwd.trim() ? '✓ 已是当前工作区' : ''}</span>
-                          <button
-                            className="dsh-pwb-office-cwd-pick-use"
-                            disabled={cwdPickPath === ''}
-                            onClick={() => {
-                              setWorkCwd(cwdPickPath);
-                              setCwdPickOpen(false);
-                            }}
-                          >
-                            用这个目录
-                          </button>
-                        </div>
-                      </div>
-                    )}
                     <div className="dsh-pwb-office-chat-cwd">
                       <span>工作区</span>
                       <input
@@ -891,17 +839,7 @@ export function OfficeModuleView(): ReactElement {
                         placeholder="点「浏览」选择项目目录（子任务也落这里；留空 = 主目录）"
                         onChange={(e) => setWorkCwd(e.target.value)}
                       />
-                      <button
-                        className="dsh-pwb-office-cwd-browse"
-                        onClick={() => {
-                          if (cwdPickOpen) {
-                            setCwdPickOpen(false);
-                            return;
-                          }
-                          setCwdPickOpen(true);
-                          cwdPickLoad(workCwd.trim().startsWith('/') ? workCwd.trim() : '');
-                        }}
-                      >
+                      <button className="dsh-pwb-office-cwd-browse" onClick={pickWorkspace}>
                         浏览
                       </button>
                     </div>

@@ -1561,6 +1561,39 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         send(res, 200, { ok: true, id: officeActionSeq });
         return;
       }
+      // office/workdir/pick：弹 macOS 原生「选择文件夹」对话框选派活工作区（与文件归档 fs/roots/pick 同款；
+      // 只返回路径，不登记归档 roots。取消返回 {ok:false,code:'cancelled'}；非 macOS 宿主走手输路径）
+      if (officeEndpoint === 'office/workdir/pick') {
+        let picked = '';
+        try {
+          picked = await new Promise<string>((resolve, reject) => {
+            execFile('osascript', ['-e', 'POSIX path of (choose folder with prompt "选择派活工作区")'], { timeout: 120_000 }, (err, stdout) => (err !== null ? reject(err) : resolve(String(stdout).trim())));
+          });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (msg.includes('-128') || msg.includes('canceled')) {
+            send(res, 200, { ok: false, code: 'cancelled' });
+            return;
+          }
+          send(res, 500, { ok: false, error: { code: 'internal', message: '系统选择器不可用' } });
+          return;
+        }
+        if (picked === '') {
+          send(res, 200, { ok: false, code: 'cancelled' });
+          return;
+        }
+        try {
+          const real = fs.realpathSync(picked.endsWith('/') && picked !== '/' ? picked.slice(0, -1) : picked);
+          if (!fs.statSync(real).isDirectory()) {
+            send(res, 400, { ok: false, error: { code: 'bad-request', message: '不是目录' } });
+            return;
+          }
+          send(res, 200, { ok: true, path: real });
+        } catch {
+          send(res, 500, { ok: false, error: { code: 'internal', message: '所选目录不可读' } });
+        }
+        return;
+      }
       // office/agent/start：给 NPC 拉起宿主真实 agent 会话并派活（真读写、真执行；与 autopilot 共用 officeSpawnAgent）
       if (officeEndpoint === 'office/agent/start') {
         const npcId = typeof officeBody.npcId === 'string' ? officeBody.npcId : '';
