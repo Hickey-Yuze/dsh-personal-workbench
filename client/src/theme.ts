@@ -1344,7 +1344,66 @@ html { color-scheme: light !important; }
   width: 100%;
   flex: 1 1 auto;
   min-height: 0;
-}.dsh-pwb-office-tabs {
+  position: relative;
+}
+/* 场景缩放控制（右上角悬浮）：＋/－/复位，滚轮同样可缩放 */
+.dsh-pwb-office-zoom {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 4;
+}
+.dsh-pwb-office-zoom button {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--pwb-border);
+  background: rgba(255, 255, 255, 0.92);
+  color: #374151;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(40, 35, 25, 0.12);
+}
+.dsh-pwb-office-zoom button:hover { border-color: var(--pwb-accent); color: var(--pwb-accent); }
+/* 员工入职（布置办公室标签页底部卡片）：写宿主花名册 → 引擎生成场景角色 */
+.dsh-pwb-office-hire {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--pwb-border);
+  border-radius: 12px;
+  background: #fff;
+  font-size: 13px;
+}
+.dsh-pwb-office-hire b { color: #111827; }
+.dsh-pwb-office-hire input {
+  border: 1px solid var(--pwb-border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  width: 150px;
+}
+.dsh-pwb-office-hire button {
+  background: var(--pwb-accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dsh-pwb-office-hire button:disabled { opacity: 0.45; cursor: default; }
+.dsh-pwb-office-hire-err { color: #dc2626; }
+.dsh-pwb-office-hire-roster { color: #6b7280; font-size: 12px; }
+.dsh-pwb-office-tabs {
   display: flex;
   align-items: center;
   gap: 8px;

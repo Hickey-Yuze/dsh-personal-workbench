@@ -56,16 +56,44 @@ function patchTypeAt(x: number, y: number): number {
 
 /* ───────────── 点击换算 ───────────── */
 
+/** 视口状态：zoom 缩放倍率（1=适配）、panX/panY 平移偏移（CSS 像素）。 */
+export interface OfficeView {
+  zoom?: number;
+  panX?: number;
+  panY?: number;
+}
+
+/** 把视图状态解析成确定的 (zoom, panX, panY)。 */
+function resolveView(view?: OfficeView): { zoom: number; panX: number; panY: number } {
+  const zoom = view?.zoom !== undefined && Number.isFinite(view.zoom) && view.zoom > 0 ? view.zoom : 1;
+  const panX = view?.panX !== undefined && Number.isFinite(view.panX) ? view.panX : 0;
+  const panY = view?.panY !== undefined && Number.isFinite(view.panY) ? view.panY : 0;
+  return { zoom, panX, panY };
+}
+
 /**
- * 点击坐标（CSS 像素）→ 地图格：scale = min(cssW/MAP_W, cssH/MAP_H) 居中，
+ * 平移钳制：地图大于画布（放大）时允许在 [cssW-mapW, 0] 内拖动，小于画布时锁定 0（已居中）。
+ */
+export function clampViewPan(panX: number, panY: number, zoom: number, cssW: number, cssH: number): { panX: number; panY: number } {
+  const scale = Math.min(cssW / MAP_W, cssH / MAP_H) * zoom;
+  const mapW = scale * MAP_W;
+  const mapH = scale * MAP_H;
+  const cx = mapW > cssW ? Math.min(Math.max(panX, cssW - mapW), 0) : 0;
+  const cy = mapH > cssH ? Math.min(Math.max(panY, cssH - mapH), 0) : 0;
+  return { panX: cx, panY: cy };
+}
+
+/**
+ * 点击坐标（CSS 像素）→ 地图格：scale = min(cssW/MAP_W, cssH/MAP_H) 居中（×zoom + pan），
  * 与 renderOffice 完全同一套数学。舞台延伸区（地图外的连续地板）点击时
  * 钳制到最近的可走格——地板看着连成一片，走位也自然贴到边上。
  */
-export function cellAtPoint(cssX: number, cssY: number, cssW: number, cssH: number): Vec | null {
-  const scale = Math.min(cssW / MAP_W, cssH / MAP_H);
+export function cellAtPoint(cssX: number, cssY: number, cssW: number, cssH: number, view?: OfficeView): Vec | null {
+  const v = resolveView(view);
+  const scale = Math.min(cssW / MAP_W, cssH / MAP_H) * v.zoom;
   if (!(scale > 0)) return null;
-  const ox = (cssW - scale * MAP_W) / 2;
-  const oy = (cssH - scale * MAP_H) / 2;
+  const ox = (cssW - scale * MAP_W) / 2 + v.panX;
+  const oy = (cssH - scale * MAP_H) / 2 + v.panY;
   const x = Math.floor((cssX - ox) / scale);
   const y = Math.floor((cssY - oy) / scale);
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
@@ -96,7 +124,7 @@ function softShadow(
   ctx.fill();
 }
 
-function buildStaticLayer(pxW: number, pxH: number, dpr: number, cssW: number, cssH: number): HTMLCanvasElement {
+function buildStaticLayer(pxW: number, pxH: number, dpr: number, cssW: number, cssH: number, view?: OfficeView): HTMLCanvasElement {
   const layer = document.createElement('canvas');
   layer.width = pxW;
   layer.height = pxH;
@@ -105,9 +133,10 @@ function buildStaticLayer(pxW: number, pxH: number, dpr: number, cssW: number, c
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
   c.imageSmoothingEnabled = false;
 
-  const scale = Math.min(cssW / MAP_W, cssH / MAP_H);
-  const ox = (cssW - scale * MAP_W) / 2;
-  const oy = (cssH - scale * MAP_H) / 2;
+  const v = resolveView(view);
+  const scale = Math.min(cssW / MAP_W, cssH / MAP_H) * v.zoom;
+  const ox = (cssW - scale * MAP_W) / 2 + v.panX;
+  const oy = (cssH - scale * MAP_H) / 2 + v.panY;
 
   // 柔和双色棋盘（对比弱化的暖白）：铺满整个画布——地图外的延伸区画成连续地板，
   // 舞台被拉高/拉宽时不再留白边，视觉上是办公室的开阔地面。
@@ -532,6 +561,8 @@ export function renderOffice(
     bubbles?: ReadonlyMap<string, { text: string; until: number }>;
     /** 会议进行中：白板高亮描边。 */
     meeting?: boolean;
+    /** 视口：缩放/平移（缺省 1 倍适配居中）。 */
+    view?: OfficeView;
   },
 ): void {
   const ctx = canvas.getContext('2d');
@@ -548,16 +579,17 @@ export function renderOffice(
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.imageSmoothingEnabled = false;
 
-  const scale = Math.min(cssW / MAP_W, cssH / MAP_H);
-  const ox = (cssW - scale * MAP_W) / 2;
-  const oy = (cssH - scale * MAP_H) / 2;
+  const v = resolveView(opts?.view);
+  const scale = Math.min(cssW / MAP_W, cssH / MAP_H) * v.zoom;
+  const ox = (cssW - scale * MAP_W) / 2 + v.panX;
+  const oy = (cssH - scale * MAP_H) / 2 + v.panY;
   const showNames = opts?.showNames ?? scale >= 15;
 
-  // 静态层：地板棋盘 + 斑块 + 圆角外框阴影，按主画布尺寸缓存（双实例各持一份）
-  const staticKey = `${pxW}x${pxH}@${dpr}`;
+  // 静态层：地板棋盘 + 斑块 + 圆角外框阴影，按主画布尺寸+视口缓存（双实例各持一份）
+  const staticKey = `${pxW}x${pxH}@${dpr}@${v.zoom.toFixed(3)}@${Math.round(v.panX)}@${Math.round(v.panY)}`;
   let cached = staticLayers.get(canvas);
   if (cached === undefined || cached.key !== staticKey) {
-    cached = { key: staticKey, layer: buildStaticLayer(pxW, pxH, dpr, cssW, cssH) };
+    cached = { key: staticKey, layer: buildStaticLayer(pxW, pxH, dpr, cssW, cssH, opts?.view) };
     staticLayers.set(canvas, cached);
   }
   ctx.drawImage(cached.layer, 0, 0, cssW, cssH);

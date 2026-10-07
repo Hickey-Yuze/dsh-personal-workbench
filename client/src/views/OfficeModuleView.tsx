@@ -10,6 +10,9 @@ import { loadOfficeMap } from '../office/store.js';
 import { deskChairCell } from '../office/map.js';
 import type { OfficeMap } from '../office/types.js';
 import type { MemberStat } from '../office/types.js';
+import type { OfficeView } from '../office/renderer.js';
+import { addRosterEntry, isEndpointMissing, loadRoster } from '../office/agentClient.js';
+import type { RosterEntry } from '../office/agentClient.js';
 import { OfficeEditor } from './OfficeEditor.js';
 import { OfficeDataPanel } from './OfficeDataPanel.js';
 import { OfficeAgentPanel } from './OfficeAgentPanel.js';
@@ -123,6 +126,12 @@ async function readSse(res: Response, onDelta: (d: string) => void, onErr: (e: s
 export function OfficeModuleView(): ReactElement {
   const [engine, setEngine] = useState<OfficeEngine>(() => new OfficeEngine(loadOfficeMap() ?? undefined));
   const [members, setMembers] = useState<MemberStat[]>(() => engine.members());
+  const [officeView, setOfficeView] = useState<OfficeView>({}); // 场景缩放/平移（滚轮+按钮）
+  const [roster, setRoster] = useState<RosterEntry[]>([]);
+  const [hireName, setHireName] = useState('');
+  const [hireRole, setHireRole] = useState('');
+  const [hireBusy, setHireBusy] = useState(false);
+  const [hireErr, setHireErr] = useState('');
   const [tab, setTab] = useState<Tab>('scene');
   const [chatOpen, setChatOpen] = useState(true);
   const [chatTarget, setChatTarget] = useState<ChatTarget>({ kind: 'ai' });
@@ -255,6 +264,51 @@ export function OfficeModuleView(): ReactElement {
     const id = window.setInterval(() => setMembers(engine.members()), 900);
     return () => window.clearInterval(id);
   }, [engine]);
+
+  /* 自定义员工：拉花名册 → 引擎生成角色（换引擎/换图后同样补齐） */
+  useEffect(() => {
+    let dead = false;
+    loadRoster()
+      .then((list) => {
+        if (dead) return;
+        setRoster(list);
+        list.forEach((r) => engine.addRosterChar(r.id, r.name, r.role));
+      })
+      .catch(() => {
+        /* 宿主旧版无 roster 端点：自定义员工暂缺，不阻塞场景 */
+      });
+    return () => {
+      dead = true;
+    };
+  }, [engine]);
+
+  /** 入职：写花名册（宿主持久化）→ 引擎生成角色 → 刷新列表。 */
+  const hireSubmit = useCallback(async (): Promise<void> => {
+    const name = hireName.trim();
+    const role = hireRole.trim();
+    if (name === '' || role === '' || hireBusy) return;
+    setHireBusy(true);
+    setHireErr('');
+    try {
+      const entry = await addRosterEntry(name, role);
+      engine.addRosterChar(entry.id, entry.name, entry.role);
+      setRoster((prev) => [...prev.filter((r) => r.id !== entry.id), entry]);
+      setHireName('');
+      setHireRole('');
+    } catch (err) {
+      setHireErr(isEndpointMissing(err) ? '宿主半是旧代码：⌘Q 重启宿主后再试' : err instanceof Error ? err.message : '添加失败');
+    } finally {
+      setHireBusy(false);
+    }
+  }, [engine, hireBusy, hireName, hireRole]);
+
+  /** 缩放按钮：围绕中心缩放（平移归零，保持地图居中），范围与滚轮一致 0.5~2.5。 */
+  const zoomStep = useCallback((delta: number): void => {
+    setOfficeView((v) => {
+      const zoom = Math.min(2.5, Math.max(0.5, Math.round(((v.zoom ?? 1) + delta) * 10) / 10));
+      return { zoom, panX: 0, panY: 0 };
+    });
+  }, []);
 
   /* 对话跟随滚动到底 */
   useEffect(() => {
@@ -581,14 +635,61 @@ export function OfficeModuleView(): ReactElement {
           {tab === 'scene' && (
             <div className="dsh-pwb-office-scenewrap">
               <div className="dsh-pwb-office-stage">
-                <OfficeCanvas engine={engine} className="dsh-pwb-office-canvas" onClickCell={handleCellClick} />
+                <OfficeCanvas
+                  engine={engine}
+                  className="dsh-pwb-office-canvas"
+                  onClickCell={handleCellClick}
+                  view={officeView}
+                  onViewChange={setOfficeView}
+                />
+                <div className="dsh-pwb-office-zoom">
+                  <button title="放大" onClick={() => zoomStep(0.2)}>
+                    ＋
+                  </button>
+                  <button title="缩小" onClick={() => zoomStep(-0.2)}>
+                    －
+                  </button>
+                  <button title="复位" onClick={() => setOfficeView({})}>
+                    ⭯
+                  </button>
+                </div>
               </div>
             </div>
           )}
 
           {tab === 'data' && <OfficeDataPanel members={members} />}
 
-          {tab === 'edit' && <OfficeEditor onSave={handleSaveMap} onCancel={() => setTab('scene')} />}
+          {tab === 'edit' && (
+            <>
+              <OfficeEditor onSave={handleSaveMap} onCancel={() => setTab('scene')} />
+              <div className="dsh-pwb-office-hire">
+                <b>员工入职</b>
+                <input
+                  value={hireName}
+                  placeholder="名字，如 小黄"
+                  onChange={(e) => setHireName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void hireSubmit();
+                  }}
+                />
+                <input
+                  value={hireRole}
+                  placeholder="职务，如 商运"
+                  onChange={(e) => setHireRole(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void hireSubmit();
+                  }}
+                />
+                <button disabled={hireBusy || hireName.trim() === '' || hireRole.trim() === ''} onClick={() => void hireSubmit()}>
+                  {hireBusy ? '添加中…' : '添加员工'}
+                </button>
+                {hireErr !== '' && <span className="dsh-pwb-office-hire-err">⚠️ {hireErr}</span>}
+                <span className="dsh-pwb-office-hire-roster">
+                  {roster.length === 0 ? '还没有自定义员工' : `已入职：${roster.map((r) => `${r.name}·${r.role}`).join('、')}`}
+                </span>
+              </div>
+            </>
+          )}
 
           <div className="dsh-pwb-office-status">
             {members.map((m) => (

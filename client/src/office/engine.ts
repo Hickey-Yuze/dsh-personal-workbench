@@ -53,6 +53,10 @@ const REPLY_LINES: Record<string, string[]> = {
   运营: ['数据拉一下', '活动数据还行'],
 };
 
+/** 自定义员工（花名册新增）配色池，按 id 哈希取色，避开 NPC_DEFS 已用色。 */
+const CUSTOM_COLORS = ['#E91E63','#7C4DFF','#00897B','#F4511E','#5C6BC0','#C0CA33','#8D6E63','#00ACC1'];
+const CUSTOM_HAIRS = ['#26221e','#3e2723','#4e342e','#212121'];
+
 export class OfficeEngine {
   map: OfficeMap;
   blocked: Uint8Array;
@@ -110,6 +114,49 @@ export class OfficeEngine {
       const desk = this.desks[i];
       if (desk === undefined) return; // 存档地图工位不足时跳过多余 NPC
       this.chars.push(mkChar(`npc-${i + 1}`, def, false, desk));
+    });
+  }
+
+  /**
+   * 花名册新增的自定义员工进场景：随机找一个空闲可走格出生（无工位 → 走闲逛/咖啡/串门逻辑）。
+   * id 已存在则忽略（重复调用幂等）；站不下就放弃本次（不硬塞重叠）。
+   */
+  addRosterChar(id: string, name: string, role: string): void {
+    if (this.chars.some((c) => c.id === id)) return;
+    let spotX = -1;
+    let spotY = -1;
+    for (let i = 0; i < 200; i++) {
+      const x = 1 + Math.floor(Math.random() * (MAP_W - 2));
+      const y = 1 + Math.floor(Math.random() * (MAP_H - 2));
+      if (!isFree(this.map, this.blocked, x, y)) continue;
+      if (this.chars.some((c) => c.cx === x && c.cy === y)) continue;
+      spotX = x;
+      spotY = y;
+      break;
+    }
+    if (spotX < 0) return;
+    let h = 0;
+    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+    const color = CUSTOM_COLORS[Math.abs(h) % CUSTOM_COLORS.length] ?? '#E91E63';
+    const hair = CUSTOM_HAIRS[Math.abs(h >> 3) % CUSTOM_HAIRS.length] ?? '#26221e';
+    this.chars.push({
+      id,
+      name,
+      role,
+      color,
+      hair,
+      isSelf: false,
+      cx: spotX,
+      cy: spotY,
+      rx: spotX + 0.5,
+      ry: spotY + 0.5,
+      face: 1,
+      path: [],
+      state: 'idle',
+      stateUntil: this.time + rand(2, 8),
+      intent: null,
+      deskId: null,
+      phase: Math.random() * Math.PI * 2,
     });
   }
 

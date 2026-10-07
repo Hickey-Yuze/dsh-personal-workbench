@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactElement } from 'react';
-import { addRosterEntry, fetchAgentRows, handoff, isEndpointMissing, loadRoster } from '../office/agentClient.js';
+import { fetchAgentRows, handoff, isEndpointMissing, loadRoster } from '../office/agentClient.js';
 import type { AgentRow, RosterEntry } from '../office/agentClient.js';
 
 export type OfficeAgentPanelProps = {
@@ -87,10 +87,6 @@ export function OfficeAgentPanel({ onOpenChat }: OfficeAgentPanelProps): ReactEl
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [rosterErr, setRosterErr] = useState('');
   const [agentRows, setAgentRows] = useState<Record<string, AgentRow>>({});
-  const [newName, setNewName] = useState('');
-  const [newRole, setNewRole] = useState('');
-  const [adding, setAdding] = useState(false);
-  const [addErr, setAddErr] = useState('');
   /* 移交：点 chip「移交」选中 from；to 走下拉（其余自定义员工 + 有会话的场景同事）；note 必填 */
   const [fromId, setFromId] = useState<string | null>(null);
   const [toId, setToId] = useState('');
@@ -140,22 +136,6 @@ export function OfficeAgentPanel({ onOpenChat }: OfficeAgentPanelProps): ReactEl
     };
   }, []);
 
-  const submitAdd = useCallback((): void => {
-    const name = newName.trim();
-    const role = newRole.trim();
-    if (name === '' || role === '' || adding) return;
-    setAdding(true);
-    setAddErr('');
-    addRosterEntry(name, role)
-      .then((entry) => {
-        setRoster((prev) => [...prev, entry]);
-        setNewName('');
-        setNewRole('');
-      })
-      .catch((err: unknown) => setAddErr(err instanceof Error ? err.message : '添加失败'))
-      .finally(() => setAdding(false));
-  }, [adding, newRole, newName]);
-
   /* 移交候选：其余自定义员工 + 正在有会话的场景同事（office/agents，按 npcId 去重） */
   const handoffTargets: Array<{ id: string; name: string; role: string }> = [];
   const seen = new Set<string>();
@@ -190,7 +170,7 @@ export function OfficeAgentPanel({ onOpenChat }: OfficeAgentPanelProps): ReactEl
       <p style={sectionTitle}>我的员工</p>
       {rosterErr !== '' && <p style={errText}>⚠️ {rosterErr}</p>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'flex-start' }}>
-        {roster.length === 0 && rosterErr === '' && <span style={hintText}>还没有自定义员工，先在下面添加一位</span>}
+        {roster.length === 0 && rosterErr === '' && <span style={hintText}>还没有自定义员工——到「布置办公室」标签页的「员工入职」添加</span>}
         {roster.map((r) => {
           const row = agentRows[r.id];
           const dot = statusDot(row);
@@ -227,23 +207,7 @@ export function OfficeAgentPanel({ onOpenChat }: OfficeAgentPanelProps): ReactEl
         })}
       </div>
 
-      {/* 新增员工：POST office/roster */}
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-        <input style={{ ...textInput, width: 96 }} placeholder="名字" value={newName} onChange={(e) => setNewName(e.target.value)} />
-        <input
-          style={{ ...textInput, width: 120 }}
-          placeholder="职务"
-          value={newRole}
-          onChange={(e) => setNewRole(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') submitAdd();
-          }}
-        />
-        <button style={primaryBtn} disabled={adding || newName.trim() === '' || newRole.trim() === ''} onClick={submitAdd}>
-          {adding ? '添加中…' : '添加员工'}
-        </button>
-      </div>
-      {addErr !== '' && <p style={errText}>⚠️ {addErr}</p>}
+      {/* 新增员工已迁到「布置办公室」标签页（员工入职卡片）；此处只展示与派活/移交 */}
 
       {/* 移交（互相监督 v1）：note 会真实写进双方会话 */}
       {fromId !== null && (
