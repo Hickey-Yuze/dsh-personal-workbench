@@ -118,21 +118,35 @@ export class OfficeEngine {
   }
 
   /**
-   * 花名册新增的自定义员工进场景：随机找一个空闲可走格出生（无工位 → 走闲逛/咖啡/串门逻辑）。
-   * id 已存在则忽略（重复调用幂等）；站不下就放弃本次（不硬塞重叠）。
+   * 花名册新增的自定义员工进场景：优先分配工位（没被占的桌 → 没有空桌则确定性摆新桌），
+   * 出生在工位椅格；id 已存在则忽略（重复调用幂等）。
    */
   addRosterChar(id: string, name: string, role: string): void {
     if (this.chars.some((c) => c.id === id)) return;
+    // 工位分配：优先复用没被占用的桌；没有空桌就在空地确定性摆一张新桌
+    // （扫描顺序固定 → 同一张花名册刷新后工位位置一致，不改动用户保存的地图）。
+    const usedDeskIds = new Set(this.chars.map((c) => c.deskId).filter((d): d is string => d !== null));
+    let desk = this.map.furniture.find((f) => f.kind === 'desk' && !usedDeskIds.has(f.id));
+    if (desk === undefined) desk = this.addAutoDesk(`desk-roster-${id}`);
     let spotX = -1;
     let spotY = -1;
-    for (let i = 0; i < 200; i++) {
-      const x = 1 + Math.floor(Math.random() * (MAP_W - 2));
-      const y = 1 + Math.floor(Math.random() * (MAP_H - 2));
-      if (!isFree(this.map, this.blocked, x, y)) continue;
-      if (this.chars.some((c) => c.cx === x && c.cy === y)) continue;
-      spotX = x;
-      spotY = y;
-      break;
+    if (desk !== undefined) {
+      const chair = deskChairCell(desk);
+      if (!this.chars.some((c) => c.cx === chair.x && c.cy === chair.y)) {
+        spotX = chair.x;
+        spotY = chair.y;
+      }
+    }
+    if (spotX < 0) {
+      for (let i = 0; i < 200; i++) {
+        const x = 1 + Math.floor(Math.random() * (MAP_W - 2));
+        const y = 1 + Math.floor(Math.random() * (MAP_H - 2));
+        if (!isFree(this.map, this.blocked, x, y)) continue;
+        if (this.chars.some((c) => c.cx === x && c.cy === y)) continue;
+        spotX = x;
+        spotY = y;
+        break;
+      }
     }
     if (spotX < 0) return;
     let h = 0;
@@ -155,9 +169,33 @@ export class OfficeEngine {
       state: 'idle',
       stateUntil: this.time + rand(2, 8),
       intent: null,
-      deskId: null,
+      deskId: desk?.id ?? null,
       phase: Math.random() * Math.PI * 2,
     });
+  }
+
+  /**
+   * 给新员工确定性摆一张新桌（2×2）：从左上往右下扫第一处
+   * 「顶行两格可挡 + 底行两格可走」的空位，写进内存地图并补挡位。
+   * 不落盘——用户保存的地图不被改动，刷新后由花名册重新推导出相同位置。
+   */
+  private addAutoDesk(deskId: string): Furniture | undefined {
+    for (let y = 2; y <= MAP_H - 4; y++) {
+      for (let x = 1; x <= MAP_W - 4; x++) {
+        if (!isFree(this.map, this.blocked, x, y)) continue;
+        if (!isFree(this.map, this.blocked, x + 1, y)) continue;
+        if (!isFree(this.map, this.blocked, x, y + 1)) continue;
+        if (!isFree(this.map, this.blocked, x + 1, y + 1)) continue;
+        const desk: Furniture = { id: deskId, kind: 'desk', x, y, w: 2, h: 2 };
+        this.map.furniture.push(desk);
+        this.blocked[y * this.map.w + x] = 1;
+        this.blocked[y * this.map.w + x + 1] = 1;
+        // 同步登记进 desks 索引（tick 回工位按 id 查）；头部插入，保持「末位 = 自己工位」不变式
+        this.desks.unshift(desk);
+        return desk;
+      }
+    }
+    return undefined;
   }
 
   /* ───────────── P2 互动 API ───────────── */
