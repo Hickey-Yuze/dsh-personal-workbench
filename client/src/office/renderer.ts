@@ -850,7 +850,34 @@ function isoSoftShadow(ctx: CanvasRenderingContext2D, x: number, y: number, rx: 
 }
 
 /**
- * 等距长方体：底面 = 格矩形 (fx,fy,w,d)，高 hPx；画左前面 → 右前面 → 顶面。
+ * 等距圆角顶面：把画布变换到「u 沿 gx、v 沿 gy」的等距平面画真正圆角的矩形。
+ * 圆角在等距投影下自然椭圆化——玩具风软边的关键观感（对齐参考稿）。
+ */
+function isoTopRounded(
+  ctx: CanvasRenderingContext2D,
+  ox: number,
+  oy: number,
+  k: number,
+  fx: number,
+  fy: number,
+  w: number,
+  d: number,
+  r: number,
+  vy: number,
+  fill: string,
+): void {
+  ctx.save();
+  ctx.transform(k, k / 2, -k, k / 2, ox + (fx - fy) * k, oy + ((fx + fy) * k) / 2 - vy);
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') ctx.roundRect(0, 0, w, d, r);
+  else ctx.rect(0, 0, w, d);
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.restore();
+}
+
+/**
+ * 等距长方体：底面 = 格矩形 (fx,fy,w,d)，高 hPx；画左前面 → 右前面 → 圆角顶面。
  * 返回顶面中心投影点（供在其上摆物件）。
  */
 function isoBoxAt(
@@ -877,14 +904,8 @@ function isoBoxAt(
   ctx.fillStyle = right;
   isoPoly(ctx, [c11, c10, { x: c10.x, y: c10.y - h }, { x: c11.x, y: c11.y - h }]);
   ctx.fill();
-  ctx.fillStyle = top;
-  isoPoly(ctx, [
-    { x: c00.x, y: c00.y - h },
-    { x: c10.x, y: c10.y - h },
-    { x: c11.x, y: c11.y - h },
-    { x: c01.x, y: c01.y - h },
-  ]);
-  ctx.fill();
+  // 圆角顶面（软边；等距下圆角自动椭圆化）
+  isoTopRounded(ctx, ox, oy, k, fx, fy, w, d, Math.min(w, d) * 0.2, h, top);
   return { x: (c00.x + c11.x) / 2, y: (c00.y + c11.y) / 2 - h };
 }
 
@@ -992,7 +1013,8 @@ function buildIsoStaticLayer(pxW: number, pxH: number, dpr: number, cssW: number
     const p1 = isoCorner(ox, oy, k, MAP_W, gy);
     const p2 = isoCorner(ox, oy, k, MAP_W, gy + 1);
     const p3 = isoCorner(ox, oy, k, 0, gy + 1);
-    c.fillStyle = gy % 2 === 0 ? ISO_FLOOR_A : ISO_FLOOR_B;
+    // 宽木条（每 2 格一条，对齐参考稿的宽板地板）
+    c.fillStyle = (gy >> 1) % 2 === 0 ? ISO_FLOOR_A : ISO_FLOOR_B;
     isoPoly(c, [p0, p1, p2, p3]);
     c.fill();
     // 板缝
@@ -1005,7 +1027,7 @@ function buildIsoStaticLayer(pxW: number, pxH: number, dpr: number, cssW: number
     // 木板短缝（按格错位）
     const segs = 8;
     for (let i = 0; i < segs; i++) {
-      const t = (i + ((gy * 3) % segs) / segs) / segs;
+      const t = (i + (((gy >> 1) * 3) % segs) / segs) / segs;
       if (t <= 0 || t >= 1) continue;
       const a = isoCorner(ox, oy, k, MAP_W * t, gy);
       const b = isoCorner(ox, oy, k, MAP_W * t, gy + 1);
@@ -1397,7 +1419,8 @@ function isoDrawChar(
     ctx.lineWidth = 1;
   }
 
-  // 腿（Q 版短腿 + 白鞋）
+  // 腿：站/走路（摆动双腿 + 白鞋）或真坐姿（大腿前伸 + 小腿垂下 + 鞋）
+  const seatH = k * 0.42; // 与 isoDrawChair 的座垫高度一致
   const legH = sitting ? 0 : k * 0.2;
   const bodyW = k * 0.5;
   const bodyH = k * 0.42;
@@ -1411,10 +1434,25 @@ function isoDrawChar(
     ctx.fillStyle = ISO_SHOE;
     ctx.fillRect(px - bodyW * 0.4 + swing, baseY - legH * 0.24, bodyW * 0.34, legH * 0.24);
     ctx.fillRect(px + bodyW * 0.06 - swing, baseY - legH * 0.24, bodyW * 0.34, legH * 0.24);
+  } else {
+    const dir = c.face;
+    const seatY = baseY - seatH;
+    // 大腿（水平前伸）
+    const thighX = dir > 0 ? px - k * 0.05 : px - k * 0.4;
+    ctx.fillStyle = ISO_PANTS;
+    rr(ctx, thighX, seatY - k * 0.02, k * 0.45, k * 0.15, k * 0.07);
+    ctx.fill();
+    // 小腿（垂下）+ 鞋
+    const kneeX = dir > 0 ? px + k * 0.32 : px - k * 0.32;
+    ctx.fillRect(kneeX - k * 0.065, seatY + k * 0.06, k * 0.13, baseY - seatY - k * 0.02);
+    ctx.fillStyle = ISO_SHOE;
+    rr(ctx, kneeX - k * 0.1, baseY - k * 0.09, k * 0.2, k * 0.1, k * 0.045);
+    ctx.fill();
   }
 
-  // 身体（圆润）+ 两侧手臂
-  const bodyTop = baseY - legH - bodyH + bob;
+  // 身体（圆润）+ 两侧手臂；坐姿时身体落在椅面高度上
+  const bodyBottom = sitting ? baseY - seatH + k * 0.05 : baseY - legH;
+  const bodyTop = bodyBottom - bodyH + bob;
   ctx.fillStyle = c.color;
   rr(ctx, px - bodyW / 2, bodyTop, bodyW, bodyH, k * 0.16);
   ctx.fill();
