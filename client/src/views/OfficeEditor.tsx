@@ -41,6 +41,7 @@ const CATALOG: ReadonlyArray<{ kind: FurnitureKind; name: string }> = [
   { kind: 'fridge', name: '冰箱' },
   { kind: 'carpet', name: '地毯' },
   { kind: 'roundtable', name: '圆桌' },
+  { kind: 'cabinet', name: '抽屉柜' },
 ];
 
 const SWATCH: Record<FurnitureKind, string> = {
@@ -53,6 +54,7 @@ const SWATCH: Record<FurnitureKind, string> = {
   fridge: '#c9d0d9',
   carpet: '#efe7da',
   roundtable: '#ffffff',
+  cabinet: '#f2f4f6',
 };
 
 interface DragState {

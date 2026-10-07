@@ -1062,6 +1062,52 @@ function buildIsoStaticLayer(pxW: number, pxH: number, dpr: number, cssW: number
   c.fill();
   isoPoly(c, [t00, t0H, { x: t0H.x + thick.x, y: t0H.y + thick.y }, { x: t00.x + thick.x, y: t00.y + thick.y }]);
   c.fill();
+  // 左后墙窗格（参考稿左墙一排窗）：沿 gx=0 边分三段，浅蓝玻璃 + 白框
+  const winBottom = k * 0.9;
+  const winH = k * 1.5;
+  const segsWin = 3;
+  for (let i = 0; i < segsWin; i++) {
+    const g0 = 0.9 + ((MAP_H - 1.8) / segsWin) * i;
+    const g1 = g0 + (MAP_H - 1.8) / segsWin - 0.5;
+    const a = isoCorner(ox, oy, k, 0.02, g0);
+    const b = isoCorner(ox, oy, k, 0.02, g1);
+    // 玻璃
+    c.fillStyle = '#dceaf4';
+    isoPoly(c, [a, b, { x: b.x, y: b.y - winBottom - winH }, { x: a.x, y: a.y - winBottom - winH }]);
+    c.fill();
+    c.fillStyle = 'rgba(255,255,255,0.45)';
+    isoPoly(c, [
+      { x: a.x + (b.x - a.x) * 0.15, y: a.y + (b.y - a.y) * 0.15 - winBottom - winH },
+      { x: a.x + (b.x - a.x) * 0.3, y: a.y + (b.y - a.y) * 0.3 - winBottom - winH },
+      { x: a.x + (b.x - a.x) * 0.18, y: a.y + (b.y - a.y) * 0.18 - winBottom },
+      { x: a.x + (b.x - a.x) * 0.03, y: a.y + (b.y - a.y) * 0.03 - winBottom },
+    ]);
+    c.fill();
+    // 白框
+    c.strokeStyle = '#ffffff';
+    c.lineWidth = Math.max(2, k * 0.09);
+    c.beginPath();
+    c.moveTo(a.x, a.y - winBottom);
+    c.lineTo(b.x, b.y - winBottom);
+    c.lineTo(b.x, b.y - winBottom - winH);
+    c.lineTo(a.x, a.y - winBottom - winH);
+    c.closePath();
+    c.stroke();
+    // 中梃
+    c.lineWidth = Math.max(1.5, k * 0.05);
+    c.beginPath();
+    c.moveTo((a.x + b.x) / 2, (a.y + b.y) / 2 - winBottom);
+    c.lineTo((a.x + b.x) / 2, (a.y + b.y) / 2 - winBottom - winH);
+    c.stroke();
+    // 窗台
+    c.strokeStyle = 'rgba(255,255,255,0.95)';
+    c.lineWidth = Math.max(2, k * 0.08);
+    c.beginPath();
+    c.moveTo(a.x, a.y - winBottom + k * 0.04);
+    c.lineTo(b.x, b.y - winBottom + k * 0.04);
+    c.stroke();
+  }
+
   // 墙顶高光 + 墙面下缘踢脚
   c.strokeStyle = 'rgba(255,255,255,0.9)';
   c.lineWidth = Math.max(1.5, k * 0.06);
@@ -1441,6 +1487,34 @@ function isoDrawRoundTable(ctx: CanvasRenderingContext2D, f: Furniture, ox: numb
   isoDrawChair(ctx, ox, oy, k, f.x + f.w - 0.38, f.y + f.h - 0.5);
 }
 
+/** 抽屉柜（工位旁三层白柜）：柜体 + 三层抽屉缝 + 把手 + 柜顶小物。 */
+function isoDrawCabinet(ctx: CanvasRenderingContext2D, f: Furniture, ox: number, oy: number, k: number): void {
+  const base = isoCorner(ox, oy, k, f.x + 0.5, f.y + 0.88);
+  isoSoftShadow(ctx, base.x, base.y, k * 0.32, 0.13);
+  isoBoxAt(ctx, ox, oy, k, f.x + 0.2, f.y + 0.24, 0.6, 0.56, k * 0.72, '#fbfcfd', '#e6e9ec', '#d2d6db');
+  // 三层抽屉缝 + 把手（右前面）
+  const fp = isoCorner(ox, oy, k, f.x + 0.8, f.y + 0.78);
+  ctx.strokeStyle = 'rgba(120,128,138,0.35)';
+  ctx.lineWidth = 1;
+  for (let i = 1; i <= 2; i++) {
+    const dy = k * (0.72 / 3) * i;
+    ctx.beginPath();
+    ctx.moveTo(fp.x - k * 0.2, fp.y - dy);
+    ctx.lineTo(fp.x, fp.y - dy + k * 0.08);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#b6bcc4';
+  ctx.fillRect(fp.x - k * 0.12, fp.y - k * 0.3, Math.max(1.5, k * 0.05), k * 0.12);
+  ctx.fillRect(fp.x - k * 0.12, fp.y - k * 0.52, Math.max(1.5, k * 0.05), k * 0.12);
+  // 柜顶小物（书）
+  ctx.fillStyle = '#e9ebee';
+  ctx.beginPath();
+  ctx.ellipse(base.x, base.y - k * 0.76, k * 0.18, k * 0.09, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#dde1e5';
+  ctx.fillRect(base.x - k * 0.18, base.y - k * 0.76, k * 0.36, k * 0.1);
+}
+
 /* ───────────── iso 人物（Q 版大头，软 3D 玩具风） ───────────── */
 
 /** 头发：从 c.hair 提亮成软 3D 观感（保留员工发色识别）。 */
@@ -1809,6 +1883,9 @@ function renderIso(
           break;
         case 'roundtable':
           isoDrawRoundTable(ctx, f, ox, oy, k);
+          break;
+        case 'cabinet':
+          isoDrawCabinet(ctx, f, ox, oy, k);
           break;
       }
     } else if (it.kind === 'char' && it.c !== undefined) {

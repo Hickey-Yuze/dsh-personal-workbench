@@ -20,6 +20,7 @@ export const FURN_SIZE: Record<FurnitureKind, { w: number; h: number }> = {
   fridge: { w: 1, h: 1 },
   carpet: { w: 4, h: 3 },
   roundtable: { w: 2, h: 2 },
+  cabinet: { w: 1, h: 1 },
 };
 
 let furnSeq = 0;
@@ -48,6 +49,10 @@ export function defaultMap(): OfficeMap {
     mk('desk', 35, 7),
     // 自己的中央工位（必须是最后一张桌：spawn 约定 desks 最后一座是自己）
     mk('desk', 19, 4),
+    // 工位旁白色抽屉柜（参考稿每张桌旁都有）
+    mk('cabinet', 5, 3),
+    mk('cabinet', 5, 7),
+    mk('cabinet', 21, 4),
     // 会议区：米色地毯 + 白色圆桌（对应参考稿左侧会议角）
     mk('carpet', 13, 6),
     mk('roundtable', 14, 7),
