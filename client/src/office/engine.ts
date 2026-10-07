@@ -24,6 +24,13 @@ const NPC_DEFS: NpcDef[] = [
   { name: '阿福', role: '运营', color: '#2D9CDB', hair: '#1f1f1f' },
 ];
 
+/** 六名内置 NPC 的稳定身份（id 与 spawn 一致：npc-1..npc-6），供员工面板枚举编辑。 */
+export const BUILTIN_STAFF: Array<{ id: string; name: string; role: string }> = NPC_DEFS.map((d, i) => ({
+  id: `npc-${i + 1}`,
+  name: d.name,
+  role: d.role,
+}));
+
 const rand = (min: number, max: number): number => min + Math.random() * (max - min);
 
 function pick<T>(arr: T[]): T {
@@ -196,6 +203,14 @@ export class OfficeEngine {
       }
     }
     return undefined;
+  }
+
+  /** 改名/改职务（找不到 id 静默忽略；名字与职务 trim 后非空才生效）。 */
+  renameChar(id: string, name?: string, role?: string): void {
+    const c = this.chars.find((ch) => ch.id === id);
+    if (c === undefined) return;
+    if (name !== undefined && name.trim() !== '') c.name = name.trim();
+    if (role !== undefined && role.trim() !== '') c.role = role.trim();
   }
 
   /* ───────────── P2 互动 API ───────────── */

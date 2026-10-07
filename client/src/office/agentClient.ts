@@ -8,6 +8,23 @@ const BASE = '/api/personal-workbench/office';
 /** 自定义员工花名册条目（默认六名 NPC 由客户端内置，不在此列）。 */
 export type RosterEntry = { id: string; name: string; role: string };
 
+/** 员工的可编辑属性覆盖（宿主按 charId 合并进人设/提示词；对内置与自定义员工都有效）。 */
+export type BuiltinOverride = {
+  name?: string;
+  role?: string;
+  /** 性格描述：会作为人设喂给该员工的 agent。 */
+  persona?: string;
+  /** 同事链：协作关系描述，每行一条。 */
+  links?: string[];
+  /** 自觉工作开关：开了不派活也会自己找活干。 */
+  autopilot?: boolean;
+};
+
+export type RosterResult = { roster: RosterEntry[]; builtin?: Record<string, BuiltinOverride> };
+
+/** 员工记忆条目（宿主真实会话产生的工作记录）。 */
+export type MemoryNote = { t: number; text: string };
+
 /** office/agents 返回的真工位会话快照（status: working | idle | stopped）。 */
 export type AgentRow = {
   npcId: string;
@@ -39,7 +56,7 @@ async function getJson<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-async function postJson<T>(path: string, body: Record<string, string>): Promise<T> {
+async function postJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const res = await fetch(`${BASE}/${path}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -49,10 +66,34 @@ async function postJson<T>(path: string, body: Record<string, string>): Promise<
   return (await res.json()) as T;
 }
 
-/** 读取自定义员工花名册；网络/宿主不可达时抛错（由调用方展示），宿主返回缺 roster 字段按空数组。 */
-export async function loadRoster(): Promise<RosterEntry[]> {
-  const data = await getJson<{ roster?: RosterEntry[] }>('roster');
-  return Array.isArray(data.roster) ? data.roster : [];
+/** 读取花名册（自定义员工 + 各员工属性覆盖 builtin；旧宿主无 builtin 字段 → undefined，调用方降级）。 */
+export async function loadRoster(): Promise<RosterResult> {
+  const data = await getJson<{ roster?: RosterEntry[]; builtin?: Record<string, BuiltinOverride> }>('roster');
+  return {
+    roster: Array.isArray(data.roster) ? data.roster : [],
+    ...(data.builtin !== undefined && typeof data.builtin === 'object' ? { builtin: data.builtin } : {}),
+  };
+}
+
+/** 保存员工属性覆盖（名称/职务/性格/同事链）。 */
+export async function saveBuiltin(id: string, patch: BuiltinOverride): Promise<void> {
+  await postJson('roster/builtin', { id, ...patch });
+}
+
+/** 自觉工作开关。 */
+export async function setAutopilot(id: string, on: boolean): Promise<void> {
+  await postJson('roster/autopilot', { id, on });
+}
+
+/** 员工记忆（真实会话产生的【工作记录】）。 */
+export async function fetchMemory(char: string): Promise<MemoryNote[]> {
+  const data = await getJson<{ notes?: MemoryNote[] }>(`memory?char=${encodeURIComponent(char)}`);
+  return Array.isArray(data.notes) ? data.notes : [];
+}
+
+/** 追加一条员工记忆（实验用；面板 v1 只读展示，不调用）。 */
+export async function addMemoryNote(char: string, text: string): Promise<void> {
+  await postJson('memory', { char, text });
 }
 
 /** 新增自定义员工；成功返回宿主生成的新条目（id 为 custom-<序号>）。 */

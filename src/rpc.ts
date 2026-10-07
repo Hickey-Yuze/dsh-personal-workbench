@@ -15,6 +15,20 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { PersonalWorkbenchConfig } from './config.js';
 import type { JsonStore } from './store.js';
 import type { KnowledgeClient } from './knowledge.js';
+import {
+  appendMemoryNote,
+  builtinOverrideOf,
+  findCharIdByName,
+  isValidCharId,
+  loadMemoryNotes,
+  loadOfficeRosterExt,
+  personaPromptSuffix,
+  saveOfficeRosterList,
+  setAutopilotFlag,
+  upsertBuiltinOverride,
+  type OfficeRosterEntry,
+} from './office-roster.js';
+import { installOfficeAutopilot } from './office-autopilot.js';
 
 interface HttpRequestLike {
   url?: string;
@@ -189,6 +203,8 @@ function officeAgentCapture(npcId: string): (payload: unknown) => void {
         if (rep !== '') {
           slot.entry.report = rep;
           slot.entry.reportAt = Date.now();
+          // 自生长记忆闭环：工作记录入档（office_memory/<npcId>.json，静默失败）
+          appendMemoryNote(npcId, `【工作记录】${rep.slice(0, 200)}`);
         }
         slot.entry.status = 'idle';
       } else {
@@ -210,33 +226,87 @@ function officeAgentCapture(npcId: string): (payload: unknown) => void {
 function officeWorkerSystem(name: string, role: string): string {
   return `你是用户工作台「办公室」里的同事 ${name}（${role}），现在被老板派了一个真实工作任务。请直接动手完成（可以读写文件、运行命令、写代码），不要反问老板，遇到小决策自己拿主意；完成后用中文简短汇报：做了什么、改了哪些文件、结果如何。不要寒暄与任务无关的内容。`;
 }
-/** 办公室自定义员工花名册：持久化 ~/.dsh/personal-workbench/office_agents.json（默认六名 NPC 客户端内置，不进 roster）。 */
-const OFFICE_ROSTER_FILE = `${process.env.HOME ?? ''}/.dsh/personal-workbench/office_agents.json`;
-type OfficeRosterEntry = { id: string; name: string; role: string };
-function loadOfficeRoster(): OfficeRosterEntry[] {
-  try {
-    const data = JSON.parse(fs.readFileSync(OFFICE_ROSTER_FILE, 'utf8')) as { roster?: unknown };
-    if (!Array.isArray(data.roster)) return [];
-    const list: OfficeRosterEntry[] = [];
-    for (const r of data.roster) {
-      if (r === null || typeof r !== 'object') continue;
-      const e = r as { id?: unknown; name?: unknown; role?: unknown };
-      if (typeof e.id === 'string' && typeof e.name === 'string' && typeof e.role === 'string' && e.name.trim() !== '') {
-        list.push({ id: e.id, name: e.name, role: e.role });
-      }
+
+/** 给员工拉起宿主真实 agent 会话并派首单任务（office/agent/start 端点与 autopilot 派活共用路径）。失败抛 Error。 */
+async function officeSpawnAgent(
+  ctx: Context,
+  log: { warn(m: string): void },
+  npcId: string,
+  name: string,
+  role: string,
+  task: string,
+  cwd?: string,
+): Promise<void> {
+  const agents = ctx.get('agents') as OfficeAgentsService | undefined;
+  if (!agents || typeof agents.create !== 'function') throw new Error('agents 服务不可用');
+  const selection = (ctx.get('agentDefaultModel') as
+    | { currentSelection?: () => { provider?: unknown; model?: unknown } }
+    | undefined)?.currentSelection?.();
+  const provider = typeof selection?.provider === 'string' && selection.provider !== '' ? selection.provider : undefined;
+  const model = typeof selection?.model === 'string' && selection.model !== '' ? selection.model : undefined;
+  // 工作目录：调用方可传（须为已存在的绝对路径目录），缺省用用户主目录（宿主进程 cwd 可能是 /）。
+  let agentCwd = homedir();
+  if (typeof cwd === 'string' && cwd.startsWith('/')) {
+    try {
+      const st = await fs.promises.stat(cwd);
+      if (st.isDirectory()) agentCwd = cwd;
+    } catch {
+      /* 不存在则回退用户主目录 */
     }
-    return list;
-  } catch {
-    return []; // 读不到 → 默认空数组
   }
+  const prev = officeAgents.get(npcId);
+  if (prev?.handle) {
+    try {
+      void prev.handle.dispose();
+    } catch {
+      /* 旧句柄清理失败忽略 */
+    }
+  }
+  const override = builtinOverrideOf(npcId);
+  const handle = await agents.create({
+    // sessionId 必传：agent.id 必须与 session.id 一致（AgentRegistry.enter 不变式），
+    // 缺省时 agent id 为 undefined 而创建即抛错。
+    sessionId: `session-office-${npcId}-${Date.now()}`,
+    // cwd 必须随 meta 写进 session header：system-prompt 组装 deployment:persona-suffix
+    // 需要 {{cwd}} 变量（variable("cwd", ctx => ctx.agent?.session.header.cwd)），
+    // 缺省会让 agent 第 1 步就报 "prompt variable \"{{cwd}}\" has no value" 而挂。
+    meta: { cwd: agentCwd },
+    agentOptions: { ...(provider ? { provider } : {}), ...(model ? { model } : {}) },
+    setup: async (agentCtx) => {
+      // 挂载默认 agent 预设：核心工具（bash/read/write/edit…）是预设里的子插件，
+      // 不挂预设的 agent 只能看到宿主全局工具（29 个 harness/browser 类），干不了真活。
+      try {
+        const presets = agentCtx.get?.('agentPresets') as { mount?: (ctx: unknown, id?: string) => Promise<unknown> } | undefined;
+        if (presets && typeof presets.mount === 'function') await presets.mount(agentCtx);
+      } catch (err) {
+        log.warn(`[personal-workbench] office agent 预设挂载失败: ${err instanceof Error ? err.message : '未知错误'}`);
+      }
+      try {
+        agentCtx.on?.('agent/assistant-stream', officeAgentCapture(npcId));
+      } catch {
+        /* 监听失败仅影响进度显示 */
+      }
+    },
+  });
+  officeAgents.set(npcId, {
+    handle,
+    entry: { name, role, task, status: 'working', lastText: '', startedAt: Date.now(), updatedAt: Date.now() },
+    turnText: '',
+  });
+  handle.agent.followup({
+    // 员工人设覆盖：builtin 有 persona/links 时追加「你的性格/团队协作」段
+    content: [{ type: 'text', text: `${officeWorkerSystem(name, role)}${personaPromptSuffix(override)}\n\n任务：${task}` }],
+    source: { kind: 'user' },
+  });
+}
+/** 办公室自定义员工花名册：持久化 ~/.dsh/personal-workbench/office_agents.json（默认六名 NPC 客户端内置，不进 roster）。
+ *  读写统一走 ./office-roster.js（roster + builtin 属性覆盖同文件，单写者防互踩）。 */
+function loadOfficeRoster(): OfficeRosterEntry[] {
+  return loadOfficeRosterExt().roster;
 }
 function saveOfficeRoster(list: OfficeRosterEntry[]): void {
-  try {
-    fs.mkdirSync(`${process.env.HOME ?? ''}/.dsh/personal-workbench`, { recursive: true });
-    fs.writeFileSync(OFFICE_ROSTER_FILE, JSON.stringify({ roster: list }, null, 2), 'utf8');
-  } catch {
-    /* 写失败仅影响持久化，下次 POST 重写 */
-  }
+  const ext = loadOfficeRosterExt();
+  saveOfficeRosterList(list, ext.builtin);
 }
 /** llm.stream 的 StreamChunk 最小结构面（text-delta 携带正文增量；字段名经 @deepseek-ai/dsh-llm types.d.ts 查证）。 */
 type OfficeStreamChunk = { type?: string; text?: unknown };
@@ -1241,9 +1311,21 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         send(res, 200, { ok: true, agents: list });
         return;
       }
-      // office/roster GET：自定义员工花名册（默认六名 NPC 客户端内置，不在此列）；非 GET 落到下面 POST 段的新增分支
+      // office/roster GET：自定义员工花名册 + 各员工属性覆盖 builtin（默认六名 NPC 客户端内置，不在 roster 里）；
+      // 非 GET 落到下面 POST 段的新增分支
       if (officeEndpoint === 'office/roster' && officeMethod === 'GET') {
-        send(res, 200, { ok: true, roster: loadOfficeRoster() });
+        const rosterExt = loadOfficeRosterExt();
+        send(res, 200, { ok: true, roster: rosterExt.roster, builtin: rosterExt.builtin });
+        return;
+      }
+      // office/memory GET ?char=<id>：员工记忆（真会话工作记录，自生长）
+      if (officeEndpoint === 'office/memory' && officeMethod === 'GET') {
+        const memChar = new URL(req.url ?? '/', 'http://localhost').searchParams.get('char') ?? '';
+        if (!isValidCharId(memChar)) {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: 'char 必须为合法员工 id' } });
+          return;
+        }
+        send(res, 200, { ok: true, notes: loadMemoryNotes(memChar) });
         return;
       }
       if (officeMethod !== 'POST') {
@@ -1286,73 +1368,20 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         send(res, 200, { ok: true, id: officeActionSeq });
         return;
       }
-      // office/agent/start：给 NPC 拉起宿主真实 agent 会话并派活（真读写、真执行）
+      // office/agent/start：给 NPC 拉起宿主真实 agent 会话并派活（真读写、真执行；与 autopilot 共用 officeSpawnAgent）
       if (officeEndpoint === 'office/agent/start') {
         const npcId = typeof officeBody.npcId === 'string' ? officeBody.npcId : '';
-        const name = typeof officeBody.name === 'string' ? officeBody.name : '';
-        const role = typeof officeBody.role === 'string' ? officeBody.role : '';
         const task = typeof officeBody.task === 'string' ? officeBody.task.trim() : '';
         if (npcId === '' || task === '') {
           send(res, 400, { ok: false, error: { code: 'bad-request', message: 'npcId 与 task 必填' } });
           return;
         }
-        const agents = ctx.get('agents') as OfficeAgentsService | undefined;
-        if (!agents || typeof agents.create !== 'function') {
-          send(res, 501, { ok: false, error: { code: 'unavailable', message: 'agents 服务不可用' } });
-          return;
-        }
-        const selection = (ctx.get('agentDefaultModel') as
-          | { currentSelection?: () => { provider?: unknown; model?: unknown } }
-          | undefined)?.currentSelection?.();
-        const provider = typeof selection?.provider === 'string' && selection.provider !== '' ? selection.provider : undefined;
-        const model = typeof selection?.model === 'string' && selection.model !== '' ? selection.model : undefined;
-        // 工作目录：客户端可传（须为已存在的绝对路径目录），缺省用用户主目录（宿主进程 cwd 可能是 /）。
-        let agentCwd = homedir();
-        if (typeof officeBody.cwd === 'string' && officeBody.cwd.startsWith('/')) {
-          try {
-            const st = await fs.promises.stat(officeBody.cwd);
-            if (st.isDirectory()) agentCwd = officeBody.cwd;
-          } catch { /* 不存在则回退宿主 cwd */ }
-        }
-        const prev = officeAgents.get(npcId);
-        if (prev?.handle) {
-          try {
-            void prev.handle.dispose();
-          } catch { /* 旧句柄清理失败忽略 */ }
-        }
+        // 员工人设覆盖：name/role 用 builtin 覆盖值（客户端传的是显示名，宿主侧覆盖优先）
+        const startOv = builtinOverrideOf(npcId);
+        const name = startOv?.name ?? (typeof officeBody.name === 'string' ? officeBody.name : '');
+        const role = startOv?.role ?? (typeof officeBody.role === 'string' ? officeBody.role : '');
         try {
-          const handle = await agents.create({
-            // sessionId 必传：agent.id 必须与 session.id 一致（AgentRegistry.enter 不变式），
-            // 缺省时 agent id 为 undefined 而创建即抛错。
-            sessionId: `session-office-${npcId}-${Date.now()}`,
-            // cwd 必须随 meta 写进 session header：system-prompt 组装 deployment:persona-suffix
-            // 需要 {{cwd}} 变量（variable("cwd", ctx => ctx.agent?.session.header.cwd)），
-            // 缺省会让 agent 第 1 步就报 "prompt variable \"{{cwd}}\" has no value" 而挂。
-            meta: { cwd: agentCwd },
-            agentOptions: { ...(provider ? { provider } : {}), ...(model ? { model } : {}) },
-            setup: async (agentCtx) => {
-              // 挂载默认 agent 预设：核心工具（bash/read/write/edit…）是预设里的子插件，
-              // 不挂预设的 agent 只能看到宿主全局工具（29 个 harness/browser 类），干不了真活。
-              try {
-                const presets = agentCtx.get?.('agentPresets') as { mount?: (ctx: unknown, id?: string) => Promise<unknown> } | undefined;
-                if (presets && typeof presets.mount === 'function') await presets.mount(agentCtx);
-              } catch (err) {
-                deps.log.warn(`[personal-workbench] office agent 预设挂载失败: ${err instanceof Error ? err.message : '未知错误'}`);
-              }
-              try {
-                agentCtx.on?.('agent/assistant-stream', officeAgentCapture(npcId));
-              } catch { /* 监听失败仅影响进度显示 */ }
-            },
-          });
-          officeAgents.set(npcId, {
-            handle,
-            entry: { name, role, task, status: 'working', lastText: '', startedAt: Date.now(), updatedAt: Date.now() },
-            turnText: '',
-          });
-          handle.agent.followup({
-            content: [{ type: 'text', text: `${officeWorkerSystem(name, role)}\n\n任务：${task}` }],
-            source: { kind: 'user' },
-          });
+          await officeSpawnAgent(ctx, deps.log, npcId, name, role, task, typeof officeBody.cwd === 'string' ? officeBody.cwd : undefined);
           send(res, 200, { ok: true });
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'agent 会话创建失败';
@@ -1473,6 +1502,53 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         send(res, 200, { ok: true, from: { id: fromId, name: fromSlot.entry.name }, to: { id: toId, name: toSlot.entry.name } });
         return;
       }
+      // office/roster/builtin POST：员工属性覆盖（名称/职务/性格/同事链；内置六 NPC 与自定义员工通用）
+      if (officeEndpoint === 'office/roster/builtin') {
+        const builtinId = typeof officeBody.id === 'string' ? officeBody.id.trim() : '';
+        if (builtinId === '') {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: 'id 必填' } });
+          return;
+        }
+        try {
+          const builtin = upsertBuiltinOverride(builtinId, {
+            name: officeBody.name,
+            role: officeBody.role,
+            persona: officeBody.persona,
+            links: officeBody.links,
+          });
+          send(res, 200, { ok: true, builtin });
+        } catch (err) {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: err instanceof Error ? err.message : '保存失败' } });
+        }
+        return;
+      }
+      // office/roster/autopilot POST：自觉工作开关（开了不派活也自己找活干）
+      if (officeEndpoint === 'office/roster/autopilot') {
+        const autoId = typeof officeBody.id === 'string' ? officeBody.id.trim() : '';
+        if (typeof officeBody.on !== 'boolean') {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: 'on 必须为布尔值' } });
+          return;
+        }
+        try {
+          const builtin = setAutopilotFlag(autoId, officeBody.on);
+          send(res, 200, { ok: true, builtin });
+        } catch (err) {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: err instanceof Error ? err.message : '保存失败' } });
+        }
+        return;
+      }
+      // office/memory POST {char, text}：追加员工记忆（面板/实验用；主链路在 capture committed 自动入档）
+      if (officeEndpoint === 'office/memory') {
+        const memCharPost = typeof officeBody.char === 'string' ? officeBody.char.trim() : '';
+        const memTextPost = typeof officeBody.text === 'string' ? officeBody.text : '';
+        if (!isValidCharId(memCharPost)) {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: 'char 必须为合法员工 id' } });
+          return;
+        }
+        appendMemoryNote(memCharPost, memTextPost);
+        send(res, 200, { ok: true });
+        return;
+      }
       // SSE 流式回复公共骨架：llm 软探测 + 默认模型 + 断连中止 + data: delta/[DONE]
       const officeSse = async (
         systemContent: string,
@@ -1591,9 +1667,14 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
           send(res, 400, { ok: false, error: { code: 'bad-request', message: 'name/role 必填' } });
           return;
         }
+        // 员工人设覆盖：请求体只带 name/role → 按名字定位 id → 应用 builtin 覆盖（称谓/职务/性格/协作链）
+        const npcCharId = findCharIdByName(npcName);
+        const npcOv = npcCharId !== undefined ? builtinOverrideOf(npcCharId) : undefined;
+        const effName = npcOv?.name ?? npcName;
+        const effRole = npcOv?.role ?? npcRole;
         const parsedNpc = officeParse();
         if (parsedNpc === null) return;
-        await officeSse(officeNpcSystem(npcName, npcRole, parsedNpc.sceneState), parsedNpc.msgs);
+        await officeSse(officeNpcSystem(effName, effRole, parsedNpc.sceneState) + personaPromptSuffix(npcOv), parsedNpc.msgs);
         return;
       }
       if (officeEndpoint !== 'office/chat') {
@@ -1667,6 +1748,19 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
       deps.log.error(`[personal-workbench] API 挂载失败: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
+
+  // 自觉工作 autopilot：30 分钟一轮，为开启开关且空闲的员工用 llm 生成微任务并 spawn 真会话（全程静默失败）
+  try {
+    const stopOfficeAutopilot = installOfficeAutopilot({
+      ctx,
+      log: deps.log,
+      isBusy: (id) => officeAgents.get(id)?.entry.status === 'working',
+      dispatch: (id, name, role, task) => officeSpawnAgent(ctx, deps.log, id, name, role, task),
+    });
+    ctx.effect(() => stopOfficeAutopilot);
+  } catch (err) {
+    deps.log.warn(`[personal-workbench] office autopilot 安装失败: ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   attach();
   if (!attached) {

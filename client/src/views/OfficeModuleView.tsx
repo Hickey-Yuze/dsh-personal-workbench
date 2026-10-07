@@ -12,7 +12,7 @@ import type { OfficeMap } from '../office/types.js';
 import type { MemberStat } from '../office/types.js';
 import type { OfficeView } from '../office/renderer.js';
 import { addRosterEntry, isEndpointMissing, loadRoster } from '../office/agentClient.js';
-import type { RosterEntry } from '../office/agentClient.js';
+import type { BuiltinOverride, RosterEntry } from '../office/agentClient.js';
 import { OfficeEditor } from './OfficeEditor.js';
 import { OfficeDataPanel } from './OfficeDataPanel.js';
 import { OfficeAgentPanel } from './OfficeAgentPanel.js';
@@ -128,6 +128,7 @@ export function OfficeModuleView(): ReactElement {
   const [members, setMembers] = useState<MemberStat[]>(() => engine.members());
   const [officeView, setOfficeView] = useState<OfficeView>({}); // 场景缩放/平移（滚轮+按钮）
   const [roster, setRoster] = useState<RosterEntry[]>([]);
+  const [builtinOverrides, setBuiltinOverrides] = useState<Record<string, BuiltinOverride>>({});
   const [hireName, setHireName] = useState('');
   const [hireRole, setHireRole] = useState('');
   const [hireBusy, setHireBusy] = useState(false);
@@ -265,14 +266,18 @@ export function OfficeModuleView(): ReactElement {
     return () => window.clearInterval(id);
   }, [engine]);
 
-  /* 自定义员工：拉花名册 → 引擎生成角色（换引擎/换图后同样补齐） */
+  /* 员工：拉花名册（含属性覆盖）→ 引擎生成自定义角色 + 应用覆盖改名（换引擎/换图后同样补齐） */
   useEffect(() => {
     let dead = false;
     loadRoster()
-      .then((list) => {
+      .then((res) => {
         if (dead) return;
-        setRoster(list);
-        list.forEach((r) => engine.addRosterChar(r.id, r.name, r.role));
+        setRoster(res.roster);
+        setBuiltinOverrides(res.builtin ?? {});
+        res.roster.forEach((r) => engine.addRosterChar(r.id, r.name, r.role));
+        for (const [id, ov] of Object.entries(res.builtin ?? {})) {
+          engine.renameChar(id, ov.name, ov.role);
+        }
       })
       .catch(() => {
         /* 宿主旧版无 roster 端点：自定义员工暂缺，不阻塞场景 */
@@ -605,10 +610,16 @@ export function OfficeModuleView(): ReactElement {
     [engine],
   );
 
+  /* 聊天标题优先用宿主覆盖的名字/职务（面板改名后即使 chatTarget 快照是旧的也显示新值） */
+  const chatNpc = chatTarget.kind === 'npc' ? { name: builtinOverrides[chatTarget.id]?.name ?? chatTarget.name, role: builtinOverrides[chatTarget.id]?.role ?? chatTarget.role } : null;
   const targetLabel =
-    chatTarget.kind === 'ai' ? 'AI 助手' : chatTarget.kind === 'npc' ? `和 ${chatTarget.name} 聊天 · ${chatTarget.role}` : '全员群聊';
+    chatTarget.kind === 'ai' ? 'AI 助手' : chatNpc !== null ? `和 ${chatNpc.name} 聊天 · ${chatNpc.role}` : '全员群聊';
   const emptyText =
-    chatTarget.kind === 'ai' ? '问问办公室里的情况，或让我安排同事做事' : chatTarget.kind === 'npc' ? `和 ${chatTarget.name} 说点什么吧，回复会冒泡到 TA 头上` : '先说一句抛话题，或点「让他们聊」看同事们互聊';
+    chatTarget.kind === 'ai'
+      ? '问问办公室里的情况，或让我安排同事做事'
+      : chatNpc !== null
+        ? `和 ${chatNpc.name} 说点什么吧，回复会冒泡到 TA 头上`
+        : '先说一句抛话题，或点「让他们聊」看同事们互聊';
   const npcWorkRow = chatTarget.kind === 'npc' ? agentRows[chatTarget.id] : undefined;
   const npcWorkActive = npcWorkRow !== undefined && npcWorkRow.status !== 'stopped';
 
@@ -723,6 +734,10 @@ export function OfficeModuleView(): ReactElement {
                 onOpenChat={(id, name, role) => {
                   setChatTarget({ kind: 'npc', id, name, role });
                   setChatOpen(true);
+                }}
+                onBuiltinSaved={(id, name, role) => {
+                  setBuiltinOverrides((prev) => ({ ...prev, [id]: { ...prev[id], ...(name !== undefined ? { name } : {}), ...(role !== undefined ? { role } : {}) } }));
+                  engine.renameChar(id, name, role);
                 }}
               />
               <div className="dsh-pwb-office-chat">

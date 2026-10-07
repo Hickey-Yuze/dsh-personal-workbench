@@ -1403,6 +1403,130 @@ html { color-scheme: light !important; }
 .dsh-pwb-office-hire button:disabled { opacity: 0.45; cursor: default; }
 .dsh-pwb-office-hire-err { color: #dc2626; }
 .dsh-pwb-office-hire-roster { color: #6b7280; font-size: 12px; }
+/* 员工面板（我的员工）：全员行 + 自觉开关 + 编辑卡 */
+.dsh-pwb-office-emp-list { display: flex; flex-direction: column; gap: 2px; }
+.dsh-pwb-office-emp-item { display: flex; flex-direction: column; gap: 2px; padding: 3px 0; }
+.dsh-pwb-office-emp-line { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
+.dsh-pwb-office-emp-dot { width: 8px; height: 8px; border-radius: 50%; corner-shape: round; flex-shrink: 0; }
+.dsh-pwb-office-emp-name { font-weight: 600; color: #111827; font-size: 12.5px; }
+.dsh-pwb-office-emp-role { color: #6b7280; font-size: 12px; }
+.dsh-pwb-office-emp-status { color: #9ca3af; font-size: 11px; }
+.dsh-pwb-office-emp-autotag {
+  font-size: 10.5px;
+  color: #0a7c43;
+  background: rgba(0, 200, 83, 0.12);
+  border-radius: 999px;
+  corner-shape: round;
+  padding: 1px 6px;
+  line-height: 1.4;
+}
+.dsh-pwb-office-emp-spacer { flex: 1; }
+/* 自觉工作开关：小滑块（关=灰，开=绿；旋钮显式 corner-shape:round 防 superellipse） */
+.dsh-pwb-office-emp-switch {
+  position: relative;
+  width: 30px;
+  height: 16px;
+  border-radius: 999px;
+  corner-shape: round;
+  border: none;
+  background: #d1d5db;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+.dsh-pwb-office-emp-switch i {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  corner-shape: round;
+  background: #fff;
+  transition: transform 0.15s ease;
+}
+.dsh-pwb-office-emp-switch.on { background: #00c853; }
+.dsh-pwb-office-emp-switch.on i { transform: translateX(14px); }
+.dsh-pwb-office-emp-act {
+  border: 1px solid var(--pwb-border);
+  background: #fff;
+  color: #374151;
+  font-size: 11.5px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.dsh-pwb-office-emp-act.gray { border: none; background: transparent; color: #6b7280; }
+.dsh-pwb-office-emp-act.active { border-color: var(--pwb-accent); color: var(--pwb-accent); }
+/* 编辑卡：名称/职务/性格/同事链/工作记录 */
+.dsh-pwb-office-emp-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--pwb-border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fafafa;
+}
+.dsh-pwb-office-emp-grid { display: flex; gap: 6px; }
+.dsh-pwb-office-emp-grid .dsh-pwb-office-emp-input { flex: 1; min-width: 0; }
+.dsh-pwb-office-emp-input,
+.dsh-pwb-office-emp-select {
+  border: 1px solid var(--pwb-border);
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: #1f2937;
+  background: #fff;
+  outline: none;
+}
+.dsh-pwb-office-emp-input:focus,
+.dsh-pwb-office-emp-select:focus,
+.dsh-pwb-office-emp-area:focus { border-color: var(--pwb-accent); }
+.dsh-pwb-office-emp-area {
+  border: 1px solid var(--pwb-border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: #1f2937;
+  background: #fff;
+  outline: none;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.5;
+}
+.dsh-pwb-office-emp-mem {
+  border: 1px solid var(--pwb-border);
+  border-radius: 8px;
+  background: #fff;
+  padding: 6px 8px;
+  font-size: 11.5px;
+  color: #6b7280;
+  line-height: 1.5;
+  max-height: 110px;
+  overflow-y: auto;
+}
+.dsh-pwb-office-emp-mem-item {
+  color: #374151;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-top: 1px dashed var(--pwb-border);
+  padding-top: 3px;
+  margin-top: 3px;
+}
+.dsh-pwb-office-emp-mem-item:first-child { border-top: none; margin-top: 0; padding-top: 0; }
+.dsh-pwb-office-emp-actions { display: flex; align-items: center; gap: 6px; }
+.dsh-pwb-office-emp-saved { color: #0a7c43; font-size: 12px; }
+.dsh-pwb-office-emp-handoff {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid #f3f4f6;
+  padding-top: 8px;
+}
 .dsh-pwb-office-tabs {
   display: flex;
   align-items: center;
