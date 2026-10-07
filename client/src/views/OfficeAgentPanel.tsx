@@ -21,12 +21,13 @@ export type OfficeAgentPanelProps = {
 const POLL_MS = 2500;
 const MEM_SHOW = 5;
 
-/* ── 内联样式（原有部分保持）：白底圆角卡片 / 绿 #00c853 主按钮 / 灰 #e5e7eb 次级 ── */
+/* ── 内联样式：软 3D 玩具风（无硬描边 / 柔影 / 胶囊按钮），与场景和 theme.ts 统一 ── */
 const card: CSSProperties = {
   background: '#fff',
-  border: '1px solid #e5e7eb',
-  borderRadius: 12,
-  padding: '12px 14px',
+  border: '1px solid rgba(20, 20, 30, 0.05)',
+  boxShadow: '0 2px 14px rgba(20, 20, 30, 0.06)',
+  borderRadius: 16,
+  padding: '14px 15px',
   display: 'flex',
   flexDirection: 'column',
   gap: 10,
@@ -37,18 +38,19 @@ const primaryBtn: CSSProperties = {
   background: '#00c853',
   color: '#fff',
   border: 'none',
-  borderRadius: 8,
-  padding: '5px 12px',
+  borderRadius: 999,
+  padding: '6px 14px',
   fontSize: 12.5,
   fontWeight: 600,
   cursor: 'pointer',
+  boxShadow: '0 1px 6px rgba(0, 200, 106, 0.24)',
 };
 const grayBtn: CSSProperties = {
-  background: '#e5e7eb',
+  background: '#f5f6f8',
   color: '#374151',
-  border: 'none',
-  borderRadius: 8,
-  padding: '5px 12px',
+  border: '1px solid rgba(20, 20, 30, 0.06)',
+  borderRadius: 999,
+  padding: '6px 14px',
   fontSize: 12.5,
   cursor: 'pointer',
 };
