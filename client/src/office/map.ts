@@ -18,6 +18,8 @@ export const FURN_SIZE: Record<FurnitureKind, { w: number; h: number }> = {
   wall: { w: 1, h: 1 },
   microwave: { w: 1, h: 1 },
   fridge: { w: 1, h: 1 },
+  carpet: { w: 4, h: 3 },
+  roundtable: { w: 2, h: 2 },
 };
 
 let furnSeq = 0;
@@ -46,6 +48,9 @@ export function defaultMap(): OfficeMap {
     mk('desk', 35, 7),
     // 自己的中央工位（必须是最后一张桌：spawn 约定 desks 最后一座是自己）
     mk('desk', 19, 4),
+    // 会议区：米色地毯 + 白色圆桌（对应参考稿左侧会议角）
+    mk('carpet', 13, 6),
+    mk('roundtable', 14, 7),
     // 绿植
     mk('plant', 2, 1),
     mk('plant', 37, 1),
@@ -74,6 +79,7 @@ export function buildBlocked(map: OfficeMap): Uint8Array {
     blocked[y * map.w + map.w - 1] = 1;
   }
   for (const f of map.furniture) {
+    if (f.kind === 'carpet') continue; // 地毯可通行（只是地面装饰）
     const lastRow = f.kind === 'desk' ? f.h - 1 : -1; // 桌子留出最后一行走人
     for (let dy = 0; dy < f.h; dy++) {
       if (dy === lastRow) continue;

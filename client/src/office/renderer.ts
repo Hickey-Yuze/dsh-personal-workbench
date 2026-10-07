@@ -1379,6 +1379,68 @@ function isoDrawFridge(ctx: CanvasRenderingContext2D, f: Furniture, ox: number, 
   ctx.fillRect(d.x - k * 0.07, d.y - k * 0.66, Math.max(1.5, k * 0.045), k * 0.32);
 }
 
+/** 地毯（可通行）：等距圆角米色绒毯，三层同心柔边。 */
+function isoDrawCarpet(ctx: CanvasRenderingContext2D, f: Furniture, ox: number, oy: number, k: number): void {
+  const r = Math.min(f.w, f.h) * 0.22;
+  isoTopRounded(ctx, ox, oy, k, f.x - 0.03, f.y - 0.03, f.w + 0.06, f.h + 0.06, r, 0, 'rgba(120,104,80,0.14)');
+  isoTopRounded(ctx, ox, oy, k, f.x, f.y, f.w, f.h, r, 0, '#efe7da');
+  isoTopRounded(ctx, ox, oy, k, f.x + 0.14, f.y + 0.14, f.w - 0.28, f.h - 0.28, r * 0.8, 0, '#eae1d2');
+  // 绒面细纹
+  ctx.save();
+  ctx.transform(k, k / 2, -k, k / 2, ox + (f.x - f.y) * k, oy + ((f.x + f.y) * k) / 2);
+  ctx.strokeStyle = 'rgba(160,140,110,0.16)';
+  ctx.lineWidth = 0.02;
+  for (let i = 1; i < 5; i++) {
+    const t = (f.w * i) / 5;
+    ctx.beginPath();
+    ctx.moveTo(t, 0.12);
+    ctx.lineTo(t, f.h - 0.12);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** 圆桌（会议桌）：白色椭圆台面 + 中柱底座 + 桌上小物 + 四把椅子（对应参考稿会议角）。 */
+function isoDrawRoundTable(ctx: CanvasRenderingContext2D, f: Furniture, ox: number, oy: number, k: number): void {
+  const cx = f.x + f.w / 2;
+  const cy = f.y + f.h / 2;
+  const c = isoCorner(ox, oy, k, cx, cy);
+  // 后方两把椅子
+  isoDrawChair(ctx, ox, oy, k, f.x - 0.62, f.y - 0.5);
+  isoDrawChair(ctx, ox, oy, k, f.x + f.w - 0.38, f.y - 0.5);
+  // 桌影
+  isoSoftShadow(ctx, c.x, c.y + k * 0.06, k * 1.0, 0.13);
+  // 中柱 + 圆底座
+  ctx.fillStyle = '#e4e7ea';
+  ctx.fillRect(c.x - k * 0.08, c.y - k * 0.55, k * 0.16, k * 0.55);
+  ctx.beginPath();
+  ctx.ellipse(c.x, c.y, k * 0.4, k * 0.19, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // 台面侧厚 + 台面
+  ctx.fillStyle = '#dde1e5';
+  ctx.beginPath();
+  ctx.ellipse(c.x, c.y - k * 0.5, k * 1.0, k * 0.54, 0, 0, Math.PI);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.ellipse(c.x, c.y - k * 0.56, k * 1.0, k * 0.54, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // 桌面小物：笔记本 + 杯子
+  ctx.fillStyle = '#f2f3f5';
+  ctx.beginPath();
+  ctx.ellipse(c.x - k * 0.34, c.y - k * 0.62, k * 0.22, k * 0.12, 0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#e9ebee';
+  ctx.beginPath();
+  ctx.ellipse(c.x + k * 0.3, c.y - k * 0.62, k * 0.1, k * 0.06, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#dfe3e7';
+  ctx.fillRect(c.x + k * 0.26, c.y - k * 0.64, k * 0.08, k * 0.08);
+  // 前方两把椅子
+  isoDrawChair(ctx, ox, oy, k, f.x - 0.62, f.y + f.h - 0.5);
+  isoDrawChair(ctx, ox, oy, k, f.x + f.w - 0.38, f.y + f.h - 0.5);
+}
+
 /* ───────────── iso 人物（Q 版大头，软 3D 玩具风） ───────────── */
 
 /** 头发：从 c.hair 提亮成软 3D 观感（保留员工发色识别）。 */
@@ -1706,7 +1768,8 @@ function renderIso(
   // 画家算法：家具与人物按 (gx+gy) 深度混排（人物 +0.01 后画，坐在椅前）
   type Renderable = { depth: number; kind: 'furn' | 'char'; f?: Furniture; c?: Character };
   const items: Renderable[] = [];
-  for (const f of furniture) items.push({ depth: f.x + f.y, kind: 'furn', f });
+  // 地毯贴地装饰：永远最先画（深度压到最低），其余家具按 gx+gy
+  for (const f of furniture) items.push({ depth: f.kind === 'carpet' ? -1000 + f.x * 0.001 : f.x + f.y, kind: 'furn', f });
   for (const c of chars) items.push({ depth: c.rx + c.ry + 0.01, kind: 'char', c });
   items.sort((a, b) => a.depth - b.depth);
 
@@ -1740,6 +1803,12 @@ function renderIso(
           break;
         case 'fridge':
           isoDrawFridge(ctx, f, ox, oy, k);
+          break;
+        case 'carpet':
+          isoDrawCarpet(ctx, f, ox, oy, k);
+          break;
+        case 'roundtable':
+          isoDrawRoundTable(ctx, f, ox, oy, k);
           break;
       }
     } else if (it.kind === 'char' && it.c !== undefined) {
