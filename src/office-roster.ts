@@ -29,6 +29,10 @@ export type OfficeBuiltinOverride = {
   autopilot?: boolean;
   /** 指定工位：客户端地图里的桌子 id；空/缺省 = 自动分配。 */
   deskId?: string;
+  /** 员工专属模型 provider：空串/缺省 = 跟随宿主全局默认。 */
+  provider?: string;
+  /** 员工专属模型 id：空串/缺省 = 跟随全局默认（聊天/派活/自觉工作共用；配快的非思考模型可避免流式静默超时）。 */
+  model?: string;
 };
 
 /** 内置六名 NPC 的稳定身份（与客户端 client/src/office/engine.ts BUILTIN_STAFF 一致：npc-1..npc-6）。 */
@@ -87,6 +91,8 @@ export function loadOfficeRosterExt(): OfficeRosterExt {
         }
         if (o.autopilot === true) clean.autopilot = true;
         if (typeof o.deskId === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(o.deskId.trim())) clean.deskId = o.deskId.trim();
+        if (typeof o.provider === 'string' && o.provider.trim() !== '') clean.provider = o.provider.trim().slice(0, 64);
+        if (typeof o.model === 'string' && o.model.trim() !== '') clean.model = o.model.trim().slice(0, 64);
         if (Object.keys(clean).length > 0) builtin[k] = clean;
       }
     }
@@ -119,7 +125,7 @@ function clampField(v: unknown, max: number): string | undefined {
  */
 export function upsertBuiltinOverride(
   id: string,
-  patch: { name?: unknown; role?: unknown; persona?: unknown; links?: unknown; deskId?: unknown },
+  patch: { name?: unknown; role?: unknown; persona?: unknown; links?: unknown; deskId?: unknown; provider?: unknown; model?: unknown },
 ): Record<string, OfficeBuiltinOverride> {
   if (!isValidCharId(id)) throw new Error('id 必须为合法员工 id');
   const ext = loadOfficeRosterExt();
@@ -155,6 +161,16 @@ export function upsertBuiltinOverride(
     if (deskId === '') delete cur.deskId;
     else if (!/^[A-Za-z0-9_-]{1,40}$/.test(deskId)) throw new Error('deskId 格式非法');
     else cur.deskId = deskId;
+  }
+  const provider = clampField(patch.provider, 64);
+  if (provider !== undefined) {
+    if (provider === '') delete cur.provider;
+    else cur.provider = provider;
+  }
+  const model = clampField(patch.model, 64);
+  if (model !== undefined) {
+    if (model === '') delete cur.model;
+    else cur.model = model;
   }
   if (Object.keys(cur).length > 0) ext.builtin[id] = cur;
   else delete ext.builtin[id];

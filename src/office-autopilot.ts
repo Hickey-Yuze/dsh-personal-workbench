@@ -4,7 +4,7 @@
  * 同代码路径 spawn 真实会话派活。llm 不可用 / 异常 / 空返回 → 该员工本轮跳过。
  * 全程 try/catch 静默失败，绝不影响 office 主流程。
  */
-import { listAutopilotChars, loadMemoryNotes } from './office-roster.js';
+import { builtinOverrideOf, listAutopilotChars, loadMemoryNotes } from './office-roster.js';
 
 /** cordis Context 的最小结构面（只做服务软探测）。 */
 interface AutopilotCtx {
@@ -32,9 +32,22 @@ async function generateMicroTask(deps: OfficeAutopilotDeps, p: { id: string; nam
   const selection = (deps.ctx.get('agentDefaultModel') as
     | { currentSelection?: () => { provider?: unknown; model?: unknown; reasoningEffort?: unknown } }
     | undefined)?.currentSelection?.();
-  const provider = typeof selection?.provider === 'string' && selection.provider !== '' ? selection.provider : '';
-  const model = typeof selection?.model === 'string' && selection.model !== '' ? selection.model : '';
-  if (provider === '' || model === '') return null;
+  // 员工专属模型覆盖优先（档案 builtin.provider/model）；空 = 跟随全局默认
+  const ov = builtinOverrideOf(p.id);
+  const provider =
+    typeof ov?.provider === 'string' && ov.provider !== ''
+      ? ov.provider
+      : typeof selection?.provider === 'string' && selection.provider !== ''
+        ? selection.provider
+        : '';
+  const model =
+    typeof ov?.model === 'string' && ov.model !== ''
+      ? ov.model
+      : typeof selection?.model === 'string' && selection.model !== ''
+        ? selection.model
+        : '';
+  if (model === '') return null;
+  const modelOverridden = typeof ov?.model === 'string' && ov.model !== '';
   const mems = loadMemoryNotes(p.id)
     .slice(-5)
     .map((n) => n.text);
@@ -47,14 +60,14 @@ async function generateMicroTask(deps: OfficeAutopilotDeps, p: { id: string; nam
   let out = '';
   try {
     for await (const chunk of llm.stream({
-      provider,
+      ...(provider !== '' ? { provider } : {}),
       model,
       messages: [
         { role: 'system', content: [{ type: 'text', text: sys }] },
         { role: 'user', content: [{ type: 'text', text: '现在生成。' }] },
       ],
       signal: AbortSignal.timeout(60_000),
-      ...(typeof selection?.reasoningEffort === 'string' && selection.reasoningEffort !== ''
+      ...(!modelOverridden && typeof selection?.reasoningEffort === 'string' && selection.reasoningEffort !== ''
         ? { reasoningEffort: selection.reasoningEffort }
         : {}),
     })) {

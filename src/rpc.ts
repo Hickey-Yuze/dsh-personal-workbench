@@ -408,6 +408,10 @@ async function officeSpawnAgent(
     }
   }
   const override = builtinOverrideOf(npcId);
+  // 员工专属模型覆盖（档案 builtin.provider/model）：空串/缺省 = 跟随宿主全局默认。
+  // office/agent/start 与 autopilot 派活共用本函数，覆盖一处生效。
+  const effProvider = typeof override?.provider === 'string' && override.provider !== '' ? override.provider : provider;
+  const effModel = typeof override?.model === 'string' && override.model !== '' ? override.model : model;
   const handle = await agents.create({
     // sessionId 必传：agent.id 必须与 session.id 一致（AgentRegistry.enter 不变式），
     // 缺省时 agent id 为 undefined 而创建即抛错。id 里带员工姓名（宿主会话列表可读），
@@ -417,7 +421,7 @@ async function officeSpawnAgent(
     // 需要 {{cwd}} 变量（variable("cwd", ctx => ctx.agent?.session.header.cwd)），
     // 缺省会让 agent 第 1 步就报 "prompt variable \"{{cwd}}\" has no value" 而挂。
     meta: { cwd: agentCwd },
-    agentOptions: { ...(provider ? { provider } : {}), ...(model ? { model } : {}) },
+    agentOptions: { ...(effProvider ? { provider: effProvider } : {}), ...(effModel ? { model: effModel } : {}) },
     setup: async (agentCtx) => {
       // 挂载默认 agent 预设：核心工具（bash/read/write/edit…）是预设里的子插件，
       // 不挂预设的 agent 只能看到宿主全局工具（29 个 harness/browser 类），干不了真活。
@@ -632,7 +636,24 @@ function fsResolveSafe(rel: string, rootRaw?: string): string {
     throw Object.assign(new Error('路径不存在'), { code: 'not-found' });
   }
 }
-const BODY_MAX = 2 * 1024 * 1024;
+// 聊天允许附图：请求体上限放宽到 20MB（base64 图片 + 历史消息）
+const BODY_MAX = 20 * 1024 * 1024;
+/** 办公室聊天接受的图片 MIME（与 @deepseek-ai/dsh-attachment 一致）。 */
+const OFFICE_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const;
+/** 单张图片 base64 字符上限（≈9MB 原始字节，最终以附件服务的部署限额为准）。 */
+const OFFICE_IMAGE_B64_MAX = 12_500_000;
+/** 单条消息最多附带的图片数。 */
+const OFFICE_IMAGES_PER_MSG = 8;
+/** 单条消息 content 数组的最大分段数。 */
+const OFFICE_PARTS_MAX = 64;
+
+/** 聊天消息内容分段：纯文本或 base64 图片（入库前经 ctx.attachments 转为持久引用）。 */
+type OfficeTextPart = { type: 'text'; text: string };
+type OfficeImagePart = { type: 'image'; mediaType: string; data: string; name?: string };
+type OfficePart = OfficeTextPart | OfficeImagePart;
+type OfficeMsg = { role: 'user' | 'assistant' | 'system'; content: OfficePart[] };
+/** 准入后的分段：图片已由附件服务换成持久引用。 */
+type OfficeAdmittedPart = { type: 'text'; text: string } | { type: 'image'; attachment: unknown };
 
 export interface RpcDeps {
   config: PersonalWorkbenchConfig;
@@ -1484,6 +1505,45 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         send(res, 200, { ok: true, roster: rosterExt.roster, builtin: rosterExt.builtin });
         return;
       }
+      // office/models GET：枚举宿主 llm 可选模型（provider×model），供员工模型选择下拉；
+      // 单个 provider 拉取失败只跳过该 provider，不影响整体
+      if (officeEndpoint === 'office/models' && officeMethod === 'GET') {
+        const modelsLlm = ctx.get('llm') as
+          | {
+              listProviders?: () => Promise<Array<{ id?: unknown; name?: unknown }>>;
+              listModels?: (provider: string) => Promise<Array<{ id?: unknown; name?: unknown }>>;
+            }
+          | undefined;
+        if (!modelsLlm || typeof modelsLlm.listProviders !== 'function' || typeof modelsLlm.listModels !== 'function') {
+          send(res, 501, { ok: false, error: { code: 'unavailable', message: 'llm service 不可用' } });
+          return;
+        }
+        try {
+          const providers = (await modelsLlm.listProviders()).filter(
+            (p): p is { id: string; name?: unknown } => typeof p?.id === 'string' && p.id !== '',
+          );
+          const models: Array<{ provider: string; id: string; name: string }> = [];
+          for (const p of providers) {
+            try {
+              const list = await modelsLlm.listModels(p.id);
+              for (const m of list) {
+                if (typeof m?.id === 'string' && m.id !== '') {
+                  models.push({ provider: p.id, id: m.id, name: typeof m.name === 'string' && m.name !== '' ? m.name : m.id });
+                }
+              }
+            } catch {
+              /* 单个 provider 失败跳过 */
+            }
+          }
+          send(res, 200, { ok: true, models });
+        } catch (modelsErr) {
+          send(res, 502, {
+            ok: false,
+            error: { code: 'upstream', message: modelsErr instanceof Error ? modelsErr.message : '模型清单拉取失败' },
+          });
+        }
+        return;
+      }
       // office/memory GET ?char=<id>：员工记忆（真会话工作记录，自生长）
       if (officeEndpoint === 'office/memory' && officeMethod === 'GET') {
         const memChar = new URL(req.url ?? '/', 'http://localhost').searchParams.get('char') ?? '';
@@ -1669,6 +1729,21 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         const entry: OfficeRosterEntry = { id: `custom-${maxSeq + 1}`, name, role };
         roster.push(entry);
         saveOfficeRoster(roster);
+        // 入职即可选员工专属模型（可选，trim ≤64；空 = 跟随全局默认）；写失败不影响入职
+        const hireProvider = typeof officeBody.provider === 'string' ? officeBody.provider.trim().slice(0, 64) : '';
+        const hireModel = typeof officeBody.model === 'string' ? officeBody.model.trim().slice(0, 64) : '';
+        if (hireProvider !== '' || hireModel !== '') {
+          try {
+            upsertBuiltinOverride(entry.id, {
+              ...(hireProvider !== '' ? { provider: hireProvider } : {}),
+              ...(hireModel !== '' ? { model: hireModel } : {}),
+            });
+          } catch (hireErr) {
+            deps.log.warn(
+              `[personal-workbench] office 入职写模型覆盖失败 ${entry.id}: ${hireErr instanceof Error ? hireErr.message : String(hireErr)}`,
+            );
+          }
+        }
         send(res, 200, { ok: true, entry });
         return;
       }
@@ -1742,6 +1817,8 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
             persona: officeBody.persona,
             links: officeBody.links,
             deskId: officeBody.deskId,
+            provider: officeBody.provider,
+            model: officeBody.model,
           });
           send(res, 200, { ok: true, builtin });
         } catch (err) {
@@ -1777,10 +1854,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         return;
       }
       // SSE 流式回复公共骨架：llm 软探测 + 默认模型 + 断连中止 + data: delta/[DONE]
-      const officeSse = async (
-        systemContent: string,
-        msgs: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
-      ): Promise<void> => {
+      const officeSse = async (systemContent: string, msgs: OfficeMsg[], modelOverride?: { provider?: unknown; model?: unknown }): Promise<void> => {
         const llm = ctx.get('llm') as { stream?: (options: object) => AsyncIterable<OfficeStreamChunk> } | undefined;
         if (!llm || typeof llm.stream !== 'function') {
           send(res, 501, { error: 'llm service 不可用' });
@@ -1789,11 +1863,42 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         const selection = (ctx.get('agentDefaultModel') as
           | { currentSelection?: () => { provider?: unknown; model?: unknown; reasoningEffort?: unknown } }
           | undefined)?.currentSelection?.();
-        const officeProvider = typeof selection?.provider === 'string' && selection.provider !== '' ? selection.provider : '';
-        const officeModel = typeof selection?.model === 'string' && selection.model !== '' ? selection.model : '';
-        if (officeProvider === '' || officeModel === '') {
+        // 员工专属模型覆盖（npc/chat 按档案传入）：空串/缺省 = 跟随全局默认
+        let officeProvider = typeof selection?.provider === 'string' && selection.provider !== '' ? selection.provider : '';
+        let officeModel = typeof selection?.model === 'string' && selection.model !== '' ? selection.model : '';
+        if (typeof modelOverride?.provider === 'string' && modelOverride.provider !== '') officeProvider = modelOverride.provider;
+        if (typeof modelOverride?.model === 'string' && modelOverride.model !== '') officeModel = modelOverride.model;
+        const modelOverridden = typeof modelOverride?.model === 'string' && modelOverride.model !== '';
+        if (officeModel === '') {
           send(res, 501, { error: '默认模型未配置' });
           return;
+        }
+        // 图片准入：base64 → ctx.attachments 持久化为 ImageAttachmentRef（纯文本请求不做任何存储）
+        // 无图片分支直接透传（此分支 content 必然只有 text 段）
+        let admitted: Array<{ role: OfficeMsg['role']; content: OfficeAdmittedPart[] }> = msgs.map((m) => ({
+          role: m.role,
+          content: m.content as OfficeAdmittedPart[],
+        }));
+        if (msgs.some((m) => m.content.some((p) => p.type === 'image'))) {
+          const attachments = ctx.get('attachments') as
+            | { admitPromptContent?: (parts: unknown[]) => Promise<OfficeAdmittedPart[]> }
+            | undefined;
+          if (attachments === undefined || typeof attachments.admitPromptContent !== 'function') {
+            send(res, 501, { ok: false, error: { code: 'unavailable', message: '附件服务不可用，无法发送图片' } });
+            return;
+          }
+          try {
+            const next: Array<{ role: OfficeMsg['role']; content: OfficeAdmittedPart[] }> = [];
+            for (const m of msgs) {
+              next.push({ role: m.role, content: await attachments.admitPromptContent(m.content) });
+            }
+            admitted = next;
+          } catch (admitErr) {
+            const message = admitErr instanceof Error ? admitErr.message : String(admitErr);
+            deps.log.warn(`[personal-workbench] office 图片准入失败: ${message}`);
+            send(res, 400, { ok: false, error: { code: 'bad-image', message: `图片被拒绝：${message}` } });
+            return;
+          }
         }
         const officeCtrl = new AbortController();
         const officeClose = (): void => officeCtrl.abort();
@@ -1811,14 +1916,17 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
           let contentChars = 0;
           let lastNonTextChunk: unknown = undefined;
           for await (const chunk of llm.stream({
-            provider: officeProvider,
+            ...(officeProvider !== '' ? { provider: officeProvider } : {}),
             model: officeModel,
             messages: [
               { role: 'system', content: [{ type: 'text', text: systemContent }] },
-              ...msgs.map((m) => ({ role: m.role, content: [{ type: 'text', text: m.content }] })),
+              ...admitted.map((m) => ({
+                role: m.role,
+                content: m.content.map((p) => (p.type === 'text' ? { type: 'text' as const, text: p.text } : { type: 'image' as const, attachment: p.attachment })),
+              })),
             ],
             signal: officeCtrl.signal,
-            ...(typeof selection?.reasoningEffort === 'string' && selection.reasoningEffort !== ''
+            ...(!modelOverridden && typeof selection?.reasoningEffort === 'string' && selection.reasoningEffort !== ''
               ? { reasoningEffort: selection.reasoningEffort }
               : {}),
           })) {
@@ -1862,27 +1970,59 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
           res.end();
         }
       };
-      // messages/sceneState 校验（chat 与 npc/chat 共用）；system 由各分支自行组装
-      const officeParse = (): { msgs: Array<{ role: 'user' | 'assistant'; content: string }>; sceneState: string } | null => {
+      // messages/sceneState 校验（chat 与 npc/chat 共用）；system 由各分支自行组装。
+      // content 兼容两种形态：纯文本 string，或分段数组 [text, image(base64), …]
+      const officeParse = (): { msgs: OfficeMsg[]; sceneState: string } | null => {
+        const bad = (message: string): null => {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message } });
+          return null;
+        };
         const rawMessages = Array.isArray(officeBody.messages) ? officeBody.messages : [];
         if (rawMessages.length === 0 || rawMessages.length > 200) {
-          send(res, 400, { ok: false, error: { code: 'bad-request', message: 'messages 必须为 1..200 条的数组' } });
-          return null;
+          return bad('messages 必须为 1..200 条的数组');
         }
-        const msgs: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+        const msgs: OfficeMsg[] = [];
         for (const item of rawMessages) {
           const msgRole = (item as { role?: unknown })?.role;
-          const msgContent = (item as { content?: unknown })?.content;
-          if ((msgRole !== 'user' && msgRole !== 'assistant') || typeof msgContent !== 'string' || msgContent.length > 32768) {
-            send(res, 400, { ok: false, error: { code: 'bad-request', message: 'messages 每项须含 role(user|assistant) 与 content(string,≤32768)' } });
-            return null;
+          if (msgRole !== 'user' && msgRole !== 'assistant') {
+            return bad('messages 每项须含 role(user|assistant)');
           }
-          msgs.push({ role: msgRole, content: msgContent });
+          const msgContent = (item as { content?: unknown })?.content;
+          let parts: OfficePart[];
+          if (typeof msgContent === 'string') {
+            if (msgContent.length > 32768) return bad('messages 每项 content(string) 超长（≤32768）');
+            parts = [{ type: 'text', text: msgContent }];
+          } else if (Array.isArray(msgContent)) {
+            if (msgContent.length === 0 || msgContent.length > OFFICE_PARTS_MAX) {
+              return bad(`messages 每项 content 数组须为 1..${OFFICE_PARTS_MAX} 段`);
+            }
+            parts = [];
+            let images = 0;
+            for (const part of msgContent) {
+              const p = part as { type?: unknown; text?: unknown; mediaType?: unknown; data?: unknown; name?: unknown };
+              if (p.type === 'text' && typeof p.text === 'string') {
+                if (p.text.length > 32768) return bad('文本分段超长（≤32768）');
+                parts.push({ type: 'text', text: p.text });
+              } else if (p.type === 'image' && typeof p.mediaType === 'string' && typeof p.data === 'string') {
+                if (!(OFFICE_IMAGE_TYPES as readonly string[]).includes(p.mediaType)) {
+                  return bad(`图片格式不支持（仅 ${OFFICE_IMAGE_TYPES.join('/')}）`);
+                }
+                images += 1;
+                if (images > OFFICE_IMAGES_PER_MSG) return bad(`单条消息最多 ${OFFICE_IMAGES_PER_MSG} 张图片`);
+                if (p.data.length === 0 || p.data.length > OFFICE_IMAGE_B64_MAX) return bad('图片数据为空或超过大小上限');
+                parts.push({ type: 'image', mediaType: p.mediaType, data: p.data, ...(typeof p.name === 'string' && p.name !== '' ? { name: p.name } : {}) });
+              } else {
+                return bad('content 数组仅支持 {type:"text",text} 与 {type:"image",mediaType,data}');
+              }
+            }
+          } else {
+            return bad('messages 每项须含 content(string 或分段数组)');
+          }
+          msgs.push({ role: msgRole, content: parts });
         }
         const sceneState = typeof officeBody.sceneState === 'string' ? officeBody.sceneState : '';
         if (sceneState.length > 8192) {
-          send(res, 400, { ok: false, error: { code: 'bad-request', message: 'sceneState 超长（>8192）' } });
-          return null;
+          return bad('sceneState 超长（>8192）');
         }
         return { msgs, sceneState };
       };
@@ -1901,7 +2041,10 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         const effRole = npcOv?.role ?? npcRole;
         const parsedNpc = officeParse();
         if (parsedNpc === null) return;
-        await officeSse(officeNpcSystem(effName, effRole, parsedNpc.sceneState) + personaPromptSuffix(npcOv), parsedNpc.msgs);
+        await officeSse(officeNpcSystem(effName, effRole, parsedNpc.sceneState) + personaPromptSuffix(npcOv), parsedNpc.msgs, {
+          provider: npcOv?.provider,
+          model: npcOv?.model,
+        });
         return;
       }
       if (officeEndpoint !== 'office/chat') {

@@ -20,6 +20,10 @@ export type BuiltinOverride = {
   autopilot?: boolean;
   /** 指定工位：地图里的桌子 id；空串/缺省 = 自动分配。 */
   deskId?: string;
+  /** 员工专属模型 provider：空串/缺省 = 跟随宿主全局默认。 */
+  provider?: string;
+  /** 员工专属模型 id：空串/缺省 = 跟随全局默认（聊天/派活/自觉工作都生效）。 */
+  model?: string;
 };
 
 export type RosterResult = { roster: RosterEntry[]; builtin?: Record<string, BuiltinOverride> };
@@ -98,9 +102,18 @@ export async function addMemoryNote(char: string, text: string): Promise<void> {
   await postJson('memory', { char, text });
 }
 
-/** 新增自定义员工；成功返回宿主生成的新条目（id 为 custom-<序号>）。 */
-export async function addRosterEntry(name: string, role: string): Promise<RosterEntry> {
-  const data = await postJson<{ entry?: RosterEntry }>('roster', { name, role });
+/** 新增自定义员工；成功返回宿主生成的新条目（id 为 custom-<序号>）。model 可选员工专属模型（`${provider}::${id}`；空 = 跟随默认）。 */
+export async function addRosterEntry(name: string, role: string, model?: string): Promise<RosterEntry> {
+  const raw = typeof model === 'string' ? model : '';
+  const sep = raw.indexOf('::');
+  const provider = sep > 0 ? raw.slice(0, sep) : '';
+  const modelId = sep > 0 ? raw.slice(sep + 2) : raw;
+  const data = await postJson<{ entry?: RosterEntry }>('roster', {
+    name,
+    role,
+    ...(provider !== '' ? { provider } : {}),
+    ...(modelId !== '' ? { model: modelId } : {}),
+  });
   if (data.entry === undefined) throw new Error('宿主未返回新员工条目');
   return data.entry;
 }
@@ -135,6 +148,25 @@ export async function stopAgent(npcId: string): Promise<void> {
 /** 移交：from 把当前工作连同一句交接说明交给 to 接手；双方须都已派活开会话（否则宿主 400）。 */
 export async function handoff(fromId: string, toId: string, note: string): Promise<void> {
   await postJson('agent/handoff', { fromId, toId, note });
+}
+
+/** 宿主可选模型（provider×model），供员工模型选择下拉。 */
+export type OfficeModelOption = { provider: string; id: string; name: string };
+
+let officeModelsCache: OfficeModelOption[] | undefined;
+
+/** 枚举宿主 llm 模型清单（GET office/models；进程内缓存，失败返回 []，下拉只剩「跟随默认」）。 */
+export async function officeListModels(): Promise<OfficeModelOption[]> {
+  if (officeModelsCache !== undefined) return officeModelsCache;
+  try {
+    const data = await getJson<{ models?: OfficeModelOption[] }>('models');
+    officeModelsCache = Array.isArray(data.models)
+      ? data.models.filter((m) => typeof m?.provider === 'string' && m.provider !== '' && typeof m?.id === 'string' && m.id !== '')
+      : [];
+  } catch {
+    officeModelsCache = [];
+  }
+  return officeModelsCache;
 }
 
 /** 判断错误是否为「端点不存在」（旧宿主未重启，尚无真工位功能；404 或宿主未知端点文案）。 */

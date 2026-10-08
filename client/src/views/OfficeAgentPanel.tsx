@@ -6,8 +6,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactElement } from 'react';
 import { BUILTIN_STAFF } from '../office/engine.js';
-import { fetchAgentRows, fetchMemory, handoff, isEndpointMissing, loadRoster, saveBuiltin, setAutopilot } from '../office/agentClient.js';
-import type { AgentRow, BuiltinOverride, MemoryNote, RosterEntry } from '../office/agentClient.js';
+import {
+  fetchAgentRows,
+  fetchMemory,
+  handoff,
+  isEndpointMissing,
+  loadRoster,
+  officeListModels,
+  saveBuiltin,
+  setAutopilot,
+} from '../office/agentClient.js';
+import type { AgentRow, BuiltinOverride, MemoryNote, OfficeModelOption, RosterEntry } from '../office/agentClient.js';
 
 export type OfficeAgentPanelProps = {
   /** 派活入口：让老板切到该员工的聊天里派活（id 即 npcId，自定义员工为 custom-<序号>）。 */
@@ -89,7 +98,9 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved, desks }: OfficeAg
   const [handoffErr, setHandoffErr] = useState('');
   /** 编辑卡：展开的员工 id + 表单草稿 + 记忆区。 */
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [draft, setDraft] = useState({ name: '', role: '', persona: '', links: '', desk: '' });
+  const [draft, setDraft] = useState({ name: '', role: '', persona: '', links: '', desk: '', model: '' });
+  /** 可选模型清单（宿主 office/models；拉取失败 = 空数组，下拉只剩「跟随默认」）。 */
+  const [modelOptions, setModelOptions] = useState<OfficeModelOption[]>([]);
   const [mem, setMem] = useState<{ loading: boolean; notes: MemoryNote[]; err: string }>({ loading: false, notes: [], err: '' });
   const [empErr, setEmpErr] = useState('');
   const [saving, setSaving] = useState(false);
@@ -111,6 +122,17 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved, desks }: OfficeAg
   useEffect(() => {
     refreshRoster();
   }, [refreshRoster]);
+
+  /* 模型清单懒加载一次（失败静默：下拉只剩「跟随默认」） */
+  useEffect(() => {
+    let alive = true;
+    void officeListModels().then((list) => {
+      if (alive) setModelOptions(list);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   /* office/agents 轮询：状态圆点 + 最近汇报尾部（旧宿主 404 → 停轮询，同 OfficeModuleView 口径） */
   useEffect(() => {
@@ -165,7 +187,14 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved, desks }: OfficeAg
     (emp: { id: string; name: string; role: string }): void => {
       const ov = builtin?.[emp.id] ?? {};
       setExpandedId(emp.id);
-      setDraft({ name: ov.name ?? emp.name, role: ov.role ?? emp.role, persona: ov.persona ?? '', links: (ov.links ?? []).join('\n'), desk: ov.deskId ?? '' });
+      setDraft({
+        name: ov.name ?? emp.name,
+        role: ov.role ?? emp.role,
+        persona: ov.persona ?? '',
+        links: (ov.links ?? []).join('\n'),
+        desk: ov.deskId ?? '',
+        model: ov.provider !== undefined && ov.model !== undefined && ov.provider !== '' && ov.model !== '' ? `${ov.provider}::${ov.model}` : '',
+      });
       setMem({ loading: true, notes: [], err: '' });
       setEmpErr('');
       setSavedHint('');
@@ -191,27 +220,37 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved, desks }: OfficeAg
       .map((l) => l.trim().slice(0, 40))
       .filter((l) => l !== '')
       .slice(0, 20);
+    // 员工专属模型：下拉值 `${provider}::${id}`；空 = 清除（跟随全局默认）
+    const sep = draft.model.indexOf('::');
+    const selProvider = sep > 0 ? draft.model.slice(0, sep) : '';
+    const selModel = sep > 0 ? draft.model.slice(sep + 2) : '';
     setSaving(true);
     setEmpErr('');
     saveBuiltin(expandedId, {
       name,
       role,
       deskId: draft.desk.trim(),
+      provider: selProvider,
+      model: selModel,
       ...(persona !== '' ? { persona } : {}),
       ...(links.length > 0 ? { links } : {}),
     })
       .then(() => {
-        setBuiltin((prev) => ({
-          ...(prev ?? {}),
-          [expandedId]: {
+        setBuiltin((prev) => {
+          const merged: BuiltinOverride = {
             ...(prev ?? {})[expandedId],
             name,
             role,
             ...(draft.desk.trim() !== '' ? { deskId: draft.desk.trim() } : {}),
             ...(persona !== '' ? { persona } : {}),
             ...(links.length > 0 ? { links } : {}),
-          },
-        }));
+          };
+          if (selProvider !== '') merged.provider = selProvider;
+          else delete merged.provider;
+          if (selModel !== '') merged.model = selModel;
+          else delete merged.model;
+          return { ...(prev ?? {}), [expandedId]: merged };
+        });
         onBuiltinSaved?.(expandedId, name, role, draft.desk.trim());
         setSavedHint('已保存 ✓');
         window.setTimeout(() => setSavedHint(''), 2500);
@@ -346,6 +385,21 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved, desks }: OfficeAg
                       {(desks ?? []).map((d) => (
                         <option key={d.id} value={d.id}>
                           {d.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#374151' }}>
+                    模型
+                    <select
+                      value={draft.model}
+                      onChange={(e) => setDraft((d) => ({ ...d, model: e.target.value }))}
+                      style={{ flex: 1, minWidth: 0, padding: '5px 8px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12.5, background: '#fff', color: '#111827' }}
+                    >
+                      <option value="">跟随默认</option>
+                      {modelOptions.map((m) => (
+                        <option key={`${m.provider}::${m.id}`} value={`${m.provider}::${m.id}`}>
+                          {m.provider} / {m.name}
                         </option>
                       ))}
                     </select>

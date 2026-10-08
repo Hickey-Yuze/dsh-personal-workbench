@@ -4,6 +4,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent, ReactElement } from 'react';
+import { ImagePlus } from 'lucide-react';
 import { OfficeEngine } from '../office/engine.js';
 import { OfficeCanvas } from '../office/OfficeCanvas.js';
 import { loadOfficeMap } from '../office/store.js';
@@ -11,8 +12,8 @@ import { deskChairCell } from '../office/map.js';
 import type { OfficeMap } from '../office/types.js';
 import type { MemberStat } from '../office/types.js';
 import type { OfficeView } from '../office/renderer.js';
-import { addRosterEntry, isEndpointMissing, loadRoster } from '../office/agentClient.js';
-import type { BuiltinOverride, RosterEntry } from '../office/agentClient.js';
+import { addRosterEntry, isEndpointMissing, loadRoster, officeListModels } from '../office/agentClient.js';
+import type { BuiltinOverride, OfficeModelOption, RosterEntry } from '../office/agentClient.js';
 import { OfficeEditor } from './OfficeEditor.js';
 import { OfficeDataPanel } from './OfficeDataPanel.js';
 import { OfficeAgentPanel } from './OfficeAgentPanel.js';
@@ -28,10 +29,55 @@ const STATE_TEXT: Record<MemberStat['state'], string> = {
 
 type Tab = 'scene' | 'data' | 'edit';
 
-type ChatMsg = { role: 'user' | 'assistant'; content: string; speaker?: string; streaming?: boolean };
+type ChatImage = { mediaType: string; data: string; name?: string };
+type ChatMsg = { role: 'user' | 'assistant'; content: string; speaker?: string; streaming?: boolean; images?: ChatImage[] };
 type ChatTarget = { kind: 'ai' } | { kind: 'npc'; id: string; name: string; role: string } | { kind: 'group' };
 /** 群聊/私聊共享记忆：speaker='me' 是老板说的话，否则是同事名。 */
-type MemEntry = { speaker: string; content: string };
+type MemEntry = { speaker: string; content: string; images?: ChatImage[] };
+
+/** 服务端 wire 分段（content 既可 string 也可分段数组；此处统一为分段）。 */
+type WirePart = { type: 'text'; text: string } | { type: 'image'; mediaType: string; data: string; name?: string };
+type WireMsg = { role: 'user' | 'assistant'; content: WirePart[] };
+
+/** 把界面消息（文本 + 附图）转成 wire 分段；全空时保留空文本段占位。 */
+function partsOf(m: { content: string; images?: ChatImage[] }): WirePart[] {
+  const parts: WirePart[] = [];
+  if (m.content !== '') parts.push({ type: 'text', text: m.content });
+  for (const img of m.images ?? []) {
+    parts.push({ type: 'image', mediaType: img.mediaType, data: img.data, ...(img.name !== undefined ? { name: img.name } : {}) });
+  }
+  if (parts.length === 0) parts.push({ type: 'text', text: '' });
+  return parts;
+}
+
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+const IMAGE_SIZE_MAX = 8 * 1024 * 1024;
+
+/** File → ChatImage（base64，不含 data: 前缀）；格式/大小不符直接 reject。 */
+function fileToChatImage(file: File): Promise<ChatImage> {
+  return new Promise((resolve, reject) => {
+    if (!IMAGE_TYPES.includes(file.type)) {
+      reject(new Error('仅支持 PNG/JPEG/WebP/GIF 图片'));
+      return;
+    }
+    if (file.size > IMAGE_SIZE_MAX) {
+      reject(new Error(`图片超过 8MB（${(file.size / 1024 / 1024).toFixed(1)}MB）`));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const url = String(reader.result ?? '');
+      const idx = url.indexOf(',');
+      if (idx < 0) {
+        reject(new Error('图片读取失败'));
+        return;
+      }
+      resolve({ mediaType: file.type, data: url.slice(idx + 1), name: file.name !== '' ? file.name : undefined });
+    };
+    reader.onerror = () => reject(new Error('图片读取失败'));
+    reader.readAsDataURL(file);
+  });
+}
 
 type OfficeAction = { id: number; type: 'desk_visit' | 'desk_visit_tour' | 'set_state'; payload?: Record<string, unknown> };
 
@@ -79,9 +125,20 @@ function loadChatMsgs(t: ChatTarget): ChatMsg[] {
   }
 }
 function saveChatMsgs(t: ChatTarget, msgs: ChatMsg[]): void {
+  const key = chatKeyOf(t);
+  const list = msgs.filter((m) => m.streaming !== true).slice(-CHAT_CAP);
   try {
-    window.localStorage.setItem(chatKeyOf(t), JSON.stringify(msgs.filter((m) => m.streaming !== true).slice(-CHAT_CAP)));
-  } catch { /* 存储失败仅影响持久化 */ }
+    window.localStorage.setItem(key, JSON.stringify(list));
+    return;
+  } catch { /* 可能是附图撑爆配额：降级重存 */ }
+  // 配额不足 → 从最旧开始丢图片数据（先只留最近 5 条的图，再全丢）
+  for (const keepImages of [5, 0]) {
+    try {
+      const trimmed = list.map((m, i) => (i < list.length - keepImages && m.images !== undefined ? { ...m, images: undefined } : m));
+      window.localStorage.setItem(key, JSON.stringify(trimmed));
+      return;
+    } catch { /* 继续降级 */ }
+  }
 }
 
 /** 读取 SSE 流，逐 delta 回调，返回完整文本；非流式/空流都在气泡里给出原因。 */
@@ -89,7 +146,12 @@ async function readSse(res: Response, onDelta: (d: string) => void, onErr: (e: s
   let full = '';
   if (!res.ok || res.body === null) {
     const detail = await res.text().catch(() => '');
-    onErr(`对话服务不可用（${res.status}）${detail ? `：${detail.slice(0, 140)}` : ''}`);
+    let msg = detail;
+    try {
+      const j = JSON.parse(detail) as { error?: { message?: string } } | null;
+      if (typeof j?.error?.message === 'string' && j.error.message !== '') msg = j.error.message;
+    } catch { /* 非 JSON 错误体按原文展示 */ }
+    onErr(`对话服务不可用（${res.status}）${msg !== '' ? `：${msg.slice(0, 140)}` : ''}`);
     return full;
   }
   const reader = res.body.getReader();
@@ -131,6 +193,9 @@ export function OfficeModuleView(): ReactElement {
   const [builtinOverrides, setBuiltinOverrides] = useState<Record<string, BuiltinOverride>>({});
   const [hireName, setHireName] = useState('');
   const [hireRole, setHireRole] = useState('');
+  /** 入职可选模型（`${provider}::${id}`；空 = 跟随宿主全局默认）。 */
+  const [hireModel, setHireModel] = useState('');
+  const [modelOptions, setModelOptions] = useState<OfficeModelOption[]>([]);
   const [hireBusy, setHireBusy] = useState(false);
   const [hireErr, setHireErr] = useState('');
   const [tab, setTab] = useState<Tab>('scene');
@@ -138,6 +203,10 @@ export function OfficeModuleView(): ReactElement {
   const [chatTarget, setChatTarget] = useState<ChatTarget>({ kind: 'ai' });
   const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
   const [chatInput, setChatInput] = useState('');
+  /** 待发送附图（贴图/选图后暂存，发送即清空）。 */
+  const [chatImages, setChatImages] = useState<ChatImage[]>([]);
+  const [imgErr, setImgErr] = useState('');
+  const imgInputRef = useRef<HTMLInputElement | null>(null);
   const [chatBusy, setChatBusy] = useState(false);
   const chatAbortRef = useRef<AbortController | null>(null);
   const chatBodyRef = useRef<HTMLDivElement | null>(null);
@@ -328,6 +397,17 @@ export function OfficeModuleView(): ReactElement {
     };
   }, [engine]);
 
+  /* 模型清单懒加载一次（失败静默：入职下拉只剩「跟随默认」） */
+  useEffect(() => {
+    let dead = false;
+    void officeListModels().then((list) => {
+      if (!dead) setModelOptions(list);
+    });
+    return () => {
+      dead = true;
+    };
+  }, []);
+
   /** 入职：写花名册（宿主持久化）→ 引擎生成角色 → 刷新列表。 */
   const hireSubmit = useCallback(async (): Promise<void> => {
     const name = hireName.trim();
@@ -336,17 +416,18 @@ export function OfficeModuleView(): ReactElement {
     setHireBusy(true);
     setHireErr('');
     try {
-      const entry = await addRosterEntry(name, role);
+      const entry = await addRosterEntry(name, role, hireModel.trim());
       engine.addRosterChar(entry.id, entry.name, entry.role);
       setRoster((prev) => [...prev.filter((r) => r.id !== entry.id), entry]);
       setHireName('');
       setHireRole('');
+      setHireModel('');
     } catch (err) {
       setHireErr(isEndpointMissing(err) ? '宿主半是旧代码：⌘Q 重启宿主后再试' : err instanceof Error ? err.message : '添加失败');
     } finally {
       setHireBusy(false);
     }
-  }, [engine, hireBusy, hireName, hireRole]);
+  }, [engine, hireBusy, hireModel, hireName, hireRole]);
 
   /** 缩放按钮：围绕中心缩放（平移归零，保持地图居中），范围与滚轮一致 0.5~2.5。 */
   const zoomStep = useCallback((delta: number): void => {
@@ -367,16 +448,37 @@ export function OfficeModuleView(): ReactElement {
     [members],
   );
 
+  /* ── 附图：选文件/贴图 → base64 暂存；单批失败给出提示 ── */
+  const addImageFiles = useCallback(async (files: File[]): Promise<void> => {
+    if (files.length === 0) return;
+    const next: ChatImage[] = [];
+    let err = '';
+    for (const f of files) {
+      try {
+        next.push(await fileToChatImage(f));
+      } catch (e) {
+        err = e instanceof Error ? e.message : String(e);
+      }
+    }
+    if (next.length > 0) {
+      setImgErr('');
+      setChatImages((prev) => [...prev, ...next].slice(0, 8));
+    }
+    if (err !== '') setImgErr(err);
+  }, []);
+
   /* ── AI 助手（全局） ── */
   const sendAi = useCallback(
-    async (text: string, ctrl: AbortController): Promise<void> => {
-      const history = chatMsgs.filter((m) => !m.streaming).map((m) => ({ role: m.role, content: m.content }));
-      setChatMsgs([...history, { role: 'user', content: text }, { role: 'assistant', content: '', streaming: true }]);
+    async (text: string, imgs: ChatImage[], ctrl: AbortController): Promise<void> => {
+      const uiHistory = chatMsgs.filter((m) => !m.streaming);
+      const history: WireMsg[] = uiHistory.map((m) => ({ role: m.role, content: partsOf(m) }));
+      const userMsg: ChatMsg = { role: 'user', content: text, ...(imgs.length > 0 ? { images: imgs } : {}) };
+      setChatMsgs([...uiHistory, userMsg, { role: 'assistant', content: '', streaming: true }]);
       try {
         const res = await fetch(CHAT_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: [...history, { role: 'user', content: text }], sceneState: sceneState() }),
+          body: JSON.stringify({ messages: [...history, { role: 'user', content: partsOf(userMsg) }], sceneState: sceneState() }),
           signal: ctrl.signal,
         });
         await readSse(
@@ -413,7 +515,7 @@ export function OfficeModuleView(): ReactElement {
 
   /* ── 同事 agent 说一句（低层）：写进流式消息槽，返回完整话 ── */
   const npcUtterance = useCallback(
-    async (char: { id: string; name: string; role: string }, history: Array<{ role: 'user' | 'assistant'; content: string }>, ctrl: AbortController): Promise<string> => {
+    async (char: { id: string; name: string; role: string }, history: WireMsg[], ctrl: AbortController): Promise<string> => {
       setChatMsgs((prev) => [...prev, { role: 'assistant', content: '', speaker: char.name, streaming: true }]);
       let said = '';
       try {
@@ -459,13 +561,13 @@ export function OfficeModuleView(): ReactElement {
 
   /* ── 私聊：点谁跟谁聊 ── */
   const sendNpc = useCallback(
-    async (text: string, ctrl: AbortController): Promise<void> => {
+    async (text: string, imgs: ChatImage[], ctrl: AbortController): Promise<void> => {
       if (chatTarget.kind !== 'npc') return;
       const key = `npc:${chatTarget.id}`;
       const mem = npcMemRef.current.get(key) ?? [];
-      mem.push({ speaker: 'me', content: text });
-      const history = mem.map((e) => ({ role: e.speaker === 'me' ? ('user' as const) : ('assistant' as const), content: e.content }));
-      setChatMsgs((prev) => [...prev.filter((m) => !m.streaming), { role: 'user', content: text }]);
+      mem.push({ speaker: 'me', content: text, ...(imgs.length > 0 ? { images: imgs } : {}) });
+      const history: WireMsg[] = mem.map((e) => ({ role: e.speaker === 'me' ? ('user' as const) : ('assistant' as const), content: partsOf(e) }));
+      setChatMsgs((prev) => [...prev.filter((m) => !m.streaming), { role: 'user', content: text, ...(imgs.length > 0 ? { images: imgs } : {}) }]);
       const said = await npcUtterance({ id: chatTarget.id, name: chatTarget.name, role: chatTarget.role }, history, ctrl);
       mem.push({ speaker: chatTarget.name, content: said });
       npcMemRef.current.set(key, mem.slice(-40));
@@ -475,24 +577,24 @@ export function OfficeModuleView(): ReactElement {
 
   /* ── 群聊：轮流让每个同事 agent 说一句（互聊核心） ── */
   const runGroupRound = useCallback(
-    async (text: string, ctrl: AbortController): Promise<void> => {
+    async (text: string, imgs: ChatImage[], ctrl: AbortController): Promise<void> => {
       const npcList = engine.chars.filter((c) => !c.isSelf);
       if (npcList.length === 0) return;
       const mem = npcMemRef.current.get('group') ?? [];
-      if (text.trim() !== '') {
-        mem.push({ speaker: 'me', content: text });
-        setChatMsgs((prev) => [...prev.filter((m) => !m.streaming), { role: 'user', content: text }]);
+      if (text.trim() !== '' || imgs.length > 0) {
+        mem.push({ speaker: 'me', content: text, ...(imgs.length > 0 ? { images: imgs } : {}) });
+        setChatMsgs((prev) => [...prev.filter((m) => !m.streaming), { role: 'user', content: text, ...(imgs.length > 0 ? { images: imgs } : {}) }]);
       }
       for (const c of npcList) {
         if (ctrl.signal.aborted) break;
-        const history = mem.map((e) =>
+        const history: WireMsg[] = mem.map((e) =>
           e.speaker === 'me'
-            ? { role: 'user' as const, content: e.content }
+            ? { role: 'user' as const, content: partsOf(e) }
             : e.speaker === c.name
-              ? { role: 'assistant' as const, content: e.content }
-              : { role: 'user' as const, content: `[${e.speaker}] ${e.content}` },
+              ? { role: 'assistant' as const, content: [{ type: 'text', text: e.content }] }
+              : { role: 'user' as const, content: [{ type: 'text', text: `[${e.speaker}] ${e.content}` }] },
         );
-        if (history.length === 0) history.push({ role: 'user', content: '（会议开始，围绕刚才的话题说一句你的看法）' });
+        if (history.length === 0) history.push({ role: 'user', content: [{ type: 'text', text: '（会议开始，围绕刚才的话题说一句你的看法）' }] });
         const said = await npcUtterance({ id: c.id, name: c.name, role: c.role }, history, ctrl);
         if (said !== '') mem.push({ speaker: c.name, content: said });
       }
@@ -504,31 +606,41 @@ export function OfficeModuleView(): ReactElement {
   const sendChat = useCallback(
     async (text: string): Promise<void> => {
       const q = text.trim();
-      if (q === '' || chatBusy) return;
+      const imgs = chatImages;
+      if ((q === '' && imgs.length === 0) || chatBusy) return;
       setChatInput('');
+      setChatImages([]);
+      setImgErr('');
       setChatBusy(true);
       const ctrl = new AbortController();
       chatAbortRef.current = ctrl;
-      if (chatTarget.kind === 'ai') await sendAi(q, ctrl);
+      if (chatTarget.kind === 'ai') await sendAi(q, imgs, ctrl);
       else if (chatTarget.kind === 'npc') {
         const row = agentRows[chatTarget.id];
         if (row !== undefined && row.status !== 'stopped') {
           // 干活中的同事：发送即递话进其真实会话（回复经 office/agents 轮询以气泡+进度条呈现）
+          if (q === '') {
+            setImgErr('同事正在干活时只能发文字（附图未发送）');
+            setChatBusy(false);
+            chatAbortRef.current = null;
+            return;
+          }
+          if (imgs.length > 0) setWorkErr('真实会话暂不支持附图，已只发送文字');
           setChatMsgs((prev) => [...prev, { role: 'user', content: q }]);
           setChatBusy(false);
           chatAbortRef.current = null;
           workSend(q);
           return;
         }
-        await sendNpc(q, ctrl);
-      } else await runGroupRound(q, ctrl);
+        await sendNpc(q, imgs, ctrl);
+      } else await runGroupRound(q, imgs, ctrl);
       setChatMsgs((prev) =>
         prev.map((m) => (m.streaming === true ? (m.content === '' ? { ...m, content: '（无回复内容）', streaming: false } : { ...m, streaming: false }) : m)),
       );
       setChatBusy(false);
       chatAbortRef.current = null;
     },
-    [agentRows, chatBusy, chatTarget, runGroupRound, sendAi, sendNpc, workSend],
+    [agentRows, chatBusy, chatImages, chatTarget, runGroupRound, sendAi, sendNpc, workSend],
   );
 
   /* 「让他们聊」：不输入话题，空转一轮互聊 */
@@ -537,7 +649,7 @@ export function OfficeModuleView(): ReactElement {
     setChatBusy(true);
     const ctrl = new AbortController();
     chatAbortRef.current = ctrl;
-    void runGroupRound('', ctrl).finally(() => {
+    void runGroupRound('', [], ctrl).finally(() => {
       setChatMsgs((prev) => prev.map((m) => (m.streaming === true ? (m.content === '' ? { ...m, content: '（无回复内容）', streaming: false } : { ...m, streaming: false }) : m)));
       setChatBusy(false);
       chatAbortRef.current = null;
@@ -732,6 +844,18 @@ export function OfficeModuleView(): ReactElement {
                     if (e.key === 'Enter') void hireSubmit();
                   }}
                 />
+                <select
+                  value={hireModel}
+                  onChange={(e) => setHireModel(e.target.value)}
+                  title="员工专属模型（聊天/派活/自觉工作都用它；空 = 跟随全局默认）"
+                >
+                  <option value="">模型：跟随默认</option>
+                  {modelOptions.map((m) => (
+                    <option key={`${m.provider}::${m.id}`} value={`${m.provider}::${m.id}`}>
+                      {m.provider} / {m.name}
+                    </option>
+                  ))}
+                </select>
                 <button disabled={hireBusy || hireName.trim() === '' || hireRole.trim() === ''} onClick={() => void hireSubmit()}>
                   {hireBusy ? '添加中…' : '添加员工'}
                 </button>
@@ -837,6 +961,13 @@ export function OfficeModuleView(): ReactElement {
                       }`}
                     >
                       {m.speaker !== undefined && <b>{m.speaker}：</b>}
+                      {m.images !== undefined && m.images.length > 0 && (
+                        <span className="dsh-pwb-office-chat-imgs">
+                          {m.images.map((img, j) => (
+                            <img key={j} src={`data:${img.mediaType};base64,${img.data}`} alt={img.name ?? '附图'} title={img.name ?? '附图'} />
+                          ))}
+                        </span>
+                      )}
                       {m.content}
                     </div>
                   ))}
@@ -856,7 +987,39 @@ export function OfficeModuleView(): ReactElement {
                     </div>
                   </>
                 )}
+                {imgErr !== '' && <div className="dsh-pwb-office-work-status dsh-pwb-office-work-err">⚠️ {imgErr}</div>}
+                {chatImages.length > 0 && (
+                  <div className="dsh-pwb-office-chat-pending">
+                    {chatImages.map((img, i) => (
+                      <span key={i} className="dsh-pwb-office-chat-pending-item" title={img.name ?? '图片'}>
+                        <img src={`data:${img.mediaType};base64,${img.data}`} alt="" />
+                        <button
+                          type="button"
+                          aria-label="移除图片"
+                          onClick={() => setChatImages((prev) => prev.filter((_, j) => j !== i))}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <div className="dsh-pwb-office-chat-input">
+                  <input
+                    ref={imgInputRef}
+                    type="file"
+                    accept={IMAGE_TYPES.join(',')}
+                    multiple
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files ?? []);
+                      e.target.value = '';
+                      if (files.length > 0) void addImageFiles(files);
+                    }}
+                  />
+                  <button type="button" className="dsh-pwb-office-chat-attach" title="发送图片（也可直接粘贴）" onClick={() => imgInputRef.current?.click()}>
+                    <ImagePlus size={15} />
+                  </button>
                   <input
                     value={chatInput}
                     placeholder={
@@ -864,9 +1027,17 @@ export function OfficeModuleView(): ReactElement {
                         ? npcWorkActive
                           ? 'TA 正在干活，消息会递进 TA 的真实会话…'
                           : '找 TA 聊天，或输入任务点「派活」让 TA 真干活…'
-                        : '输入消息…'
+                        : chatImages.length > 0
+                          ? '补充说明（可选），点「发送」带上图片…'
+                          : '输入消息…'
                     }
                     onChange={(e) => setChatInput(e.target.value)}
+                    onPaste={(e) => {
+                      const files = Array.from(e.clipboardData.files);
+                      if (files.length === 0) return;
+                      e.preventDefault();
+                      void addImageFiles(files);
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') void sendChat(chatInput);
                     }}
@@ -875,6 +1046,7 @@ export function OfficeModuleView(): ReactElement {
                     <button
                       className="dsh-pwb-office-chat-work"
                       disabled={chatInput.trim() === ''}
+                      title="附图不随「派活」发送"
                       onClick={() => workSend(chatInput.trim())}
                     >
                       派活
@@ -885,7 +1057,11 @@ export function OfficeModuleView(): ReactElement {
                       停止
                     </button>
                   ) : (
-                    <button className="dsh-pwb-office-chat-send" disabled={chatInput.trim() === ''} onClick={() => void sendChat(chatInput)}>
+                    <button
+                      className="dsh-pwb-office-chat-send"
+                      disabled={chatInput.trim() === '' && chatImages.length === 0}
+                      onClick={() => void sendChat(chatInput)}
+                    >
                       发送
                     </button>
                   )}
