@@ -30,41 +30,60 @@ function mk(kind: FurnitureKind, x: number, y: number): Furniture {
   return { id: `${kind}-${furnSeq}`, kind, x, y, w: s.w, h: s.h };
 }
 
-/** 默认办公室（40×12）：左右各一排工位区 + 中央自己的工位 + 白板/双咖啡机/绿植。 */
+/** 默认办公室（40×12）：1:1 复刻参考图布局——黑框玻璃隔出右上里间（双工位）、左前地毯+圆桌会议区、右侧沿墙工位排、中央自己。 */
 export function defaultMap(): OfficeMap {
   furnSeq = 0;
   const furniture: Furniture[] = [
-    mk('whiteboard', 19, 1),
-    mk('coffee', 5, 1),
-    mk('coffee', 34, 1),
-    // 左工位区
-    mk('desk', 3, 3),
-    mk('desk', 8, 3),
-    mk('desk', 3, 7),
-    mk('desk', 8, 7),
-    // 右工位区
-    mk('desk', 30, 3),
-    mk('desk', 35, 3),
-    mk('desk', 30, 7),
-    mk('desk', 35, 7),
-    // 自己的中央工位（必须是最后一张桌：spawn 约定 desks 最后一座是自己）
-    mk('desk', 19, 4),
-    // 工位旁白色抽屉柜（参考稿每张桌旁都有）
-    mk('cabinet', 5, 3),
-    mk('cabinet', 5, 7),
-    mk('cabinet', 21, 4),
-    // 会议区：米色地毯 + 白色圆桌（对应参考稿左侧会议角）
-    mk('carpet', 13, 6),
-    mk('roundtable', 14, 7),
-    // 绿植
-    mk('plant', 2, 1),
-    mk('plant', 37, 1),
-    mk('plant', 2, 10),
-    mk('plant', 37, 10),
-    mk('plant', 13, 2),
-    mk('plant', 26, 2),
-    mk('plant', 13, 10),
-    mk('plant', 26, 10),
+    // ── 里间（黑框玻璃墙围出，右上）──
+    // 竖排玻璃墙 gx=10（gy=1..4），横排玻璃墙 gy=5（gx=10..23），gx=24,gy=5 处留缺口当门
+    mk('wall', 10, 1),
+    mk('wall', 10, 2),
+    mk('wall', 10, 3),
+    mk('wall', 10, 4),
+    mk('wall', 11, 5),
+    mk('wall', 12, 5),
+    mk('wall', 13, 5),
+    mk('wall', 14, 5),
+    mk('wall', 15, 5),
+    mk('wall', 16, 5),
+    mk('wall', 17, 5),
+    mk('wall', 18, 5),
+    mk('wall', 19, 5),
+    mk('wall', 20, 5),
+    mk('wall', 21, 5),
+    mk('wall', 22, 5),
+    mk('wall', 23, 5),
+    // 里间工位（背贴后墙，iMac 面朝南）
+    mk('desk', 13, 2),
+    mk('desk', 18, 2),
+    // 里间绿植小点缀
+    mk('plant', 11, 1),
+    // ── 外间会议区（左前：米色地毯 + 白圆桌，对应参考图左下）──
+    mk('carpet', 4, 7),
+    mk('roundtable', 5, 8),
+    mk('whiteboard', 14, 9),
+    // ── 右外沿墙工位排（对应参考图右侧沿墙一排 iMac）──
+    mk('desk', 27, 2),
+    mk('desk', 32, 2),
+    mk('desk', 37, 2),
+    mk('desk', 27, 7),
+    mk('desk', 32, 7),
+    // 工位旁白色抽屉柜
+    mk('cabinet', 26, 1),
+    mk('cabinet', 31, 1),
+    mk('cabinet', 36, 1),
+    // ── 绿植（角落 + 会议区旁）──
+    mk('plant', 1, 1),
+    mk('plant', 1, 10),
+    mk('plant', 9, 10),
+    mk('plant', 39, 10),
+    // 咖啡机（外间右上角）
+    mk('coffee', 26, 9),
+    // 冰箱（右后角）
+    mk('fridge', 39, 1),
+    // 自己的中央外间工位（必须是最后一张桌：spawn 约定 desks 最后一座是自己）
+    mk('desk', 21, 8),
+    mk('cabinet', 23, 9),
   ];
   return { w: MAP_W, h: MAP_H, furniture };
 }
