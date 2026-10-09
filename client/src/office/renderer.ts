@@ -1186,21 +1186,35 @@ function isoDrawDesk(ctx: CanvasRenderingContext2D, f: Furniture, ox: number, oy
   const tl = isoCorner(ox, oy, k, X + 0.05, Y + 0.05);
   ctx.fillStyle = 'rgba(255,255,255,0.9)';
   ctx.fillRect(tl.x, tl.y - k * 0.56, Math.max(1, k * 0.04), k * 0.2);
-  // 显示器：深灰壳 + 深屏 + 白支架（屏面朝左下）
-  const mon = isoBoxAt(ctx, ox, oy, k, X + 0.28, Y + 0.3, 0.66, 0.14, k * 0.42, '#3d444c', '#343a41', '#343a41');
-  const s1 = isoCorner(ox, oy, k, X + 0.33, Y + 0.44);
-  const s2 = isoCorner(ox, oy, k, X + 0.85, Y + 0.44);
+  // 显示器：iMac 式一体机——白壳面板 + 深屏内嵌 + 银色下巴 + 细支架（屏面朝左下）
+  const mon = isoBoxAt(ctx, ox, oy, k, X + 0.26, Y + 0.28, 0.72, 0.14, k * 0.5, '#fbfcfd', '#eef0f2', '#dfe2e6');
+  const s1 = isoCorner(ox, oy, k, X + 0.30, Y + 0.44);
+  const s2 = isoCorner(ox, oy, k, X + 0.94, Y + 0.44);
+  // 白色面板（外框）
+  ctx.fillStyle = '#fdfdfe';
+  isoPoly(ctx, [s1, s2, { x: s2.x, y: s2.y - k * 0.44 }, { x: s1.x, y: s1.y - k * 0.44 }]);
+  ctx.fill();
+  // 深屏内嵌（边距：侧 0.06 / 上 0.08 / 下巴 0.08）
+  const g1 = isoCorner(ox, oy, k, X + 0.36, Y + 0.44);
+  const g2 = isoCorner(ox, oy, k, X + 0.88, Y + 0.44);
+  const gb1 = { x: g1.x, y: g1.y - k * 0.08 };
+  const gb2 = { x: g2.x, y: g2.y - k * 0.08 };
   ctx.fillStyle = ISO_SCREEN;
-  isoPoly(ctx, [s1, s2, { x: s2.x, y: s2.y - k * 0.32 }, { x: s1.x, y: s1.y - k * 0.32 }]);
+  isoPoly(ctx, [gb1, gb2, { x: gb2.x, y: gb2.y - k * 0.28 }, { x: gb1.x, y: gb1.y - k * 0.28 }]);
   ctx.fill();
   // 屏幕反光（呼吸感）
   const glow = 0.10 + 0.05 * Math.sin(time * 1.6 + f.x * 1.3 + f.y);
   ctx.fillStyle = `rgba(150,190,225,${glow.toFixed(3)})`;
-  isoPoly(ctx, [s1, s2, { x: s2.x, y: s2.y - k * 0.12 }, { x: s1.x, y: s1.y - k * 0.12 }]);
+  isoPoly(ctx, [gb1, gb2, { x: gb2.x, y: gb2.y - k * 0.1 }, { x: gb1.x, y: gb1.y - k * 0.1 }]);
+  ctx.fill();
+  // 银色下巴（屏下窄条）
+  ctx.fillStyle = '#dfe3e7';
+  isoPoly(ctx, [g1, g2, gb2, gb1]);
   ctx.fill();
   // 支架 + 底座
-  ctx.fillStyle = '#e8eaed';
+  ctx.fillStyle = '#c9cdd3';
   ctx.fillRect(mon.x - k * 0.05, mon.y + k * 0.02, Math.max(2, k * 0.1), k * 0.2);
+  ctx.fillStyle = '#e8eaed';
   ctx.fillRect(mon.x - k * 0.16, mon.y + k * 0.2, Math.max(3, k * 0.32), Math.max(1.5, k * 0.05));
   // 键盘 + 鼠标
   const kb = isoCorner(ox, oy, k, X + 0.42, Y + 0.66);
@@ -1244,6 +1258,34 @@ function isoDrawDesk(ctx: CanvasRenderingContext2D, f: Furniture, ox: number, oy
   ctx.beginPath();
   ctx.ellipse(cup.x, cup.y - k * 0.14, k * 0.055, k * 0.03, 0, 0, Math.PI * 2);
   ctx.fill();
+  // 桌下抽屉柜（参考稿：桌板右半下的灰白三屉柜，贴桌板底）
+  const dw = isoCorner(ox, oy, k, X + 1.08, Y + 1.04);
+  const dh = k * 0.4;
+  const dTop = { x: dw.x, y: dw.y - k * 0.54 };
+  // 柜体正面（朝左下）+ 侧面
+  ctx.fillStyle = '#e9ecef';
+  isoPoly(ctx, [dTop, { x: dTop.x + k * 0.78, y: dTop.y + k * 0.39 }, { x: dTop.x + k * 0.78, y: dTop.y + k * 0.39 + dh }, { x: dTop.x, y: dTop.y + dh }]);
+  ctx.fill();
+  ctx.fillStyle = '#d6dade';
+  isoPoly(ctx, [{ x: dTop.x + k * 0.78, y: dTop.y + k * 0.39 }, { x: dTop.x + k * 0.98, y: dTop.y + k * 0.29 }, { x: dTop.x + k * 0.98, y: dTop.y + k * 0.29 + dh }, { x: dTop.x + k * 0.78, y: dTop.y + k * 0.39 + dh }]);
+  ctx.fill();
+  // 顶面
+  ctx.fillStyle = '#f6f7f8';
+  isoPoly(ctx, [dTop, { x: dTop.x + k * 0.78, y: dTop.y + k * 0.39 }, { x: dTop.x + k * 0.98, y: dTop.y + k * 0.29 }]);
+  ctx.fill();
+  // 三条抽屉缝 + 拉手
+  ctx.strokeStyle = 'rgba(120,128,138,0.4)';
+  ctx.lineWidth = Math.max(1, k * 0.02);
+  ctx.beginPath();
+  for (let di = 1; di <= 2; di++) {
+    const y = dTop.y + (dh * di) / 3;
+    ctx.moveTo(dTop.x + k * 0.06, y + k * 0.03);
+    ctx.lineTo(dTop.x + k * 0.74, y + k * 0.36);
+  }
+  ctx.stroke();
+  ctx.fillStyle = '#b9bec5';
+  ctx.fillRect(dTop.x + k * 0.56, dTop.y + dh * 0.36, Math.max(1.5, k * 0.1), Math.max(1.5, k * 0.028));
+  ctx.fillRect(dTop.x + k * 0.62, dTop.y + dh * 0.7, Math.max(1.5, k * 0.1), Math.max(1.5, k * 0.028));
   // 椅子（下排左格）
   isoDrawChair(ctx, ox, oy, k, X, Y + 1);
 }
@@ -1323,6 +1365,9 @@ function isoDrawPlant(ctx: CanvasRenderingContext2D, f: Furniture, ox: number, o
   leaf(-k * 0.26, -k * 0.06, k * 0.17, k * 0.36, -0.62, ISO_LEAF_B);
   leaf(k * 0.24, -k * 0.02, k * 0.17, k * 0.38, 0.55, ISO_LEAF_A);
   leaf(0, -k * 0.24, k * 0.16, k * 0.42, 0.02, ISO_LEAF_C);
+  // 参考稿的繁茂感：再加两片侧后叶
+  leaf(-k * 0.12, -k * 0.18, k * 0.13, k * 0.3, -0.25, ISO_LEAF_A);
+  leaf(k * 0.13, -k * 0.16, k * 0.12, k * 0.3, 0.28, ISO_LEAF_B);
   // 叶柄
   ctx.strokeStyle = ISO_LEAF_B;
   ctx.lineWidth = Math.max(1.2, k * 0.035);
@@ -1356,43 +1401,56 @@ function isoDrawCoffee(ctx: CanvasRenderingContext2D, f: Furniture, ox: number, 
 /** 玻璃隔断（wall 家具）：深灰框 + 半透明玻璃 + 竖梃。 */
 function isoDrawWallSeg(ctx: CanvasRenderingContext2D, f: Furniture, ox: number, oy: number, k: number): void {
   const base = isoCorner(ox, oy, k, f.x + 0.5, f.y + 0.5);
-  isoSoftShadow(ctx, base.x, base.y, k * 0.38, 0.12);
+  isoSoftShadow(ctx, base.x, base.y, k * 0.4, 0.13);
+  const GLASS_H = k * 2.1; // 参考稿：齐人半高的黑框玻璃墙
   const a = isoCorner(ox, oy, k, f.x + 0.02, f.y + 0.5);
   const b = isoCorner(ox, oy, k, f.x + 0.98, f.y + 0.5);
-  // 玻璃
-  ctx.fillStyle = 'rgba(206,222,232,0.45)';
-  isoSlabAt(ctx, a, b, k * 1.5);
+  const aT = { x: a.x, y: a.y - GLASS_H };
+  const bT = { x: b.x, y: b.y - GLASS_H };
+  // 玻璃（淡绿灰透感）
+  ctx.fillStyle = 'rgba(198,216,222,0.42)';
+  isoPoly(ctx, [a, b, bT, aT]);
   ctx.fill();
-  // 玻璃反光斜条
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  // 玻璃斜向反光条（两条）
+  ctx.fillStyle = 'rgba(255,255,255,0.32)';
   isoPoly(ctx, [
-    { x: a.x + k * 0.12, y: a.y - k * 0.1 },
-    { x: a.x + k * 0.3, y: a.y - k * 0.1 },
-    { x: a.x + k * 0.12, y: a.y - k * 1.3 },
-    { x: a.x - k * 0.06, y: a.y - k * 1.3 },
+    { x: a.x + k * 0.14, y: a.y - k * 0.06 },
+    { x: a.x + k * 0.3, y: a.y - k * 0.02 },
+    { x: a.x + k * 0.1, y: a.y - GLASS_H + k * 0.16 },
+    { x: a.x - k * 0.06, y: a.y - GLASS_H + k * 0.12 },
   ]);
   ctx.fill();
-  // 框（四周 + 竖梃）
-  ctx.strokeStyle = '#4c535b';
-  ctx.lineWidth = Math.max(2, k * 0.09);
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  isoPoly(ctx, [
+    { x: a.x + k * 0.46, y: a.y + k * 0.08 },
+    { x: a.x + k * 0.56, y: a.y + k * 0.11 },
+    { x: a.x + k * 0.4, y: a.y - GLASS_H + k * 0.14 },
+    { x: a.x + k * 0.3, y: a.y - GLASS_H + k * 0.11 },
+  ]);
+  ctx.fill();
+  // 黑框：四周描边（加粗、圆头）
+  ctx.strokeStyle = '#3a4046';
+  ctx.lineWidth = Math.max(2.5, k * 0.1);
+  ctx.lineCap = 'round';
   ctx.beginPath();
   ctx.moveTo(a.x, a.y);
   ctx.lineTo(b.x, b.y);
-  ctx.moveTo(a.x, a.y - k * 1.5);
-  ctx.lineTo(b.x, b.y - k * 1.5);
+  ctx.moveTo(aT.x, aT.y);
+  ctx.lineTo(bT.x, bT.y);
   ctx.moveTo(a.x, a.y);
-  ctx.lineTo(a.x, a.y - k * 1.5);
+  ctx.lineTo(aT.x, aT.y);
   ctx.moveTo(b.x, b.y);
-  ctx.lineTo(b.x, b.y - k * 1.5);
+  ctx.lineTo(bT.x, bT.y);
   ctx.stroke();
-  ctx.lineWidth = Math.max(1.5, k * 0.06);
+  // 竖梃（把玻璃面分成三扇）
+  ctx.lineWidth = Math.max(2, k * 0.07);
   const m1 = isoCorner(ox, oy, k, f.x + 0.34, f.y + 0.5);
   const m2 = isoCorner(ox, oy, k, f.x + 0.66, f.y + 0.5);
   ctx.beginPath();
   ctx.moveTo(m1.x, m1.y);
-  ctx.lineTo(m1.x, m1.y - k * 1.5);
+  ctx.lineTo(m1.x, m1.y - GLASS_H);
   ctx.moveTo(m2.x, m2.y);
-  ctx.lineTo(m2.x, m2.y - k * 1.5);
+  ctx.lineTo(m2.x, m2.y - GLASS_H);
   ctx.stroke();
 }
 
