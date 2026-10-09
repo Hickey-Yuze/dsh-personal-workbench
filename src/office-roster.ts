@@ -33,7 +33,12 @@ export type OfficeBuiltinOverride = {
   provider?: string;
   /** 员工专属模型 id：空串/缺省 = 跟随全局默认（聊天/派活/自觉工作共用；配快的非思考模型可避免流式静默超时）。 */
   model?: string;
+  /** 能力评估：固定维度（OFFICE_SKILL_DIMS）→ 0-100 分。员工档案编辑，注入派活/私聊提示词做角色定位。 */
+  skills?: Record<string, number>;
 };
+
+/** 能力评估固定维度（员工档案编辑与 personaPromptSuffix 注入共用同一顺序）。 */
+export const OFFICE_SKILL_DIMS: readonly string[] = ['代码', '架构', '测试', '设计', '沟通', '业务', '数据'];
 
 /** 内置六名 NPC 的稳定身份（与客户端 client/src/office/engine.ts BUILTIN_STAFF 一致：npc-1..npc-6）。 */
 export const OFFICE_BUILTIN_SIX: Array<{ id: string; name: string; role: string }> = [
@@ -93,6 +98,14 @@ export function loadOfficeRosterExt(): OfficeRosterExt {
         if (typeof o.deskId === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(o.deskId.trim())) clean.deskId = o.deskId.trim();
         if (typeof o.provider === 'string' && o.provider.trim() !== '') clean.provider = o.provider.trim().slice(0, 64);
         if (typeof o.model === 'string' && o.model.trim() !== '') clean.model = o.model.trim().slice(0, 64);
+        if (o.skills !== null && typeof o.skills === 'object' && !Array.isArray(o.skills)) {
+          const skills: Record<string, number> = {};
+          for (const dim of OFFICE_SKILL_DIMS) {
+            const v = (o.skills as Record<string, unknown>)[dim];
+            if (typeof v === 'number' && Number.isFinite(v)) skills[dim] = Math.max(0, Math.min(100, Math.round(v)));
+          }
+          if (Object.keys(skills).length > 0) clean.skills = skills;
+        }
         if (Object.keys(clean).length > 0) builtin[k] = clean;
       }
     }
@@ -120,12 +133,13 @@ function clampField(v: unknown, max: number): string | undefined {
 
 /**
  * upsert 员工属性覆盖。patch 语义：字段缺省=不动；字符串（含空串）=设置（空串=清除该字段）；
- * links 数组（含空数组）=整体替换（空数组=清除）。id 不在白名单或字段非法时抛 Error。
+ * links 数组（含空数组）=整体替换（空数组=清除）；skills 对象（含空对象）=整体替换（空对象=清除，
+ * 仅接受 OFFICE_SKILL_DIMS 内维度、数值钳 0-100）。id 不在白名单或字段非法时抛 Error。
  * 返回更新后的完整 builtin 表（已落盘）。
  */
 export function upsertBuiltinOverride(
   id: string,
-  patch: { name?: unknown; role?: unknown; persona?: unknown; links?: unknown; deskId?: unknown; provider?: unknown; model?: unknown },
+  patch: { name?: unknown; role?: unknown; persona?: unknown; links?: unknown; deskId?: unknown; provider?: unknown; model?: unknown; skills?: unknown },
 ): Record<string, OfficeBuiltinOverride> {
   if (!isValidCharId(id)) throw new Error('id 必须为合法员工 id');
   const ext = loadOfficeRosterExt();
@@ -171,6 +185,19 @@ export function upsertBuiltinOverride(
   if (model !== undefined) {
     if (model === '') delete cur.model;
     else cur.model = model;
+  }
+  if (patch.skills !== undefined) {
+    if (patch.skills === null || typeof patch.skills !== 'object' || Array.isArray(patch.skills)) {
+      throw new Error('skills 必须为「维度 → 0-100 分」的对象');
+    }
+    const rawSkills = patch.skills as Record<string, unknown>;
+    const skills: Record<string, number> = {};
+    for (const dim of OFFICE_SKILL_DIMS) {
+      const v = rawSkills[dim];
+      if (typeof v === 'number' && Number.isFinite(v)) skills[dim] = Math.max(0, Math.min(100, Math.round(v)));
+    }
+    if (Object.keys(skills).length === 0) delete cur.skills;
+    else cur.skills = skills;
   }
   if (Object.keys(cur).length > 0) ext.builtin[id] = cur;
   else delete ext.builtin[id];
@@ -242,11 +269,15 @@ export function findCharIdByName(name: string): string | undefined {
   return ext.roster.find((r) => r.name === t)?.id;
 }
 
-/** 人设注入后缀：有覆盖时返回「你的性格：…」+「团队协作：- …」文本段（含前导换行），无覆盖返回空串。 */
+/** 人设注入后缀：有覆盖时返回「你的性格：…」+「能力评估：…」+「团队协作：- …」文本段（含前导换行），无覆盖返回空串。 */
 export function personaPromptSuffix(ov: OfficeBuiltinOverride | undefined): string {
   if (!ov) return '';
   const lines: string[] = [];
   if (ov.persona !== undefined && ov.persona !== '') lines.push(`你的性格：${ov.persona}`);
+  if (ov.skills !== undefined) {
+    const parts = OFFICE_SKILL_DIMS.filter((d) => ov.skills?.[d] !== undefined).map((d) => `${d} ${ov.skills?.[d]}`);
+    if (parts.length > 0) lines.push(`能力评估（0-100，按此定位分工与产出标准）：${parts.join('、')}`);
+  }
   if (ov.links !== undefined && ov.links.length > 0) {
     lines.push(`团队协作：\n${ov.links.map((l) => `- ${l}`).join('\n')}`);
   }
@@ -297,6 +328,40 @@ export function appendMemoryNote(charId: string, text: string): void {
     fs.writeFileSync(`${MEMORY_DIR}/${charId}.json`, JSON.stringify({ notes: trimmed }, null, 2), 'utf8');
   } catch {
     /* 记忆失败不影响主流程 */
+  }
+}
+
+/** 删除员工记忆第 index 条（0 基；越界/非法 id 返回 false，不抛）。 */
+export function removeMemoryNote(charId: string, index: number): boolean {
+  if (!isValidCharId(charId) || !Number.isInteger(index)) return false;
+  try {
+    const notes = readMemoryFile(charId);
+    if (index < 0 || index >= notes.length) return false;
+    notes.splice(index, 1);
+    if (notes.length === 0) {
+      try {
+        fs.rmSync(`${MEMORY_DIR}/${charId}.json`, { force: true });
+      } catch {
+        /* 留下空文件不影响后续写入 */
+      }
+      return true;
+    }
+    fs.mkdirSync(MEMORY_DIR, { recursive: true });
+    fs.writeFileSync(`${MEMORY_DIR}/${charId}.json`, JSON.stringify({ notes }, null, 2), 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 清空员工记忆（删除记忆文件；非法 id 返回 false，不抛）。 */
+export function clearMemoryNotes(charId: string): boolean {
+  if (!isValidCharId(charId)) return false;
+  try {
+    fs.rmSync(`${MEMORY_DIR}/${charId}.json`, { force: true });
+    return true;
+  } catch {
+    return false;
   }
 }
 

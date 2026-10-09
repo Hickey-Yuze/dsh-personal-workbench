@@ -18,11 +18,13 @@ import type { KnowledgeClient } from './knowledge.js';
 import {
   appendMemoryNote,
   builtinOverrideOf,
+  clearMemoryNotes,
   findCharIdByName,
   isValidCharId,
   loadMemoryNotes,
   loadOfficeRosterExt,
   personaPromptSuffix,
+  removeMemoryNote,
   resolveCharById,
   rosterSummary,
   saveOfficeRosterList,
@@ -1819,6 +1821,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
             deskId: officeBody.deskId,
             provider: officeBody.provider,
             model: officeBody.model,
+            skills: officeBody.skills,
           });
           send(res, 200, { ok: true, builtin });
         } catch (err) {
@@ -1841,14 +1844,27 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         }
         return;
       }
-      // office/memory POST {char, text}：追加员工记忆（面板/实验用；主链路在 capture committed 自动入档）
+      // office/memory POST {char, text} 追加 / {char, remove: 序号} 删一条 / {char, clear: true} 清空（员工档案编辑用；主链路在 capture committed 自动入档）
       if (officeEndpoint === 'office/memory') {
         const memCharPost = typeof officeBody.char === 'string' ? officeBody.char.trim() : '';
-        const memTextPost = typeof officeBody.text === 'string' ? officeBody.text : '';
         if (!isValidCharId(memCharPost)) {
           send(res, 400, { ok: false, error: { code: 'bad-request', message: 'char 必须为合法员工 id' } });
           return;
         }
+        if (officeBody.clear === true) {
+          clearMemoryNotes(memCharPost);
+          send(res, 200, { ok: true });
+          return;
+        }
+        if (typeof officeBody.remove === 'number' && Number.isInteger(officeBody.remove)) {
+          if (!removeMemoryNote(memCharPost, officeBody.remove)) {
+            send(res, 400, { ok: false, error: { code: 'bad-request', message: 'remove 超出记忆范围' } });
+            return;
+          }
+          send(res, 200, { ok: true });
+          return;
+        }
+        const memTextPost = typeof officeBody.text === 'string' ? officeBody.text : '';
         appendMemoryNote(memCharPost, memTextPost);
         send(res, 200, { ok: true });
         return;

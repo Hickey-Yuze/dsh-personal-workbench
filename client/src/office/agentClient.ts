@@ -24,6 +24,8 @@ export type BuiltinOverride = {
   provider?: string;
   /** 员工专属模型 id：空串/缺省 = 跟随全局默认（聊天/派活/自觉工作都生效）。 */
   model?: string;
+  /** 能力评估：固定维度 → 0-100 分（员工档案编辑；注入派活/私聊提示词）。 */
+  skills?: Record<string, number>;
 };
 
 export type RosterResult = { roster: RosterEntry[]; builtin?: Record<string, BuiltinOverride> };
@@ -81,9 +83,10 @@ export async function loadRoster(): Promise<RosterResult> {
   };
 }
 
-/** 保存员工属性覆盖（名称/职务/性格/同事链）。 */
-export async function saveBuiltin(id: string, patch: BuiltinOverride): Promise<void> {
-  await postJson('roster/builtin', { id, ...patch });
+/** 保存员工属性覆盖（名称/职务/性格/同事链/工位/模型/能力）。返回宿主合并后的完整 builtin 表。 */
+export async function saveBuiltin(id: string, patch: BuiltinOverride): Promise<Record<string, BuiltinOverride>> {
+  const data = await postJson<{ builtin?: Record<string, BuiltinOverride> }>('roster/builtin', { id, ...patch });
+  return data.builtin ?? {};
 }
 
 /** 自觉工作开关。 */
@@ -97,9 +100,19 @@ export async function fetchMemory(char: string): Promise<MemoryNote[]> {
   return Array.isArray(data.notes) ? data.notes : [];
 }
 
-/** 追加一条员工记忆（实验用；面板 v1 只读展示，不调用）。 */
+/** 追加一条员工记忆（员工档案页手记；真会话工作记录由宿主自动入档）。 */
 export async function addMemoryNote(char: string, text: string): Promise<void> {
   await postJson('memory', { char, text });
+}
+
+/** 删除员工记忆第 index 条（0 基；越界由宿主报错）。 */
+export async function removeMemoryNote(char: string, index: number): Promise<void> {
+  await postJson('memory', { char, remove: index });
+}
+
+/** 清空员工记忆（删除记忆文件；自生长会重新积累）。 */
+export async function clearMemory(char: string): Promise<void> {
+  await postJson('memory', { char, clear: true });
 }
 
 /** 新增自定义员工；成功返回宿主生成的新条目（id 为 custom-<序号>）。model 可选员工专属模型（`${provider}::${id}`；空 = 跟随默认）。 */

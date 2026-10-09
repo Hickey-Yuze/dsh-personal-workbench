@@ -1,5 +1,5 @@
 /**
- * 模块：像素办公室 —— P1 场景 + P2 互动 + P3 编辑器 + P4 对话 + P5 数据面板/动作网关
+ * 模块：像素办公室 —— P1 场景 + P2 互动 + P3 编辑器 + P4 对话 + P5 员工档案/动作网关
  * + P4.5 同事 agent 联动：点谁跟谁聊（私聊）、全员群聊互聊、会议讨论；NPC 回复冒泡到头上。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -15,7 +15,7 @@ import type { OfficeView } from '../office/renderer.js';
 import { addRosterEntry, isEndpointMissing, loadRoster, officeListModels } from '../office/agentClient.js';
 import type { BuiltinOverride, OfficeModelOption, RosterEntry } from '../office/agentClient.js';
 import { OfficeEditor } from './OfficeEditor.js';
-import { OfficeDataPanel } from './OfficeDataPanel.js';
+import { OfficeProfileView } from './OfficeProfileView.js';
 import { OfficeAgentPanel } from './OfficeAgentPanel.js';
 
 const STATE_TEXT: Record<MemberStat['state'], string> = {
@@ -785,7 +785,7 @@ export function OfficeModuleView(): ReactElement {
               场景
             </button>
             <button className={`dsh-pwb-office-tab${tab === 'data' ? ' dsh-pwb-office-tab-active' : ''}`} onClick={() => setTab('data')}>
-              数据面板
+              员工档案
             </button>
             <button className={`dsh-pwb-office-tab${tab === 'edit' ? ' dsh-pwb-office-tab-active' : ''}`} onClick={() => setTab('edit')}>
               布置办公室
@@ -821,7 +821,7 @@ export function OfficeModuleView(): ReactElement {
             </div>
           )}
 
-          {tab === 'data' && <OfficeDataPanel members={members} />}
+          {tab === 'data' && <OfficeProfileView members={members} roster={roster} builtin={builtinOverrides} onBuiltinSaved={setBuiltinOverrides} />}
 
           {tab === 'edit' && (
             <>
