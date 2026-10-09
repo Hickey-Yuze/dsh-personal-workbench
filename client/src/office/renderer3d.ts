@@ -9,11 +9,11 @@ import type { Character, Furniture, OfficeMap } from './types.js';
 import { MAP_H, MAP_W } from './map.js';
 
 /* ── 调色（对齐参考图） ── */
-const C_BG = 0xf3f4f6;
+const C_BG = 0xf7f7f8;
 const C_BASE = 0xffffff; // 厚白底座
 const C_BASE_SIDE = 0xe2e4e8;
-const C_FLOOR = 0xdfb98a; // 木地板
-const C_FLOOR_ALT = 0xd6ad7c;
+const C_FLOOR = 0xe3c191; // 木地板
+const C_FLOOR_ALT = 0xdab684;
 const C_WALL_L = 0xf7f8fa; // 左后墙（白）
 const C_WALL_R = 0xc9ccd1; // 右后墙（灰）
 const C_DESK_TOP = 0xfdfdfd;
@@ -165,8 +165,7 @@ function buildDesk(g: THREE.Group, f: Furniture, disposables: Array<{ dispose: (
   const foot = box(0.3, 0.03, 0.16, 0xe8eaed);
   foot.position.set(0, 0.685, 0);
   imac.add(shell, screen, chin, stand, foot);
-  imac.position.set(x - 0.25, 0, z - 0.1);
-  imac.rotation.y = Math.PI; // 面朝房内（南）
+  imac.position.set(x - 0.25, 0, z - 0.1); // 屏面默认朝 +z（房内/相机）
   g.add(imac);
   for (const m of [shell, screen, chin, stand, foot]) disposables.push(m.geometry, m.material as THREE.Material);
   // 键盘 + 杯
@@ -207,8 +206,8 @@ function buildOfficeChair(disposables: Array<{ dispose: () => void }>): THREE.Gr
 function buildWallSeg(g: THREE.Group, f: Furniture, disposables: Array<{ dispose: () => void }>): void {
   const { x, z } = cellToWorld(f.x + 0.5, f.y + 0.5);
   const H = 2.2;
-  // 玻璃面（沿 x 向，1 格宽）
-  const glass = box(0.96, H, 0.06, C_GLASS, { transparent: 0.45 });
+  // 玻璃面（沿 x 向，1 格宽；参考稿通透大整面）
+  const glass = box(0.97, H, 0.04, 0xdde9ec, { transparent: 0.26 });
   addShadowed(g, glass, x, z, H / 2);
   // 黑框：上下横梁 + 竖梃
   const frame = (w: number, h: number, d: number, px: number, pz: number, py: number): void => {
@@ -216,11 +215,10 @@ function buildWallSeg(g: THREE.Group, f: Furniture, disposables: Array<{ dispose
     addShadowed(g, m, px, pz, py);
     disposables.push(m.geometry, m.material as THREE.Material);
   };
-  frame(1.0, 0.08, 0.1, x, z, H);
-  frame(1.0, 0.08, 0.1, x, z, 0.04);
-  frame(0.08, H, 0.1, x - 0.46, z, H / 2);
-  frame(0.08, H, 0.1, x + 0.46, z, H / 2);
-  frame(0.05, H, 0.08, x, z, H / 2);
+  frame(1.02, 0.07, 0.08, x, z, H);
+  frame(1.02, 0.07, 0.08, x, z, 0.035);
+  frame(0.06, H, 0.08, x - 0.48, z, H / 2);
+  frame(0.06, H, 0.08, x + 0.48, z, H / 2);
   disposables.push(glass.geometry, glass.material as THREE.Material);
 }
 
@@ -406,11 +404,11 @@ export function renderOffice3D(
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(C_BG);
     // 光照：环境 + 半球 + 主平行光（软阴影）
-    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-    const hemi = new THREE.HemisphereLight(0xffffff, 0xd8cbb4, 0.5);
+    scene.add(new THREE.AmbientLight(0xfff6ea, 0.68));
+    const hemi = new THREE.HemisphereLight(0xffffff, 0xcfb99a, 0.6);
     scene.add(hemi);
-    const sun = new THREE.DirectionalLight(0xffffff, 1.35);
-    sun.position.set(-14, 22, 10);
+    const sun = new THREE.DirectionalLight(0xfff2dd, 1.6);
+    sun.position.set(-18, 26, 14);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.camera.left = -26;
@@ -420,13 +418,14 @@ export function renderOffice3D(
     sun.shadow.camera.far = 80;
     sun.shadow.bias = -0.0004;
     scene.add(sun);
-    const fill = new THREE.DirectionalLight(0xffffff, 0.35);
+    const fill = new THREE.DirectionalLight(0xeef2ff, 0.4);
     fill.position.set(12, 10, -6);
     scene.add(fill);
     const aspect = (canvas.clientWidth || 640) / (canvas.clientHeight || 400);
-    const camera = new THREE.OrthographicCamera(-14 * aspect, 14 * aspect, 12, -12, 0.1, 200);
-    camera.position.set(-18, 20, 18);
-    camera.lookAt(0, 0, 0);
+    const camera = new THREE.OrthographicCamera(-16 * aspect, 16 * aspect, 16, -16, 0.1, 300);
+    // 参考稿机位：从开放角斜俯视（两面墙在画面后方），正交等距
+    camera.position.set(30, 30, 30);
+    camera.lookAt(0, -1, 0);
     const disposables: Array<{ dispose: () => void }> = [];
     const baseGroup = buildBase(map, disposables);
     scene.add(baseGroup);
@@ -460,10 +459,10 @@ export function renderOffice3D(
     s.renderer.setSize(cssW, cssH, false);
     s.renderer.setPixelRatio(dpr);
     const aspect = cssW / cssH;
-    s.camera.left = -14 * aspect;
-    s.camera.right = 14 * aspect;
-    s.camera.top = 12;
-    s.camera.bottom = -12;
+    s.camera.left = -16 * aspect;
+    s.camera.right = 16 * aspect;
+    s.camera.top = 16;
+    s.camera.bottom = -16;
     s.camera.updateProjectionMatrix();
   }
 
