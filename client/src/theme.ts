@@ -1720,6 +1720,59 @@ html { color-scheme: light !important; }
   outline: none;
 }
 .dsh-pwb-office-chat-input input:focus { border-color: rgba(0, 200, 120, 0.45); background: #fff; }
+/* 附图：消息内图片、输入区待发预览、贴图按钮（圆角元素显式 corner-shape: round，防超椭圆裁剪毛刺） */
+.dsh-pwb-office-chat-imgs { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+.dsh-pwb-office-chat-imgs img {
+  max-width: 200px;
+  max-height: 150px;
+  border-radius: 10px;
+  corner-shape: round;
+  border: 1px solid rgba(20, 20, 30, 0.1);
+  display: block;
+  object-fit: cover;
+}
+.dsh-pwb-office-chat-pending { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 13px 0; }
+.dsh-pwb-office-chat-pending-item { position: relative; width: 52px; height: 52px; flex-shrink: 0; }
+.dsh-pwb-office-chat-pending-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 10px;
+  corner-shape: round;
+  border: 1px solid rgba(20, 20, 30, 0.12);
+  display: block;
+}
+.dsh-pwb-office-chat-pending-item button {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  corner-shape: round;
+  background: rgba(20, 20, 30, 0.72);
+  color: #fff;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+.dsh-pwb-office-chat-attach {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  padding: 0;
+  border-radius: 12px;
+  corner-shape: round;
+  border: 1px solid rgba(20, 20, 30, 0.07);
+  background: #f7f8f9;
+  color: var(--pwb-text);
+  cursor: pointer;
+}
+.dsh-pwb-office-chat-attach:hover { border-color: rgba(0, 200, 120, 0.45); color: #0a9b4d; }
 /* 派活工作区行：工作区标签 + 目录输入（写进 agent 会话 header，宿主按项目归组会话） */
 .dsh-pwb-office-chat-cwd {
   display: flex;
@@ -1794,6 +1847,8 @@ html { color-scheme: light !important; }
   border: 1px solid rgba(20, 20, 30, 0.06);
   border-radius: 12px;
   background: var(--pwb-card);
+  min-height: 0;
+  overflow-y: auto;
 }
 .dsh-pwb-office-ed-catalog-title { font-size: 12.5px; font-weight: 700; color: var(--pwb-text); }
 .dsh-pwb-office-ed-catalog-item {
