@@ -14,14 +14,14 @@ const C_BASE = 0xffffff; // 厚白底座
 const C_BASE_SIDE = 0xe2e4e8;
 const C_FLOOR = 0xe3c191; // 木地板
 const C_FLOOR_ALT = 0xdab684;
-const C_WALL_L = 0xf7f8fa; // 左后墙（白）
-const C_WALL_R = 0xc9ccd1; // 右后墙（灰）
+const C_WALL_L = 0xf5f6f8; // 左后墙（白）
+const C_WALL_R = 0xe9ebee; // 右后墙（浅灰白，参考稿仅微差）
 const C_DESK_TOP = 0xfdfdfd;
 const C_DESK_SIDE = 0xe8eaee;
 const C_METAL = 0xb9bec6;
 const C_SCREEN = 0x2b3137;
 const C_GLASS = 0xcfe0e6;
-const C_FRAME = 0x3c4248;
+const C_FRAME = 0x5a6168;
 const C_CARPET = 0xe9e2d4;
 const C_POT = 0xf6f7f8;
 const C_LEAF = 0x6cab5f;
@@ -85,7 +85,7 @@ function buildBase(map: OfficeMap, disposables: Array<{ dispose: () => void }>):
   const baseMat = stdMaterial(C_BASE, { rough: 0.6 });
   const base = new THREE.Mesh(extrude, baseMat);
   base.rotation.x = -Math.PI / 2;
-  base.position.set(0, -0.9, 0);
+  base.position.set(0, -1.24, 0); // 顶面 ≈ -0.1：必须低于地板面，否则白座埋掉木地板
   g.add(base);
   disposables.push(extrude, baseMat);
 
@@ -105,7 +105,7 @@ function buildBase(map: OfficeMap, disposables: Array<{ dispose: () => void }>):
 
   // 两面厚墙（gx=0 左白 / gy=0 右灰），厚 0.45 高 3.4
   const wallThick = 0.45;
-  const wallH = 3.4;
+  const wallH = 2.9;
   const mkWall = (w: number, d: number, color: number): void => {
     const geo = new THREE.BoxGeometry(w, wallH, d);
     const mat = stdMaterial(color, { rough: 0.95 });
@@ -207,7 +207,7 @@ function buildWallSeg(g: THREE.Group, f: Furniture, disposables: Array<{ dispose
   const { x, z } = cellToWorld(f.x + 0.5, f.y + 0.5);
   const H = 2.2;
   // 玻璃面（沿 x 向，1 格宽；参考稿通透大整面）
-  const glass = box(0.97, H, 0.04, 0xdde9ec, { transparent: 0.26 });
+  const glass = box(0.99, H - 0.06, 0.03, 0xe6eef1, { transparent: 0.32 });
   addShadowed(g, glass, x, z, H / 2);
   // 黑框：上下横梁 + 竖梃
   const frame = (w: number, h: number, d: number, px: number, pz: number, py: number): void => {
@@ -215,10 +215,10 @@ function buildWallSeg(g: THREE.Group, f: Furniture, disposables: Array<{ dispose
     addShadowed(g, m, px, pz, py);
     disposables.push(m.geometry, m.material as THREE.Material);
   };
-  frame(1.02, 0.07, 0.08, x, z, H);
-  frame(1.02, 0.07, 0.08, x, z, 0.035);
-  frame(0.06, H, 0.08, x - 0.48, z, H / 2);
-  frame(0.06, H, 0.08, x + 0.48, z, H / 2);
+  frame(1.04, 0.055, 0.06, x, z, H);
+  frame(1.04, 0.055, 0.06, x, z, 0.028);
+  frame(0.04, H, 0.06, x - 0.5, z, H / 2);
+  frame(0.04, H, 0.06, x + 0.5, z, H / 2);
   disposables.push(glass.geometry, glass.material as THREE.Material);
 }
 
@@ -360,25 +360,25 @@ function buildCabinet(g: THREE.Group, f: Furniture, disposables: Array<{ dispose
 function buildChar(c: Character, disposables: Array<{ dispose: () => void }>): { root: THREE.Group; head: THREE.Mesh; body: THREE.Mesh; hair: THREE.Mesh } {
   const root = new THREE.Group();
   const bodyMat = stdMaterial(new THREE.Color(c.color).getHex(), { rough: 0.7 });
-  const bodyGeo = new THREE.CapsuleGeometry(0.2, 0.14, 6, 12);
+  const bodyGeo = new THREE.CapsuleGeometry(0.24, 0.24, 6, 12);
   const body = new THREE.Mesh(bodyGeo, bodyMat);
-  body.position.y = 0.38;
+  body.position.y = 0.4;
   body.castShadow = true;
   const skinMat = stdMaterial(C_SKIN, { rough: 0.6 });
-  const headGeo = new THREE.SphereGeometry(0.3, 18, 14);
+  const headGeo = new THREE.SphereGeometry(0.29, 18, 14);
   const head = new THREE.Mesh(headGeo, skinMat);
-  head.position.y = 0.86;
+  head.position.y = 0.94;
   head.castShadow = true;
   const hairMat = stdMaterial(new THREE.Color(c.hair === '' ? '#6b4a34' : c.hair).getHex(), { rough: 0.8 });
-  const hairGeo = new THREE.SphereGeometry(0.31, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.55);
+  const hairGeo = new THREE.SphereGeometry(0.3, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.55);
   const hair = new THREE.Mesh(hairGeo, hairMat);
-  hair.position.y = 0.875;
+  hair.position.y = 0.955;
   // 眼睛
   const eyeMat = stdMaterial(0x2c2a28, { rough: 0.4 });
   for (const ex of [-0.1, 0.1]) {
     const eyeGeo = new THREE.SphereGeometry(0.032, 8, 8);
     const eye = new THREE.Mesh(eyeGeo, eyeMat);
-    eye.position.set(ex, 0.87, 0.27);
+    eye.position.set(ex, 0.95, 0.26);
     root.add(eye);
     disposables.push(eyeGeo, eyeMat);
   }
@@ -533,9 +533,10 @@ export function renderOffice3D(
     // 坐姿：压低 + 藏腿（简化：整体下移）
     const sitting = c.state === 'working' || c.state === 'coffee';
     const targetY = sitting ? -0.12 : 0;
-    v.body.position.y = 0.38 + (sitting ? -0.08 : 0);
-    v.head.position.y = 0.86 + (sitting ? -0.08 : 0);
-    v.hair.position.y = 0.875 + (sitting ? -0.08 : 0);
+    const sitOff = sitting ? -0.1 : 0;
+    v.body.position.y = 0.4 + sitOff;
+    v.head.position.y = 0.94 + sitOff;
+    v.hair.position.y = 0.955 + sitOff;
     void targetY;
     // 名字：用 sprite 太重，沿用 2D 画布叠加？——暂用 bubble 时不重复。名字走 DOM 层由调用方处理（暂略）
     void v.head;
