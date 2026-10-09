@@ -795,8 +795,8 @@ const ISO_FLOOR_B = '#d2af7d';
 const ISO_FLOOR_LINE = 'rgba(146,110,64,0.14)';
 const ISO_TRAY = '#ffffff';
 const ISO_TRAY_SIDE = '#e4e6e9';
-const ISO_WALL_R = '#f2f4f6';
-const ISO_WALL_L = '#e6eaee';
+const ISO_WALL_R = '#e3e6ea';
+const ISO_WALL_L = '#f4f5f7';
 const ISO_WALL_TOP = '#fbfcfd';
 const ISO_WALL_SKIRT = '#dbdfe4';
 const ISO_WHITE_TOP = '#ffffff';
@@ -994,7 +994,7 @@ function buildIsoStaticLayer(pxW: number, pxH: number, dpr: number, cssW: number
     isoCorner(ox, oy, k, MAP_W + TRAY, MAP_H + TRAY),
     isoCorner(ox, oy, k, -TRAY, MAP_H + TRAY),
   ];
-  const trayThick = k * 0.26;
+  const trayThick = k * 0.5; // 参考稿厚白底座
   // 台基侧面（下缘两条边向下延伸）
   c.fillStyle = ISO_TRAY_SIDE;
   isoPoly(c, [trayPts[3] as { x: number; y: number }, trayPts[2] as { x: number; y: number }, { x: (trayPts[2] as { x: number; y: number }).x, y: (trayPts[2] as { x: number; y: number }).y + trayThick }, { x: (trayPts[3] as { x: number; y: number }).x, y: (trayPts[3] as { x: number; y: number }).y + trayThick }]);
@@ -1039,9 +1039,9 @@ function buildIsoStaticLayer(pxW: number, pxH: number, dpr: number, cssW: number
     }
   }
 
-  // 两面墙：右后墙（gy=0）+ 左后墙（gx=0），墙高 3.1k，带墙顶厚度与踢脚
+  // 两面墙：右后墙（gy=0，参考稿内面灰调）+ 左后墙（gx=0，白调），墙高 3.1k，厚墙顶
   const WALL_H = k * 3.1;
-  const thick = { x: k * 0.16, y: -k * 0.08 };
+  const thick = { x: k * 0.4, y: -k * 0.2 }; // 参考稿厚墙体积感
   const w00 = isoCorner(ox, oy, k, 0, 0);
   const wW0 = isoCorner(ox, oy, k, MAP_W, 0);
   const w0H = isoCorner(ox, oy, k, 0, MAP_H);
@@ -1615,10 +1615,10 @@ function isoDrawChar(
 
   // 腿：站/走路（摆动双腿 + 白鞋）或真坐姿（大腿前伸 + 小腿垂下 + 鞋）
   const seatH = k * 0.42; // 与 isoDrawChair 的座垫高度一致
-  const legH = sitting ? 0 : k * 0.2;
-  const bodyW = k * 0.5;
-  const bodyH = k * 0.42;
-  const headR = k * 0.3;
+  const legH = sitting ? 0 : k * 0.16;
+  const bodyW = k * 0.52;
+  const bodyH = k * 0.34; // Q 版：身体短圆
+  const headR = k * 0.38; // Q 版大头（参考稿头身比约 1:1）
   const baseY = foot.y;
   if (!sitting) {
     const swing = walking ? Math.sin(time * 10 + c.phase) * k * 0.08 : 0;
@@ -1644,14 +1644,19 @@ function isoDrawChar(
     ctx.fill();
   }
 
-  // 身体（圆润）+ 两侧手臂；坐姿时身体落在椅面高度上
+  // 身体（圆润短胖）+ 两侧手臂；坐姿时身体落在椅面高度上
   const bodyBottom = sitting ? baseY - seatH + k * 0.05 : baseY - legH;
   const bodyTop = bodyBottom - bodyH + bob;
   ctx.fillStyle = c.color;
-  rr(ctx, px - bodyW / 2, bodyTop, bodyW, bodyH, k * 0.16);
+  rr(ctx, px - bodyW / 2, bodyTop, bodyW, bodyH, k * 0.17);
   ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.22)';
-  rr(ctx, px - bodyW * 0.4, bodyTop + k * 0.04, bodyW * 0.8, bodyH * 0.28, k * 0.1);
+  // 球状立体感：顶部高光 + 底部收影
+  const bodyGrad = ctx.createLinearGradient(0, bodyTop, 0, bodyTop + bodyH);
+  bodyGrad.addColorStop(0, 'rgba(255,255,255,0.32)');
+  bodyGrad.addColorStop(0.45, 'rgba(255,255,255,0)');
+  bodyGrad.addColorStop(1, 'rgba(40,40,60,0.16)');
+  ctx.fillStyle = bodyGrad;
+  rr(ctx, px - bodyW / 2, bodyTop, bodyW, bodyH, k * 0.17);
   ctx.fill();
   // 手臂（略深）
   ctx.fillStyle = c.color;
@@ -1670,9 +1675,17 @@ function isoDrawChar(
   ctx.arc(px + bodyW * 0.52, bodyTop + bodyH * 0.84, k * 0.075, 0, Math.PI * 2);
   ctx.fill();
 
-  // 头（Q 版大头）
-  const headCy = bodyTop - headR * 0.72 + bob;
+  // 头（Q 版大头）：底色 + 球面渐变（上亮下影）+ 头发盖 + 刘海
+  const headCy = bodyTop - headR * 0.62 + bob;
   ctx.fillStyle = ISO_SKIN;
+  ctx.beginPath();
+  ctx.arc(px, headCy, headR, 0, Math.PI * 2);
+  ctx.fill();
+  const headGrad = ctx.createRadialGradient(px - headR * 0.3, headCy - headR * 0.35, headR * 0.2, px, headCy, headR);
+  headGrad.addColorStop(0, 'rgba(255,255,255,0.4)');
+  headGrad.addColorStop(0.5, 'rgba(255,255,255,0)');
+  headGrad.addColorStop(1, 'rgba(150,100,70,0.18)');
+  ctx.fillStyle = headGrad;
   ctx.beginPath();
   ctx.arc(px, headCy, headR, 0, Math.PI * 2);
   ctx.fill();
