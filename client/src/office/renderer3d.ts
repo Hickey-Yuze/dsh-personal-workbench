@@ -91,12 +91,14 @@ function buildBase(map: OfficeMap, disposables: Array<{ dispose: () => void }>):
 
   // 木地板：条状交替色
   const floorGroup = new THREE.Group();
-  for (let gy = 0; gy < MAP_H; gy++) {
-    const color = (gy >> 1) % 2 === 0 ? C_FLOOR : C_FLOOR_ALT;
-    const geo = new THREE.BoxGeometry(MAP_W, 0.08, 1);
+  for (let gy = 0; gy < MAP_H * 2; gy++) {
+    // 0.5 格细木条 + 每条轻微色差（参考稿密拼木地板）
+    const shade = ((gy * 2654435761) >>> 0) % 3; // 稳定伪随机 0/1/2
+    const color = shade === 0 ? C_FLOOR : shade === 1 ? C_FLOOR_ALT : 0xdeba8c;
+    const geo = new THREE.BoxGeometry(MAP_W, 0.08, 0.5);
     const mat = stdMaterial(color, { rough: 0.9 });
     const m = new THREE.Mesh(geo, mat);
-    const { x, z } = cellToWorld(MAP_W / 2, gy + 0.5);
+    const { x, z } = cellToWorld(MAP_W / 2, gy * 0.5 + 0.25);
     m.position.set(x, 0.04, z);
     floorGroup.add(m);
     disposables.push(geo, mat);
@@ -122,6 +124,15 @@ function buildBase(map: OfficeMap, disposables: Array<{ dispose: () => void }>):
   const wR = cellToWorld(MAP_W / 2, wallThick / 2); // gy=0 面
   mkWall(MAP_W, wallThick, C_WALL_R);
   (g.children[g.children.length - 1] as THREE.Mesh).position.set(wR.x, wallH / 2, wR.z);
+  // 墙顶白色盖板（厚度收口）
+  const capGeoL = new THREE.BoxGeometry(wallThick + 0.12, 0.12, MAP_H + wallThick + 0.12);
+  const capL = new THREE.Mesh(capGeoL, stdMaterial(0xffffff, { rough: 0.5 }));
+  capL.position.set(wL.x, wallH + 0.06, (wL.z + wR.z) / 2);
+  const capGeoR = new THREE.BoxGeometry(MAP_W + wallThick + 0.12, 0.12, wallThick + 0.12);
+  const capR = new THREE.Mesh(capGeoR, stdMaterial(0xffffff, { rough: 0.5 }));
+  capR.position.set(wR.x, wallH + 0.06, wR.z);
+  g.add(capL, capR);
+  disposables.push(capGeoL, capGeoR);
   return g;
 }
 
@@ -479,10 +490,11 @@ export function renderOffice3D(
     fill.position.set(12, 10, -6);
     scene.add(fill);
     const aspect = (canvas.clientWidth || 640) / (canvas.clientHeight || 400);
-    const camera = new THREE.OrthographicCamera(-16 * aspect, 16 * aspect, 16, -16, 0.1, 300);
-    // 参考稿机位：从开放角斜俯视（两面墙在画面后方），正交等距
-    camera.position.set(30, 30, 30);
-    camera.lookAt(0, -1, 0);
+    const camera = new THREE.OrthographicCamera(-21 * aspect, 21 * aspect, 21, -21, 0.1, 300);
+    // 标准等距机位：方位角 45°、仰角 ~35.26°（参考稿的方盒舞台感）
+    const d = 42;
+    camera.position.set(d * Math.SQRT1_2, d * 0.816, d * Math.SQRT1_2);
+    camera.lookAt(0, -0.5, 0);
     const disposables: Array<{ dispose: () => void }> = [];
     const baseGroup = buildBase(map, disposables);
     scene.add(baseGroup);
@@ -516,10 +528,10 @@ export function renderOffice3D(
     s.renderer.setSize(cssW, cssH, false);
     s.renderer.setPixelRatio(dpr);
     const aspect = cssW / cssH;
-    s.camera.left = -16 * aspect;
-    s.camera.right = 16 * aspect;
-    s.camera.top = 16;
-    s.camera.bottom = -16;
+    s.camera.left = -21 * aspect;
+    s.camera.right = 21 * aspect;
+    s.camera.top = 21;
+    s.camera.bottom = -21;
     s.camera.updateProjectionMatrix();
   }
 
@@ -576,18 +588,29 @@ export function renderOffice3D(
   }
   s.camera.updateProjectionMatrix();
 
-  // 人物同步：位置插值交给引擎 rx/ry；坐姿/走姿用部位动画（不再是整体硬压低）
+  // 人物同步：坐姿吸附工位椅位（deskId → f.x+0.5,f.y+1.5），面朝桌子；其余按引擎插值位
   for (const c of chars) {
     const v = s.charMap.get(c.id);
     if (v === undefined) continue;
-    const { x, z } = cellToWorld(c.rx + 0.5, c.ry + 0.5);
-    const walking = c.state === 'walking';
+    let x: number, z: number, faceRot: number;
     const sitting = c.state === 'working' || c.state === 'coffee';
+    const desk = sitting && c.deskId !== undefined && c.deskId !== null ? map.furniture.find((f) => f.kind === 'desk' && f.id === c.deskId) : undefined;
+    if (desk !== undefined) {
+      const p = cellToWorld(desk.x + 0.5, desk.y + 1.5);
+      x = p.x;
+      z = p.z;
+      faceRot = 0; // 面朝 -z（桌子在椅位北面）
+    } else {
+      const p = cellToWorld(c.rx + 0.5, c.ry + 0.5);
+      x = p.x;
+      z = p.z;
+      faceRot = c.face === 1 ? Math.PI : 0;
+    }
+    const walking = c.state === 'walking';
     const swing = walking ? Math.sin(time * 10 + v.phase) * 0.55 : 0;
     const bob = walking ? Math.abs(Math.sin(time * 10 + v.phase)) * 0.05 : Math.sin(time * 2 + v.phase) * 0.012;
     v.root.position.set(x, bob, z);
-    const targetRot = c.face === 1 ? Math.PI : 0;
-    v.root.rotation.y += (targetRot - v.root.rotation.y) * 0.2;
+    v.root.rotation.y += (faceRot - v.root.rotation.y) * 0.2;
     if (sitting) {
       // 坐姿：大腿前伸（腿组绕髋转 -90°）、躯干降落到椅面、头微低
       v.legL.rotation.x += (-Math.PI / 2 - v.legL.rotation.x) * 0.25;
