@@ -9,6 +9,7 @@
  * 气泡：单独 2D canvas 覆盖层，头顶世界坐标 project 到屏幕像素绘制。
  */
 import * as THREE from 'three';
+import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { MAP_H, MAP_W } from './map.js';
 import { loadCharModel, modelForChar } from './objModels.js';
 import type { AnimationAction } from 'three';
@@ -367,7 +368,8 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
       }
       void loadCharModel(m, c.name).then((model) => {
         if (model === null) return;
-        const clone = model.group.clone(true);
+        // 骨骼蒙皮模型必须用 SkeletonUtils.clone（普通 clone 丢骨骼绑定 → 人物不可见）
+        const clone = cloneSkeleton(model.group);
         clone.scale.setScalar(CHAR_SCALE);
         clone.traverse((node) => {
           if (node instanceof THREE.Mesh) {
@@ -395,7 +397,7 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
           clipName = model.animations.map((a) => a.name).join(',');
         }
         s.charGroup.add(clone);
-        s.instances.set(c.id, { obj: clone, state: instKey, mixer, walk, idle, clipName });
+        s.instances.set(c.id, { obj: clone as THREE.Group, state: instKey, mixer, walk, idle, clipName });
       });
       continue;
     }
