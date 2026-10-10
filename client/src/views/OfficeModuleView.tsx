@@ -813,6 +813,22 @@ export function OfficeModuleView(): ReactElement {
                   <button title="缩小" onClick={() => zoomStep(-0.2)}>
                     －
                   </button>
+                  <button
+                    title="向左转 90°"
+                    onClick={() =>
+                      setOfficeView((v) => ({ ...v, rot: ((((v.rot ?? 0) - 1) % 4) + 4) % 4 }))
+                    }
+                  >
+                    ⟲
+                  </button>
+                  <button
+                    title="向右转 90°"
+                    onClick={() =>
+                      setOfficeView((v) => ({ ...v, rot: (((v.rot ?? 0) + 1) % 4 + 4) % 4 }))
+                    }
+                  >
+                    ⟳
+                  </button>
                   <button title="复位" onClick={() => setOfficeView({})}>
                     ⭯
                   </button>

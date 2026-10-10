@@ -42,7 +42,7 @@ export function OfficeCanvas({
     (zoom: number, panX: number, panY: number): void => {
       const canvas = canvasRef.current;
       if (canvas === null) return;
-      const clamped = clampViewPan(panX, panY, zoom, canvas.clientWidth, canvas.clientHeight);
+      const clamped = clampViewPan(panX, panY, zoom, canvas.clientWidth, canvas.clientHeight, viewRef.current?.rot);
       onViewChangeRef.current?.({ zoom, ...clamped });
     },
     [],

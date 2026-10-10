@@ -61,24 +61,44 @@ export interface OfficeView {
   zoom?: number;
   panX?: number;
   panY?: number;
+  /** 视角旋转：0-3（×90°，顺时针）。0 = 默认（两面墙在画面上方）。 */
+  rot?: number;
+}
+
+/** 旋转视角：把格坐标绕地图中心旋转 r×90°（顺时针）。40×12 非正方形 → 用 min(W,H) 中心对称旋转。 */
+function rotCell(gx: number, gy: number, r: number): { x: number; y: number } {
+  const rot = ((r % 4) + 4) % 4;
+  if (rot === 0) return { x: gx, y: gy };
+  // 绕中心旋转矩形网格：rot=1 → (x,y)→(H-1-y,x)；rot=2 → (W-1-x,H-1-y)；rot=3 → (y,W-1-x)
+  if (rot === 1) return { x: MAP_H - 1 - gy, y: gx };
+  if (rot === 2) return { x: MAP_W - 1 - gx, y: MAP_H - 1 - gy };
+  return { x: gy, y: MAP_W - 1 - gx };
+}
+
+/** 当前视角下的有效网格尺寸（rot 奇数时 W/H 互换）。 */
+function rotDims(r: number): { w: number; h: number } {
+  const rot = ((r % 4) + 4) % 4;
+  return rot % 2 === 1 ? { w: MAP_H, h: MAP_W } : { w: MAP_W, h: MAP_H };
 }
 
 /** 把视图状态解析成确定的 (zoom, panX, panY)。 */
-function resolveView(view?: OfficeView): { zoom: number; panX: number; panY: number } {
+function resolveView(view?: OfficeView): { zoom: number; panX: number; panY: number; rot: number } {
   const zoom = view?.zoom !== undefined && Number.isFinite(view.zoom) && view.zoom > 0 ? view.zoom : 1;
   const panX = view?.panX !== undefined && Number.isFinite(view.panX) ? view.panX : 0;
   const panY = view?.panY !== undefined && Number.isFinite(view.panY) ? view.panY : 0;
-  return { zoom, panX, panY };
+  const rot = view?.rot !== undefined && Number.isFinite(view.rot) ? ((Math.round(view.rot) % 4) + 4) % 4 : 0;
+  return { zoom, panX, panY, rot };
 }
 
 /**
  * 平移钳制（等距投影）：地图包围盒 = (MAP_W+MAP_H)k 宽 × 一半高；
  * pan 围绕 0 对称 ±(box-css)/2——放大后边缘恰好贴到画布边缘；小于画布锁定 0。
  */
-export function clampViewPan(panX: number, panY: number, zoom: number, cssW: number, cssH: number): { panX: number; panY: number } {
-  const k = Math.min(cssW / (MAP_W + MAP_H), (cssH * 2) / (MAP_W + MAP_H)) * zoom;
-  const mapW = k * (MAP_W + MAP_H);
-  const mapH = (k * (MAP_W + MAP_H)) / 2;
+export function clampViewPan(panX: number, panY: number, zoom: number, cssW: number, cssH: number, rot = 0): { panX: number; panY: number } {
+  const { w, h } = rotDims(rot);
+  const k = Math.min(cssW / (w + h), (cssH * 2) / (w + h)) * zoom;
+  const mapW = k * (w + h);
+  const mapH = (k * (w + h)) / 2;
   const slackX = (mapW - cssW) / 2;
   const slackY = (mapH - cssH) / 2;
   const cx = mapW > cssW ? Math.min(Math.max(panX, -slackX), slackX) : 0;
@@ -92,18 +112,24 @@ export function clampViewPan(panX: number, panY: number, zoom: number, cssW: num
  */
 export function cellAtPoint(cssX: number, cssY: number, cssW: number, cssH: number, view?: OfficeView): Vec | null {
   const v = resolveView(view);
-  const k = Math.min(cssW / (MAP_W + MAP_H), (cssH * 2) / (MAP_W + MAP_H)) * v.zoom;
+  const { w, h } = rotDims(v.rot);
+  const k = Math.min(cssW / (w + h), (cssH * 2) / (w + h)) * v.zoom;
   if (!(k > 0)) return null;
-  const ox = (cssW - (MAP_W + MAP_H) * k) / 2 + MAP_H * k + v.panX;
-  const oy = (cssH - ((MAP_W + MAP_H) * k) / 2) / 2 + v.panY;
+  const ox = (cssW - (w + h) * k) / 2 + h * k + v.panX;
+  const oy = (cssH - ((w + h) * k) / 2) / 2 + v.panY;
   const wx = cssX - ox;
   const wy = cssY - oy;
-  const a = (wy * 2) / k; // gx+gy
-  const b = wx / k; // gx-gy
-  const x = Math.floor((a + b) / 2);
-  const y = Math.floor((a - b) / 2);
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-  return { x, y };
+  const a = (wy * 2) / k; // 旋转系 gx'+gy'
+  const b = wx / k; // gx'-gy'
+  const rx = Math.floor((a + b) / 2);
+  const ry = Math.floor((a - b) / 2);
+  if (!Number.isFinite(rx) || !Number.isFinite(ry)) return null;
+  // 旋转系 → 地图系（rotCell 的逆变换）
+  const rot = v.rot;
+  if (rot === 0) return { x: rx, y: ry };
+  if (rot === 1) return { x: ry, y: MAP_H - 1 - rx };
+  if (rot === 2) return { x: MAP_W - 1 - rx, y: MAP_H - 1 - ry };
+  return { x: MAP_W - 1 - ry, y: rx };
 }
 
 /* ───────────── 静态层（地板 + 斑块 + 圆角外框阴影，离屏缓存） ───────────── */
@@ -815,20 +841,24 @@ const ISO_PANTS = '#5c6570';
 const ISO_SHOE = '#f1f2f3';
 
 /** 每格半宽像素 k：格投影宽 2k、高 k（经典 2:1 等距）。 */
-function isoFit(cssW: number, cssH: number, zoom: number): number {
-  return Math.min(cssW / (MAP_W + MAP_H), (cssH * 2) / (MAP_W + MAP_H)) * zoom;
+function isoFit(cssW: number, cssH: number, zoom: number, rot = 0): number {
+  const { w, h } = rotDims(rot);
+  return Math.min(cssW / (w + h), (cssH * 2) / (w + h)) * zoom;
 }
 
-function isoOrigin(cssW: number, cssH: number, k: number, panX: number, panY: number): { ox: number; oy: number } {
+function isoOrigin(cssW: number, cssH: number, k: number, panX: number, panY: number, rot = 0): { ox: number; oy: number } {
+  const { w, h } = rotDims(rot);
   return {
-    ox: (cssW - (MAP_W + MAP_H) * k) / 2 + MAP_H * k + panX,
-    oy: (cssH - ((MAP_W + MAP_H) * k) / 2) / 2 + panY,
+    ox: (cssW - (w + h) * k) / 2 + h * k + panX,
+    oy: (cssH - ((w + h) * k) / 2) / 2 + panY,
   };
 }
 
-/** 格角 (gx,gy) → 屏幕点。 */
+/** 格角 (gx,gy) → 屏幕点。旋转视角经 currentRot（renderIso 入口设置，iso 绘制全程生效）。 */
+let currentRot = 0;
 function isoCorner(ox: number, oy: number, k: number, gx: number, gy: number): { x: number; y: number } {
-  return { x: ox + (gx - gy) * k, y: oy + ((gx + gy) * k) / 2 };
+  const p = rotCell(gx, gy, currentRot);
+  return { x: ox + (p.x - p.y) * k, y: oy + ((p.x + p.y) * k) / 2 };
 }
 
 function isoPoly(ctx: CanvasRenderingContext2D, pts: Array<{ x: number; y: number }>): void {
@@ -958,7 +988,14 @@ function buildIsoStaticLayer(pxW: number, pxH: number, dpr: number, cssW: number
     const wy = sy - oy;
     const a = (wy * 2) / k;
     const b = wx / k;
-    return { gx: (a + b) / 2, gy: (a - b) / 2 };
+    // 屏幕点 → 旋转系格 → 地图系格（与 cellAtPoint 同一套逆变换）
+    const rx = Math.floor(((a + b) / 2) * 1e9) / 1e9;
+    const ry = Math.floor(((a - b) / 2) * 1e9) / 1e9;
+    const r = v.rot;
+    if (r === 0) return { gx: rx, gy: ry };
+    if (r === 1) return { gx: ry, gy: MAP_H - 1 - rx };
+    if (r === 2) return { gx: MAP_W - 1 - rx, gy: MAP_H - 1 - ry };
+    return { gx: MAP_W - 1 - ry, gy: rx };
   };
   const corners = [inv(0, 0), inv(cssW, 0), inv(0, cssH), inv(cssW, cssH)];
   const gxs = corners.map((pt) => pt.gx);
@@ -1880,7 +1917,7 @@ function renderIso(
   const { ox, oy } = isoOrigin(cssW, cssH, k, v.panX, v.panY);
   const showNames = opts?.showNames ?? k >= 13;
 
-  const staticKey = `iso3:${pxW}x${pxH}@${dpr}@${v.zoom.toFixed(3)}@${Math.round(v.panX)}@${Math.round(v.panY)}`;
+  const staticKey = `iso3:${pxW}x${pxH}@${dpr}@${v.zoom.toFixed(3)}@${v.rot}@${Math.round(v.panX)}@${Math.round(v.panY)}`;
   let cached = staticLayers.get(canvas);
   if (cached === undefined || cached.key !== staticKey) {
     cached = { key: staticKey, layer: buildIsoStaticLayer(pxW, pxH, dpr, cssW, cssH, opts?.view) };
