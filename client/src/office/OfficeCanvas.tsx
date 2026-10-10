@@ -84,17 +84,23 @@ export function OfficeCanvas({
    * 避免 60fps 满帧重绘把右侧聊天滚动区拖出重影/发糊（GPU 合成纹理复用瑕疵）。 */
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (canvas === null) return;
+    const gl = overlayRef.current; // 3D 模式主画布是 WebGL overlay（2D 主画布只在回退时存在）
+    if (canvas === null && gl === null) return;
     let raf = 0;
     let last = performance.now();
     let acc = 0;
     const loop = (now: number): void => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
+      const host = (overlayRef.current ?? canvasRef.current);
+      if (host === null) {
+        raf = window.requestAnimationFrame(loop);
+        return;
+      }
       // 延伸走位区对齐：按当前视口算地图四边可见的延伸格数喂给引擎（内部幂等，区间收 0..24）。
       // 角色因此能走进画布上下左右的延伸地板带；BFS 在扩展坐标空间寻路。
-      const cw = canvas.clientWidth;
-      const ch = canvas.clientHeight;
+      const cw = host.clientWidth;
+      const ch = host.clientHeight;
       const v = viewRef.current ?? {};
       const zoom = v.zoom !== undefined && Number.isFinite(v.zoom) && v.zoom > 0 ? v.zoom : 1;
       const panX = v.panX !== undefined && Number.isFinite(v.panX) ? v.panX : 0;
@@ -133,11 +139,14 @@ export function OfficeCanvas({
             });
           }
         } else {
-          renderOffice(canvas, engine.map.furniture, engine.chars, engine.time, {
-            bubbles: engine.bubbles,
-            meeting: engine.meetingActive,
-            view: viewRef.current,
-          });
+          const canvas = canvasRef.current;
+          if (canvas !== null) {
+            renderOffice(canvas, engine.map.furniture, engine.chars, engine.time, {
+              bubbles: engine.bubbles,
+              meeting: engine.meetingActive,
+              view: viewRef.current,
+            });
+          }
         }
       }
       raf = window.requestAnimationFrame(loop);
