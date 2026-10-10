@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { MAP_H, MAP_W } from './map.js';
 import { isoFit, isoOrigin } from './renderer.js';
-import { loadObjModel, modelForChar } from './objModels.js';
+import { loadCharModel, modelForChar } from './objModels.js';
 import type { Character, Furniture } from './types.js';
 
 /** 每个覆盖 canvas 一套 Three.js 资源。 */
@@ -92,7 +92,7 @@ export function renderCharOverlay(
   for (const m of want.keys()) {
     if (o.loaded.has(m) || o.requested.has(m)) continue;
     o.requested.add(m);
-    void loadObjModel(m).then((model) => {
+    void loadCharModel(m).then((model) => {
       o.requested.delete(m);
       o.loaded.set(m, model !== null);
     });
@@ -110,9 +110,11 @@ export function renderCharOverlay(
     const m = modelForChar(c.name);
     if (o.loaded.get(m) !== true) continue; // 未加载完：跳过（下帧补上）
     let inst = o.instances.get(c.id);
-    if (inst === undefined || inst.state !== m) {
+    // inst.state 存「模型名|角色名」：同模型不同角色（衬衫染色不同）不误用缓存
+    const instKey = `${m}|${c.name}`;
+    if (inst === undefined || inst.state !== instKey) {
       if (inst !== undefined) o.charGroup.remove(inst.obj);
-      void loadObjModel(m).then((model) => {
+      void loadCharModel(m, c.name).then((model) => {
         if (model === null) return;
         const clone = model.group.clone(true);
         clone.traverse((node) => {
@@ -122,7 +124,7 @@ export function renderCharOverlay(
           }
         });
         o.charGroup.add(clone);
-        o.instances.set(c.id, { obj: clone, state: m });
+        o.instances.set(c.id, { obj: clone, state: instKey });
       });
       continue;
     }

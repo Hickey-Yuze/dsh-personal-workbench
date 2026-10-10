@@ -55,8 +55,23 @@ function parseObj(objText: string, mtlText: string | null): ObjModel {
       groups.set(current, g);
     }
   }
-  // MTL：材质名 → Kd 漫反射色
+  // MTL：材质名 → Kd 漫反射色。
+  // 已知坑：这套 Blender 导出的 Kd 是线性空间暗值（Skin=0.0107 近黑），真彩色不在文件里——
+  // 顶点无色、无贴图。策略：亮度足够（>0.25）才采用 Kd；否则按材质语义名给明快色。
   const kd = new Map<string, string>();
+  const SEMANTIC: Record<string, string> = {
+    Skin: '#f2c79f',
+    Face: '#f6d7b8',
+    Hair: '#4a3826',
+    Shirt: '#7f95b5',
+    Pants: '#4d565f',
+    Belt: '#5a4634',
+    Black: '#3a3d42',
+    Details: '#8a8f96',
+    Eye: '#2c2a28',
+    Shoe: '#e8e4dc',
+    Body: '#7f95b5',
+  };
   if (mtlText !== null) {
     let mtlName = '';
     for (const raw of mtlText.split('\n')) {
@@ -65,12 +80,17 @@ function parseObj(objText: string, mtlText: string | null): ObjModel {
       else if (line.startsWith('Kd ') && mtlName !== '') {
         const rgb = line.slice(3).trim().split(/\s+/).map(Number);
         if (rgb.length >= 3 && rgb.every(Number.isFinite)) {
-          const c = new THREE.Color(Math.min(1, Math.max(0, rgb[0] ?? 0)), Math.min(1, Math.max(0, rgb[1] ?? 0)), Math.min(1, Math.max(0, rgb[2] ?? 0)));
-          kd.set(mtlName, `#${c.getHexString()}`);
+          const lum = (rgb[0] ?? 0) * 0.3 + (rgb[1] ?? 0) * 0.6 + (rgb[2] ?? 0) * 0.1;
+          if (lum > 0.25) {
+            const c = new THREE.Color(Math.min(1, Math.max(0, rgb[0] ?? 0)), Math.min(1, Math.max(0, rgb[1] ?? 0)), Math.min(1, Math.max(0, rgb[2] ?? 0)));
+            kd.set(mtlName, `#${c.getHexString()}`);
+          }
+          // 暗 Kd：不入表，走语义色兜底
         }
       }
     }
   }
+  const colorOf = (matName: string): string => kd.get(matName) ?? SEMANTIC[matName] ?? '#b8bcc4';
 
   const group = new THREE.Group();
   // 包围盒（归一化用）
@@ -97,7 +117,7 @@ function parseObj(objText: string, mtlText: string | null): ObjModel {
     geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
     geo.computeVertexNormals();
     const mat = new THREE.MeshStandardMaterial({
-      color: kd.get(matName) ?? '#b8bcc4',
+      color: colorOf(matName),
       roughness: 0.82,
       metalness: 0.04,
     });
@@ -140,6 +160,40 @@ export async function loadObjModel(name: string): Promise<ObjModel | null> {
   inflight.set(name, p);
   return p;
 }
+
+/** 角色名 → 稳定衬衫色（ hue 环：名字哈希取色，饱和度/亮度固定在柔和区间）。 */
+function shirtTintFor(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  const hue = h % 360;
+  const c = new THREE.Color().setHSL(hue / 360, 0.38, 0.58);
+  return `#${c.getHexString()}`;
+}
+
+/** 给解析好的模型按角色名重染 Shirt/Body 材质（染色只对该角色克隆生效）。 */
+export async function loadCharModel(modelName: string, charName?: string): Promise<ObjModel | null> {
+  const base = await loadObjModel(modelName);
+  if (base === null) return null;
+  if (charName === undefined || charName === '') return base;
+  const tint = shirtTintFor(charName);
+  const group = base.group.clone(true);
+  for (const child of group.children) {
+    if (child instanceof THREE.Mesh) {
+      const mat = child.material as THREE.MeshStandardMaterial;
+      // Shirt/Body 系才染色；Skin/Hair/Pants 等保持原样（材质在克隆间共享，换色要重建）
+      if (typeof mat.color?.getHexString === 'function') {
+        const hex = `#${mat.color.getHexString()}`;
+        if (hex === SEMANTIC_SHIRT || hex === SEMANTIC_BODY) {
+          child.material = new THREE.MeshStandardMaterial({ color: tint, roughness: 0.82, metalness: 0.04 });
+        }
+      }
+    }
+  }
+  return { group, height: base.height };
+}
+
+const SEMANTIC_SHIRT = '7f95b5';
+const SEMANTIC_BODY = SEMANTIC_SHIRT;
 
 /** 名字 → 模型名稳定映射（同一名字永远同一模型；内置职员硬编码覆盖）。 */
 const FIXED: Record<string, string> = {
