@@ -37,7 +37,7 @@ type Scene3D = {
   baseGroup: THREE.Group; // 底座+地板+墙（地图不变则不重建）
   furnGroup: THREE.Group; // 家具（地图变化重建）
   charGroup: THREE.Group; // 人物（每帧同步位置）
-  charMap: Map<string, { root: THREE.Group; head: THREE.Mesh; body: THREE.Mesh; hair: THREE.Mesh; phase: number; lastState: string }>;
+  charMap: Map<string, CharParts & { phase: number; lastState: string }>;
   mapSig: string; // 家具签名（数量+id 拼接），变了才重建 furnGroup
   charsSig: string; // 人物 id+颜色签名，变了才重建 charMap
   cellMeshes: THREE.Mesh; // 地板拾取面
@@ -355,36 +355,93 @@ function buildCabinet(g: THREE.Group, f: Furniture, disposables: Array<{ dispose
   disposables.push(body.geometry, body.material as THREE.Material);
 }
 
-/* ── 人物（Q 版大头：球头 + 胶囊身 + 发帽） ── */
+/* ── 人物（Q 版小人：大头 + 圆身 + 双臂双鞋，参考稿大头娃娃） ── */
 
-function buildChar(c: Character, disposables: Array<{ dispose: () => void }>): { root: THREE.Group; head: THREE.Mesh; body: THREE.Mesh; hair: THREE.Mesh } {
+type CharParts = {
+  root: THREE.Group;
+  head: THREE.Group; // 头组（含发/眼），坐姿整体前倾
+  body: THREE.Mesh;
+  armL: THREE.Mesh;
+  armR: THREE.Mesh;
+  legL: THREE.Group; // 站姿垂下 / 坐姿前伸（旋转 90°）
+  legR: THREE.Group;
+  headBobY: number;
+  torsoY: number;
+};
+
+function buildChar(c: Character, disposables: Array<{ dispose: () => void }>): CharParts {
   const root = new THREE.Group();
-  const bodyMat = stdMaterial(new THREE.Color(c.color).getHex(), { rough: 0.7 });
-  const bodyGeo = new THREE.CapsuleGeometry(0.24, 0.24, 6, 12);
-  const body = new THREE.Mesh(bodyGeo, bodyMat);
-  body.position.y = 0.4;
-  body.castShadow = true;
+  const shirt = new THREE.Color(c.color).getHex();
+  const hairCol = new THREE.Color(c.hair === '' ? '#5a4634' : c.hair).getHex();
+  const shirtMat = stdMaterial(shirt, { rough: 0.75 });
   const skinMat = stdMaterial(C_SKIN, { rough: 0.6 });
-  const headGeo = new THREE.SphereGeometry(0.29, 18, 14);
-  const head = new THREE.Mesh(headGeo, skinMat);
-  head.position.y = 0.94;
-  head.castShadow = true;
-  const hairMat = stdMaterial(new THREE.Color(c.hair === '' ? '#6b4a34' : c.hair).getHex(), { rough: 0.8 });
-  const hairGeo = new THREE.SphereGeometry(0.3, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.55);
+  const hairMat = stdMaterial(hairCol, { rough: 0.85 });
+  const pantsMat = stdMaterial(C_PANTS, { rough: 0.85 });
+  const shoeMat = stdMaterial(0xf1f2f3, { rough: 0.6 });
+  disposables.push(shirtMat, skinMat, hairMat, pantsMat, shoeMat);
+
+  // 头组：脸球 + 发帽 + 眼（root 上的 pivot 在脖子处，便于前倾）
+  const head = new THREE.Group();
+  const headGeo = new THREE.SphereGeometry(0.3, 18, 14);
+  const face = new THREE.Mesh(headGeo, skinMat);
+  face.castShadow = true;
+  head.add(face);
+  const hairGeo = new THREE.SphereGeometry(0.315, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.52);
   const hair = new THREE.Mesh(hairGeo, hairMat);
-  hair.position.y = 0.955;
-  // 眼睛
+  hair.position.y = 0.015;
+  head.add(hair);
   const eyeMat = stdMaterial(0x2c2a28, { rough: 0.4 });
-  for (const ex of [-0.1, 0.1]) {
-    const eyeGeo = new THREE.SphereGeometry(0.032, 8, 8);
+  for (const ex of [-0.105, 0.105]) {
+    const eyeGeo = new THREE.SphereGeometry(0.034, 8, 8);
     const eye = new THREE.Mesh(eyeGeo, eyeMat);
-    eye.position.set(ex, 0.95, 0.26);
-    root.add(eye);
+    eye.position.set(ex, 0.0, 0.27);
+    head.add(eye);
     disposables.push(eyeGeo, eyeMat);
   }
-  root.add(body, head, hair);
-  disposables.push(bodyGeo, bodyMat, headGeo, skinMat, hairGeo, hairMat);
-  return { root, head, body, hair };
+  head.position.y = 0.98; // 脖子高度
+  disposables.push(headGeo, hairGeo);
+
+  // 身体：圆润胶囊
+  const bodyGeo = new THREE.CapsuleGeometry(0.21, 0.16, 6, 14);
+  const body = new THREE.Mesh(bodyGeo, shirtMat);
+  body.position.y = 0.5;
+  body.castShadow = true;
+  disposables.push(bodyGeo);
+
+  // 手臂：从肩垂下的细胶囊，稍外张
+  const armGeo = new THREE.CapsuleGeometry(0.055, 0.2, 4, 8);
+  const armL = new THREE.Mesh(armGeo, shirtMat);
+  armL.position.set(-0.24, 0.52, 0);
+  armL.rotation.z = 0.25;
+  const armR = new THREE.Mesh(armGeo, shirtMat);
+  armR.position.set(0.24, 0.52, 0);
+  armR.rotation.z = -0.25;
+  armL.castShadow = true;
+  armR.castShadow = true;
+  disposables.push(armGeo);
+
+  // 腿：pivot 在髋部（y=0.34），可从垂下旋转成前伸坐姿
+  const mkLeg = (side: 1 | -1): THREE.Group => {
+    const g = new THREE.Group();
+    g.position.set(side * 0.1, 0.34, 0);
+    const legGeo = new THREE.CapsuleGeometry(0.06, 0.2, 4, 8);
+    const leg = new THREE.Mesh(legGeo, pantsMat);
+    leg.position.y = -0.16;
+    leg.castShadow = true;
+    g.add(leg);
+    const shoeGeo = new THREE.SphereGeometry(0.075, 10, 8);
+    shoeGeo.scale(1, 0.7, 1.35);
+    const shoe = new THREE.Mesh(shoeGeo, shoeMat);
+    shoe.position.set(0, -0.3, 0.03);
+    g.add(shoe);
+    disposables.push(legGeo, shoeGeo);
+    return g;
+  };
+  const legL = mkLeg(-1);
+  const legR = mkLeg(1);
+
+  root.add(body, head, armL, armR, legL, legR);
+  return { root, head, body, armL, armR, legL, legR, headBobY: 0.98, torsoY: 0.5 };
 }
 
 /* ── 主渲染循环 ── */
@@ -519,27 +576,43 @@ export function renderOffice3D(
   }
   s.camera.updateProjectionMatrix();
 
-  // 人物同步：位置插值交给引擎 rx/ry；朝向 face；动画（走/坐/呼吸）
+  // 人物同步：位置插值交给引擎 rx/ry；坐姿/走姿用部位动画（不再是整体硬压低）
   for (const c of chars) {
     const v = s.charMap.get(c.id);
     if (v === undefined) continue;
     const { x, z } = cellToWorld(c.rx + 0.5, c.ry + 0.5);
     const walking = c.state === 'walking';
-    const bob = walking ? Math.abs(Math.sin(time * 10)) * 0.06 : Math.sin(time * 2 + v.phase) * 0.015;
+    const sitting = c.state === 'working' || c.state === 'coffee';
+    const swing = walking ? Math.sin(time * 10 + v.phase) * 0.55 : 0;
+    const bob = walking ? Math.abs(Math.sin(time * 10 + v.phase)) * 0.05 : Math.sin(time * 2 + v.phase) * 0.012;
     v.root.position.set(x, bob, z);
-    // 朝向：face=1 → 朝南（+z）；走路朝移动方向简化为 face
     const targetRot = c.face === 1 ? Math.PI : 0;
     v.root.rotation.y += (targetRot - v.root.rotation.y) * 0.2;
-    // 坐姿：压低 + 藏腿（简化：整体下移）
-    const sitting = c.state === 'working' || c.state === 'coffee';
-    const targetY = sitting ? -0.12 : 0;
-    const sitOff = sitting ? -0.1 : 0;
-    v.body.position.y = 0.4 + sitOff;
-    v.head.position.y = 0.94 + sitOff;
-    v.hair.position.y = 0.955 + sitOff;
-    void targetY;
-    // 名字：用 sprite 太重，沿用 2D 画布叠加？——暂用 bubble 时不重复。名字走 DOM 层由调用方处理（暂略）
-    void v.head;
+    if (sitting) {
+      // 坐姿：大腿前伸（腿组绕髋转 -90°）、躯干降落到椅面、头微低
+      v.legL.rotation.x += (-Math.PI / 2 - v.legL.rotation.x) * 0.25;
+      v.legR.rotation.x += (-Math.PI / 2 - v.legR.rotation.x) * 0.25;
+      const k = 0.25;
+      v.body.position.y += (0.46 - v.body.position.y) * k;
+      v.head.position.y += (0.9 - v.head.position.y) * k;
+      v.head.rotation.x += (-0.25 - v.head.rotation.x) * k;
+      v.armL.rotation.x += (-0.7 - v.armL.rotation.x) * k; // 手搭键盘
+      v.armR.rotation.x += (-0.7 - v.armR.rotation.x) * k;
+      v.armL.rotation.z += (0.12 - v.armL.rotation.z) * k;
+      v.armR.rotation.z += (-0.12 - v.armR.rotation.z) * k;
+    } else {
+      // 站/走：腿垂下摆动、手臂前后摆、头回正
+      v.legL.rotation.x += (swing - v.legL.rotation.x) * 0.3;
+      v.legR.rotation.x += (-swing - v.legR.rotation.x) * 0.3;
+      const k = 0.3;
+      v.body.position.y += (0.5 - v.body.position.y) * k;
+      v.head.position.y += (0.98 - v.head.position.y) * k;
+      v.head.rotation.x += (0 - v.head.rotation.x) * k;
+      v.armL.rotation.x += (-swing * 0.6 - v.armL.rotation.x) * k;
+      v.armR.rotation.x += (swing * 0.6 - v.armR.rotation.x) * k;
+      v.armL.rotation.z += (0.25 - v.armL.rotation.z) * k;
+      v.armR.rotation.z += (-0.25 - v.armR.rotation.z) * k;
+    }
   }
 
   // 气泡：WebGL 上画 CSS 定位的 DOM 气泡由调用方（OfficeCanvas）处理；这里不管
