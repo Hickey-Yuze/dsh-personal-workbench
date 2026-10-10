@@ -7,11 +7,12 @@
  *       归一化到 1.75 单位高（≈ 场景人物身高），材质用 MeshStandardMaterial（rough 0.8）。
  */
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 const BASE = '/api/personal-workbench/office/asset';
 
-/** OBJ 解析结果：每组（材质名）一个几何体。 */
-export type ObjModel = { group: THREE.Group; height: number };
+/** OBJ 解析结果：每组（材质名）一个几何体。GLB 另带动画剪辑。 */
+export type ObjModel = { group: THREE.Group; height: number; animations?: THREE.AnimationClip[] };
 
 const textCache = new Map<string, string>();
 const modelCache = new Map<string, ObjModel | null>(); // null = 加载失败（不反复重试）
@@ -133,12 +134,48 @@ function parseObj(objText: string, mtlText: string | null): ObjModel {
   return { group, height };
 }
 
-/** 拉取并解析一个人物模型（缓存；失败返回 null）。 */
+/** GLB（骨骼角色）加载：base64 → ArrayBuffer → GLTFLoader.parse。归一化同 OBJ（1.75 高、脚底落地）。 */
+async function loadGlbModel(name: string): Promise<ObjModel | null> {
+  const res = await fetch(`${BASE}/get?name=${encodeURIComponent(name)}`);
+  const json = (await res.json()) as { ok: boolean; base64?: string; error?: { message?: string } };
+  if (!json.ok || typeof json.base64 !== 'string') throw new Error(json.error?.message ?? `加载失败: ${name}`);
+  const bin = Uint8Array.from(atob(json.base64), (ch) => ch.charCodeAt(0)).buffer;
+  const gltf = await new Promise<{ scene: THREE.Group; animations: THREE.AnimationClip[] }>((resolve, reject) => {
+    new GLTFLoader().parse(bin, '', (g) => resolve(g as { scene: THREE.Group; animations: THREE.AnimationClip[] }), (e) => reject(e));
+  });
+  const group = gltf.scene;
+  const bbox = new THREE.Box3().setFromObject(group);
+  const height = Math.max(0.01, bbox.max.y - bbox.min.y);
+  const s = 1.75 / height;
+  group.scale.setScalar(s);
+  const cx = (bbox.min.x + bbox.max.x) / 2;
+  const cz = (bbox.min.z + bbox.max.z) / 2;
+  group.position.set(-cx * s, -bbox.min.y * s, -cz * s);
+  const wrap = new THREE.Group();
+  wrap.add(group);
+  return { group: wrap, height: 1.75, animations: gltf.animations };
+}
+
+/** 拉取并解析一个人物模型（.glb 走骨骼管线；缓存；失败返回 null）。 */
 export async function loadObjModel(name: string): Promise<ObjModel | null> {
   const hit = modelCache.get(name);
   if (hit !== undefined) return hit;
   const busy = inflight.get(name);
   if (busy !== undefined) return busy;
+  if (name.endsWith('.glb')) {
+    const p = loadGlbModel(name)
+      .then((m) => {
+        modelCache.set(name, m);
+        return m;
+      })
+      .catch(() => {
+        modelCache.set(name, null);
+        return null;
+      });
+    inflight.set(name, p);
+    void p.finally(() => inflight.delete(name));
+    return p;
+  }
   const p = (async (): Promise<ObjModel | null> => {
     try {
       const objText = await fetchText(name.endsWith('.obj') ? name : `${name}.obj`);
@@ -175,6 +212,8 @@ export async function loadCharModel(modelName: string, charName?: string): Promi
   const base = await loadObjModel(modelName);
   if (base === null) return null;
   if (charName === undefined || charName === '') return base;
+  // GLB 骨骼模型：SkinnedMesh 不能 clone(true)（骨骼绑定会丢），返回原件、不染色
+  if (base.animations !== undefined && base.animations.length > 0) return base;
   const tint = shirtTintFor(charName);
   const group = base.group.clone(true);
   for (const child of group.children) {
@@ -195,29 +234,11 @@ export async function loadCharModel(modelName: string, charName?: string): Promi
 const SEMANTIC_SHIRT = '7f95b5';
 const SEMANTIC_BODY = SEMANTIC_SHIRT;
 
-/** 名字 → 模型名稳定映射（同一名字永远同一模型；内置职员硬编码覆盖）。 */
-const FIXED: Record<string, string> = {
-  'Yuze': 'Suit_Male',
-  '小周': 'Casual_Male',
-  '阿琳': 'Casual_Female',
-  '老王': 'OldClassy_Male',
-  '大鹏': 'Casual2_Male',
-  '小陈': 'Casual3_Female',
-  '阿福': 'Casual3_Male',
-  '小黄': 'Casual2_Female',
-  '小郑': 'Worker_Female',
-};
-
-const POOL = [
-  'Casual_Male', 'Casual_Female', 'Casual2_Male', 'Casual2_Female', 'Casual3_Male', 'Casual3_Female',
-  'Suit_Male', 'Suit_Female', 'Worker_Male', 'Worker_Female', 'Doctor_Male_Young', 'Doctor_Female_Young',
-  'OldClassy_Male', 'OldClassy_Female',
-];
+/** 名字 → 模型名稳定映射。当前全池统一 RobotExpressive.glb（骨骼+走路/待机动画剪辑）。 */
+const FIXED: Record<string, string> = {};
+const POOL = ['RobotExpressive.glb'];
 
 export function modelForChar(name: string): string {
-  const fixed = FIXED[name];
-  if (fixed !== undefined) return fixed;
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  return POOL[h % POOL.length] ?? 'Casual_Male';
+  void name;
+  return POOL[0] ?? 'RobotExpressive.glb';
 }

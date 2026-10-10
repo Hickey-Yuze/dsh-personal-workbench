@@ -1513,29 +1513,34 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         send(res, 200, { ok: true, roster: rosterExt.roster, builtin: rosterExt.builtin });
         return;
       }
-      // office/asset/list GET：列出 assets/models 下的 .obj/.mtl 文件名（3D 人物模型库）
+      // office/asset/list GET：列出 assets/models 下的 .obj/.mtl/.glb 文件名（3D 人物模型库）
       if (officeEndpoint === 'office/asset/list' && officeMethod === 'GET') {
         try {
           const dir = path.join(pluginRoot, "assets", "models");
           const entries = await fs.promises.readdir(dir);
-          send(res, 200, { ok: true, files: entries.filter((f) => f.endsWith('.obj') || f.endsWith('.mtl')).sort() });
+          send(res, 200, { ok: true, files: entries.filter((f) => f.endsWith('.obj') || f.endsWith('.mtl') || f.endsWith('.glb')).sort() });
         } catch {
           send(res, 200, { ok: true, files: [] });
         }
         return;
       }
-      // office/asset/get GET?name=xxx.obj：读单个模型文本（白名单：只允许 assets/models 下的 .obj/.mtl，名字不得含路径分隔符）
+      // office/asset/get GET?name=xxx：读单个模型（.obj/.mtl 文本或 .glb base64；白名单 assets/models）
       if (officeEndpoint === 'office/asset/get' && officeMethod === 'GET') {
         const q = new URL(req.url ?? '/', 'http://x').searchParams;
         const name = String(q.get('name') ?? '');
-        if (!/^[\w.-]+\.(obj|mtl)$/.test(name)) {
+        if (!/^[\w.-]+\.(obj|mtl|glb)$/.test(name)) {
           send(res, 400, { ok: false, error: { code: 'bad-name', message: '非法模型文件名' } });
           return;
         }
         try {
           const dir = path.join(pluginRoot, "assets", "models");
-          const content = await fs.promises.readFile(path.join(dir, name), 'utf8');
-          send(res, 200, { ok: true, data: content });
+          if (name.endsWith('.glb')) {
+            const buf = await fs.promises.readFile(path.join(dir, name));
+            send(res, 200, { ok: true, base64: buf.toString('base64') });
+          } else {
+            const content = await fs.promises.readFile(path.join(dir, name), 'utf8');
+            send(res, 200, { ok: true, data: content });
+          }
         } catch {
           send(res, 404, { ok: false, error: { code: 'not-found', message: `模型不存在: ${name}` } });
         }

@@ -136,6 +136,7 @@ export function OfficeCanvas({
               rot: v.rot !== undefined && Number.isFinite(v.rot) ? v.rot : 0,
               meeting: engine.meetingActive,
               bubbles: engine.bubbles,
+              dt,
             });
           }
         } else {

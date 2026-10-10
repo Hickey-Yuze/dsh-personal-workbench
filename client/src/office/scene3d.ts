@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import { MAP_H, MAP_W } from './map.js';
 import { loadCharModel, modelForChar } from './objModels.js';
+import type { AnimationAction } from 'three';
 import type { Character, Furniture } from './types.js';
 
 /* ───────────── 调色板（对齐参考稿：白底座/木地板/白家具/黑框玻璃） ───────────── */
@@ -39,10 +40,11 @@ type Scene3D = {
   boardMats: THREE.MeshStandardMaterial[]; // 白板板面（会议呼吸高亮）
   sceneKey: string; // 家具内容指纹（本实例当前场景组对应的）
   sceneGroup: THREE.Group | null;
-  instances: Map<string, { obj: THREE.Group; state: string }>;
+  instances: Map<string, { obj: THREE.Group; state: string; mixer?: THREE.AnimationMixer; walk?: THREE.AnimationAction; idle?: THREE.AnimationAction; clipName?: string }>;
   loaded: Map<string, boolean>;
   requested: Set<string>;
   meeting: boolean;
+  lastDt: number; // 上一帧 dt（AnimationMixer 推进用）
 };
 
 const scenes = new WeakMap<HTMLCanvasElement, Scene3D>();
@@ -81,8 +83,7 @@ function ensureScene(canvas: HTMLCanvasElement): Scene3D | null {
     pivot.add(charGroup);
     s = {
       renderer, scene, camera, pivot, sun, charGroup,
-      boardMats: [], sceneKey: '', sceneGroup: null, instances: new Map(), loaded: new Map(), requested: new Set(),
-      meeting: false,
+      boardMats: [], sceneKey: '', sceneGroup: null, instances: new Map(), loaded: new Map(), requested: new Set(), meeting: false, lastDt: 0.016,
     };
     scenes.set(canvas, s);
     return s;
@@ -332,7 +333,19 @@ function buildScene(furniture: Furniture[], boardMats: THREE.MeshStandardMateria
 /* ───────────── 人物 ───────────── */
 const CHAR_SCALE = 0.78;
 
-function syncChars(s: Scene3D, chars: Character[], time: number): void {
+function pickClip(anims: THREE.AnimationClip[], ...names: string[]): THREE.AnimationClip | undefined {
+  for (const n of names) {
+    const hit = anims.find((a) => a.name.toLowerCase() === n.toLowerCase());
+    if (hit !== undefined) return hit;
+  }
+  for (const n of names) {
+    const hit = anims.find((a) => a.name.toLowerCase().includes(n.toLowerCase()));
+    if (hit !== undefined) return hit;
+  }
+  return undefined;
+}
+
+function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): void {
   for (const c of chars) {
     const m = modelForChar(c.name);
     if (s.loaded.get(m) !== true) {
@@ -348,7 +361,10 @@ function syncChars(s: Scene3D, chars: Character[], time: number): void {
     const instKey = `${m}|${c.name}`;
     let inst = s.instances.get(c.id);
     if (inst === undefined || inst.state !== instKey) {
-      if (inst !== undefined) s.charGroup.remove(inst.obj);
+      if (inst !== undefined) {
+        inst.mixer?.stopAllAction();
+        s.charGroup.remove(inst.obj);
+      }
       void loadCharModel(m, c.name).then((model) => {
         if (model === null) return;
         const clone = model.group.clone(true);
@@ -359,8 +375,27 @@ function syncChars(s: Scene3D, chars: Character[], time: number): void {
             node.receiveShadow = true;
           }
         });
+        // 骨骼动画：每个实例独立 Mixer（模型缓存共享，动画状态必须按实例分开）
+        let mixer: THREE.AnimationMixer | undefined;
+        let walk: THREE.AnimationAction | undefined;
+        let idle: THREE.AnimationAction | undefined;
+        let clipName: string | undefined;
+        if (model.animations !== undefined && model.animations.length > 0) {
+          mixer = new THREE.AnimationMixer(clone);
+          const walkClip = pickClip(model.animations, 'Walking', 'Walk', 'Run');
+          const idleClip = pickClip(model.animations, 'Idle', 'Standing');
+          if (walkClip !== undefined) {
+            walk = mixer.clipAction(walkClip);
+            walk.play();
+          }
+          if (idleClip !== undefined) {
+            idle = mixer.clipAction(idleClip);
+            if (walk === undefined) idle.play();
+          }
+          clipName = model.animations.map((a) => a.name).join(',');
+        }
         s.charGroup.add(clone);
-        s.instances.set(c.id, { obj: clone, state: instKey });
+        s.instances.set(c.id, { obj: clone, state: instKey, mixer, walk, idle, clipName });
       });
       continue;
     }
@@ -380,13 +415,29 @@ function syncChars(s: Scene3D, chars: Character[], time: number): void {
     const walking = c.state === 'walking';
     if (walking) inst.obj.position.y = Math.abs(Math.sin(time * 9 + c.phase)) * 0.05;
     else inst.obj.position.y = 0;
+    // 动画切换：走路播 Walk，其余淡入 Idle；SkinnedMesh 直接平移网格即可（骨骼根动画会叠加位移，关掉根位移轨道交给引擎）
+    if (inst.mixer !== undefined) {
+      const wantWalk = walking;
+      if (inst.walk !== undefined) setWeight(inst.walk, wantWalk ? 1 : 0);
+      if (inst.idle !== undefined) setWeight(inst.idle, wantWalk ? 0 : 1);
+      inst.mixer.update(dt);
+    }
   }
   const alive = new Set(chars.map((c) => c.id));
   for (const [id, inst] of s.instances) {
     if (!alive.has(id)) {
+      inst.mixer?.stopAllAction();
       s.charGroup.remove(inst.obj);
       s.instances.delete(id);
     }
+  }
+}
+
+function setWeight(action: THREE.AnimationAction, w: number): void {
+  if (action.getEffectiveWeight() !== w) {
+    action.reset();
+    action.setEffectiveWeight(w);
+    action.play();
   }
 }
 
@@ -476,10 +527,11 @@ export function renderScene3d(
   furniture: Furniture[],
   chars: Character[],
   time: number,
-  opts: Scene3DOpts,
+  opts: Scene3DOpts & { dt?: number },
 ): void {
   const s = ensureScene(canvas);
   if (s === null) return;
+  if (opts.dt !== undefined && Number.isFinite(opts.dt)) s.lastDt = opts.dt;
   const cssW = canvas.clientWidth || 800;
   const cssH = canvas.clientHeight || 600;
   const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -531,7 +583,7 @@ export function renderScene3d(
     m.emissiveIntensity = pulse;
   }
 
-  syncChars(s, chars, time);
+  syncChars(s, chars, time, Math.min(0.05, s.lastDt));
   s.renderer.render(s.scene, s.camera);
   drawBubbles(bubbleCanvas, s, chars, opts.bubbles, time, cssW, cssH);
 }
