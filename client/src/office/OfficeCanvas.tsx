@@ -10,7 +10,6 @@ import type { OfficeEngine } from './engine.js';
 import { MAP_H, MAP_W } from './map.js';
 import { cellAtPoint, clampViewPan, renderOffice } from './renderer.js';
 import type { OfficeView } from './renderer.js';
-import { cellAtPoint3D, clampViewPan3D, renderOffice3D } from './renderer3d.js';
 import type { Vec } from './types.js';
 
 export function OfficeCanvas({
@@ -31,8 +30,6 @@ export function OfficeCanvas({
   onViewChange?: (next: OfficeView) => void;
 }): ReactElement {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  /** 3D 模式（场景 tab）：true = Three.js WebGL 渲染；编辑器仍走 2D topDown。 */
-  const mode3dRef = useRef(true);
   const viewRef = useRef<OfficeView | undefined>(view);
   viewRef.current = view;
   const onViewChangeRef = useRef(onViewChange);
@@ -45,9 +42,7 @@ export function OfficeCanvas({
     (zoom: number, panX: number, panY: number): void => {
       const canvas = canvasRef.current;
       if (canvas === null) return;
-      const clamped = mode3dRef.current
-        ? clampViewPan3D(panX, panY, zoom, canvas.clientWidth, canvas.clientHeight)
-        : clampViewPan(panX, panY, zoom, canvas.clientWidth, canvas.clientHeight);
+      const clamped = clampViewPan(panX, panY, zoom, canvas.clientWidth, canvas.clientHeight);
       onViewChangeRef.current?.({ zoom, ...clamped });
     },
     [],
@@ -114,18 +109,11 @@ export function OfficeCanvas({
       acc += dt;
       if (moving || acc >= 1 / 30) {
         acc = 0;
-        if (mode3dRef.current) {
-          renderOffice3D(canvas, engine.map, engine.chars, engine.time, {
-            bubbles: engine.bubbles,
-            view: viewRef.current,
-          });
-        } else {
-          renderOffice(canvas, engine.map.furniture, engine.chars, engine.time, {
-            bubbles: engine.bubbles,
-            meeting: engine.meetingActive,
-            view: viewRef.current,
-          });
-        }
+        renderOffice(canvas, engine.map.furniture, engine.chars, engine.time, {
+          bubbles: engine.bubbles,
+          meeting: engine.meetingActive,
+          view: viewRef.current,
+        });
       }
       raf = window.requestAnimationFrame(loop);
     };
@@ -170,9 +158,7 @@ export function OfficeCanvas({
     if (onClickCell === undefined) return;
     const canvas = canvasRef.current;
     if (canvas === null) return;
-    const cell = mode3dRef.current
-      ? cellAtPoint3D(canvas, e.nativeEvent.offsetX, e.nativeEvent.offsetY)
-      : cellAtPoint(e.nativeEvent.offsetX, e.nativeEvent.offsetY, canvas.clientWidth, canvas.clientHeight, viewRef.current);
+    const cell = cellAtPoint(e.nativeEvent.offsetX, e.nativeEvent.offsetY, canvas.clientWidth, canvas.clientHeight, viewRef.current);
     if (cell !== null) onClickCell(cell);
   };
 
