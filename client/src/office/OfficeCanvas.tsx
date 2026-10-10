@@ -8,9 +8,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactElement } from 'react';
 import type { OfficeEngine } from './engine.js';
 import { MAP_H, MAP_W } from './map.js';
-import { cellAtPoint, clampViewPan, isoFit, isoOrigin, renderOffice } from './renderer.js';
+import { cellAtPoint, clampViewPan, renderOffice } from './renderer.js';
 import type { OfficeView } from './renderer.js';
-import { renderCharOverlay } from './charOverlay3d.js';
+import { renderScene3d } from './scene3d.js';
 import type { Vec } from './types.js';
 
 export function OfficeCanvas({
@@ -34,7 +34,8 @@ export function OfficeCanvas({
   char3d?: boolean;
 }): ReactElement {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const overlayRef = useRef<HTMLCanvasElement | null>(null);
+  const overlayRef = useRef<HTMLCanvasElement | null>(null); // 3D 模式：WebGL 场景画布
+  const bubbleRef = useRef<HTMLCanvasElement | null>(null); // 3D 模式：气泡 2D 覆盖层
   const [overlayFailed, setOverlayFailed] = useState(false);
   const viewRef = useRef<OfficeView | undefined>(view);
   viewRef.current = view;
@@ -116,22 +117,27 @@ export function OfficeCanvas({
       if (moving || acc >= 1 / 30) {
         acc = 0;
         const use3d = char3d === true && !overlayFailed;
-        renderOffice(canvas, engine.map.furniture, engine.chars, engine.time, {
-          bubbles: engine.bubbles,
-          meeting: engine.meetingActive,
-          view: viewRef.current,
-          hideChars: use3d,
-        });
         if (use3d) {
+          // 全 3D 场景：WebGL 主画布 + 2D 气泡覆盖层；视口 (zoom/pan/rot) 与 2D 同源
           const oc = overlayRef.current;
-          if (oc !== null) {
-            const vRot = viewRef.current?.rot ?? 0;
-            const k = isoFit(cw, ch, zoom, vRot);
-            const origin = isoOrigin(cw, ch, k, panX, panY, vRot);
-            renderCharOverlay(oc, engine.chars, engine.map.furniture, engine.time, {
-              k, ox: origin.ox, oy: origin.oy, cssW: cw, cssH: ch, zoom,
+          const bc = bubbleRef.current;
+          if (oc !== null && bc !== null) {
+            const v = viewRef.current ?? {};
+            renderScene3d(oc, bc, engine.map.furniture, engine.chars, engine.time, {
+              zoom: v.zoom !== undefined && Number.isFinite(v.zoom) && v.zoom > 0 ? v.zoom : 1,
+              panX: v.panX !== undefined && Number.isFinite(v.panX) ? v.panX : 0,
+              panY: v.panY !== undefined && Number.isFinite(v.panY) ? v.panY : 0,
+              rot: v.rot !== undefined && Number.isFinite(v.rot) ? v.rot : 0,
+              meeting: engine.meetingActive,
+              bubbles: engine.bubbles,
             });
           }
+        } else {
+          renderOffice(canvas, engine.map.furniture, engine.chars, engine.time, {
+            bubbles: engine.bubbles,
+            meeting: engine.meetingActive,
+            view: viewRef.current,
+          });
         }
       }
       raf = window.requestAnimationFrame(loop);
@@ -140,7 +146,7 @@ export function OfficeCanvas({
     return () => window.cancelAnimationFrame(raf);
   }, [engine, char3d, overlayFailed]);
 
-  const handlePointerDown = (e: ReactPointerEvent<HTMLCanvasElement>): void => {
+  const handlePointerDown = (e: ReactPointerEvent<HTMLElement>): void => {
     const v = viewRef.current ?? {};
     // 右键 = 视角旋转（左右拖拽，每 90px 转 90°）；左键 = 平移
     if (e.button === 2) {
@@ -153,7 +159,7 @@ export function OfficeCanvas({
     } catch { /* 已释放则忽略 */ }
   };
 
-  const handlePointerMove = (e: ReactPointerEvent<HTMLCanvasElement>): void => {
+  const handlePointerMove = (e: ReactPointerEvent<HTMLElement>): void => {
     const d = dragRef.current;
     if (d === null) return;
     const dx = e.clientX - d.x;
@@ -170,7 +176,7 @@ export function OfficeCanvas({
     applyView((viewRef.current ?? {}).zoom ?? 1, d.panX + dx, d.panY + dy);
   };
 
-  const handlePointerUp = (e: ReactPointerEvent<HTMLCanvasElement>): void => {
+  const handlePointerUp = (e: ReactPointerEvent<HTMLElement>): void => {
     const d = dragRef.current;
     dragRef.current = null;
     try {
@@ -179,16 +185,18 @@ export function OfficeCanvas({
     if (d !== null && d.moved) suppressClickRef.current = true; // 拖动后的 click 不当格子交互
   };
 
-  const handleClick = (e: ReactMouseEvent<HTMLCanvasElement>): void => {
+  const handleClick = (e: ReactMouseEvent<HTMLElement>): void => {
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
       return;
     }
     onCanvasClick?.(); // 兼容原行为：任何点击都触发
     if (onClickCell === undefined) return;
-    const canvas = canvasRef.current;
-    if (canvas === null) return;
-    const cell = cellAtPoint(e.nativeEvent.offsetX, e.nativeEvent.offsetY, canvas.clientWidth, canvas.clientHeight, viewRef.current);
+    const host = e.currentTarget;
+    const rect = host.getBoundingClientRect();
+    const offsetX = e.clientX - rect.left;
+    const offsetY = e.clientY - rect.top;
+    const cell = cellAtPoint(offsetX, offsetY, host.clientWidth, host.clientHeight, viewRef.current);
     if (cell !== null) onClickCell(cell);
   };
 
@@ -206,19 +214,16 @@ export function OfficeCanvas({
       />
     );
   }
-  // 3D 模式：主 2D 画布 + 人物 WebGL 覆盖层（pointer-events 全穿透到主画布）
+  // 3D 模式：WebGL 场景画布（承载一切）+ 2D 气泡覆盖层；交互事件全在容器上
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <canvas
-        ref={canvasRef}
-        className={className}
-        onContextMenu={(e) => e.preventDefault()}
-        style={{ display: 'block', width: '100%', height: '100%', cursor: onCanvasClick || onClickCell ? 'pointer' : undefined }}
-        onClick={handleClick}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-      />
+    <div
+      style={{ position: 'relative', width: '100%', height: '100%', cursor: onCanvasClick || onClickCell ? 'pointer' : undefined }}
+      onClick={handleClick}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onContextMenu={(e) => e.preventDefault()}
+    >
       <canvas
         ref={(el) => {
           overlayRef.current = el;
@@ -227,6 +232,10 @@ export function OfficeCanvas({
           const test = el.getContext('webgl2') ?? el.getContext('webgl');
           if (test === null) setOverlayFailed(true);
         }}
+        style={{ display: 'block', width: '100%', height: '100%' }}
+      />
+      <canvas
+        ref={bubbleRef}
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
       />
     </div>
