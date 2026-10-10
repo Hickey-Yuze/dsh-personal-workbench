@@ -27,9 +27,7 @@ const C_SCREEN = 0x2f3438;
 const C_POT = '#cf7a52';
 const C_CARPET = '#e9e2d2';
 
-/** 家具静态场景缓存 key：内容指纹（家具一变整组重建，构建成本低）。 */
-let sceneKey = '';
-let sceneGroup: THREE.Group | null = null;
+/** 家具静态场景缓存：按每个 Scene3D 实例各持一份（模块级共享会让第二个画布白屏）。 */
 
 type Scene3D = {
   renderer: THREE.WebGLRenderer;
@@ -39,6 +37,8 @@ type Scene3D = {
   sun: THREE.DirectionalLight;
   charGroup: THREE.Group;
   boardMats: THREE.MeshStandardMaterial[]; // 白板板面（会议呼吸高亮）
+  sceneKey: string; // 家具内容指纹（本实例当前场景组对应的）
+  sceneGroup: THREE.Group | null;
   instances: Map<string, { obj: THREE.Group; state: string }>;
   loaded: Map<string, boolean>;
   requested: Set<string>;
@@ -81,7 +81,7 @@ function ensureScene(canvas: HTMLCanvasElement): Scene3D | null {
     pivot.add(charGroup);
     s = {
       renderer, scene, camera, pivot, sun, charGroup,
-      boardMats: [], instances: new Map(), loaded: new Map(), requested: new Set(),
+      boardMats: [], sceneKey: '', sceneGroup: null, instances: new Map(), loaded: new Map(), requested: new Set(),
       meeting: false,
     };
     scenes.set(canvas, s);
@@ -92,8 +92,7 @@ function ensureScene(canvas: HTMLCanvasElement): Scene3D | null {
 }
 
 /* ───────────── 材质/几何小工具 ───────────── */
-const matCache = new Map<string, THREE.MeshStandardMaterial>();
-function mat(color: string, opts?: { rough?: number; transparent?: boolean; opacity?: number }): THREE.MeshStandardMaterial {
+const matCache = new Map<string, THREE.MeshStandardMaterial>();function mat(color: string, opts?: { rough?: number; transparent?: boolean; opacity?: number }): THREE.MeshStandardMaterial {
   const key = `${color}|${opts?.rough ?? 0.85}|${opts?.opacity ?? 1}`;
   const hit = matCache.get(key);
   if (hit !== undefined) return hit;
@@ -491,12 +490,12 @@ export function renderScene3d(
 
   // 静态场景：家具内容指纹变了才重建
   const key = JSON.stringify(furniture);
-  if (key !== sceneKey || sceneGroup === null) {
-    sceneKey = key;
-    if (sceneGroup !== null) s.pivot.remove(sceneGroup);
+  if (key !== s.sceneKey || s.sceneGroup === null) {
+    s.sceneKey = key;
+    if (s.sceneGroup !== null) s.pivot.remove(s.sceneGroup);
     s.boardMats.length = 0;
-    sceneGroup = buildScene(furniture, s.boardMats);
-    s.pivot.add(sceneGroup);
+    s.sceneGroup = buildScene(furniture, s.boardMats);
+    s.pivot.add(s.sceneGroup);
     // 工位索引（坐姿吸附用）
     const desks = new Map<string, Furniture>();
     for (const f of furniture) if (f.kind === 'desk') desks.set(f.id, f);

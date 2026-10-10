@@ -189,7 +189,8 @@ export function OfficeModuleView(): ReactElement {
   const [engine, setEngine] = useState<OfficeEngine>(() => new OfficeEngine(loadOfficeMap() ?? undefined));
   const [members, setMembers] = useState<MemberStat[]>(() => engine.members());
   const [officeView, setOfficeView] = useState<OfficeView>({}); // 场景缩放/平移（滚轮+按钮）
-  const [char3d, setChar3d] = useState(false); // 人物 3D OBJ 模型开关（默认 2D 手绘小人）
+  const [char3d, setChar3d] = useState(true); // 场景永远 3D（WebGL 失败自动回退 2D）
+  void setChar3d;
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [builtinOverrides, setBuiltinOverrides] = useState<Record<string, BuiltinOverride>>({});
   const [hireName, setHireName] = useState('');
@@ -809,13 +810,6 @@ export function OfficeModuleView(): ReactElement {
                   char3d={char3d}
                 />
                 <div className="dsh-pwb-office-zoom">
-                  <button
-                    title={char3d ? '切回 2D 小人' : '切换 3D 人物模型'}
-                    onClick={() => setChar3d((s) => !s)}
-                    style={char3d ? { background: 'var(--pwb-accent)', color: '#fff' } : undefined}
-                  >
-                    3D
-                  </button>
                   <button title="放大" onClick={() => zoomStep(0.2)}>
                     ＋
                   </button>
