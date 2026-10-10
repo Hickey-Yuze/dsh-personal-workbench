@@ -32,7 +32,8 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "3.18.2",
-    "lunar-typescript": "^1.8.6"
+    "lunar-typescript": "^1.8.6",
+    "three": "0.186.0"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1"
@@ -47,6 +48,7 @@
     "@tailwindcss/cli": "^4.3.3",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
+    "@types/three": "0.186.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "esbuild": "^0.28.2",

@@ -8,6 +8,8 @@
  *   kb/*     —— Obsidian Local REST API 只读代理（列表/读笔记/搜索），key 不下发前端
  */
 import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
@@ -58,6 +60,10 @@ interface WebServerLike {
 }
 
 export const API_PREFIX = '/api/personal-workbench';
+
+/** 插件根目录（assets/models 所在处；dist/ 里的 rpc.js 上一级即包根）。 */
+const pluginRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
 
 // ── 音乐平台：酷我接口 Host 代理（浏览器侧有 CORS，Node 侧无）──
 const MUSIC_PROXY_DEFAULT = 'https://jsnzkpg4.pages.dev/';
@@ -1505,6 +1511,34 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
       if (officeEndpoint === 'office/roster' && officeMethod === 'GET') {
         const rosterExt = loadOfficeRosterExt();
         send(res, 200, { ok: true, roster: rosterExt.roster, builtin: rosterExt.builtin });
+        return;
+      }
+      // office/asset/list GET：列出 assets/models 下的 .obj/.mtl 文件名（3D 人物模型库）
+      if (officeEndpoint === 'office/asset/list' && officeMethod === 'GET') {
+        try {
+          const dir = path.join(pluginRoot, "assets", "models");
+          const entries = await fs.promises.readdir(dir);
+          send(res, 200, { ok: true, files: entries.filter((f) => f.endsWith('.obj') || f.endsWith('.mtl')).sort() });
+        } catch {
+          send(res, 200, { ok: true, files: [] });
+        }
+        return;
+      }
+      // office/asset/get GET?name=xxx.obj：读单个模型文本（白名单：只允许 assets/models 下的 .obj/.mtl，名字不得含路径分隔符）
+      if (officeEndpoint === 'office/asset/get' && officeMethod === 'GET') {
+        const q = new URL(req.url ?? '/', 'http://x').searchParams;
+        const name = String(q.get('name') ?? '');
+        if (!/^[\w.-]+\.(obj|mtl)$/.test(name)) {
+          send(res, 400, { ok: false, error: { code: 'bad-name', message: '非法模型文件名' } });
+          return;
+        }
+        try {
+          const dir = path.join(pluginRoot, "assets", "models");
+          const content = await fs.promises.readFile(path.join(dir, name), 'utf8');
+          send(res, 200, { ok: true, data: content });
+        } catch {
+          send(res, 404, { ok: false, error: { code: 'not-found', message: `模型不存在: ${name}` } });
+        }
         return;
       }
       // office/models GET：枚举宿主 llm 可选模型（provider×model），供员工模型选择下拉；

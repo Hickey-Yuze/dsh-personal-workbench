@@ -691,6 +691,8 @@ export function renderOffice(
     view?: OfficeView;
     /** 俯视 2D 模式（布置办公室编辑器用）：跳过等距投影，保持平面网格语义。 */
     topDown?: boolean;
+    /** 人物交给 3D 层绘制：2D 跳过小人（气泡仍画）。 */
+    hideChars?: boolean;
   },
 ): void {
   if (opts?.topDown === true) {
@@ -841,12 +843,12 @@ const ISO_PANTS = '#5c6570';
 const ISO_SHOE = '#f1f2f3';
 
 /** 每格半宽像素 k：格投影宽 2k、高 k（经典 2:1 等距）。 */
-function isoFit(cssW: number, cssH: number, zoom: number, rot = 0): number {
+export function isoFit(cssW: number, cssH: number, zoom: number, rot = 0): number {
   const { w, h } = rotDims(rot);
   return Math.min(cssW / (w + h), (cssH * 2) / (w + h)) * zoom;
 }
 
-function isoOrigin(cssW: number, cssH: number, k: number, panX: number, panY: number, rot = 0): { ox: number; oy: number } {
+export function isoOrigin(cssW: number, cssH: number, k: number, panX: number, panY: number, rot = 0): { ox: number; oy: number } {
   const { w, h } = rotDims(rot);
   return {
     ox: (cssW - (w + h) * k) / 2 + h * k + panX,
@@ -1897,6 +1899,8 @@ function renderIso(
     bubbles?: ReadonlyMap<string, { text: string; until: number }>;
     meeting?: boolean;
     view?: OfficeView;
+    /** 人物交给 3D 层（Three.js）绘制：2D 只画家具与气泡占位。 */
+    hideChars?: boolean;
   },
 ): void {
   const ctx = canvas.getContext('2d');
@@ -1997,6 +2001,14 @@ function renderIso(
           break;
       }
     } else if (it.kind === 'char' && it.c !== undefined) {
+      if (opts?.hideChars === true) {
+        // 3D 模式：2D 不画人，但气泡仍要挂——头顶锚点按等距投影估算（格中心，头顶高度 ≈ 2.1k）
+        if (hasBubble(it.c)) {
+          const a = isoCorner(ox, oy, k, it.c.rx + 0.5, it.c.ry + 0.5);
+          anchors.set(it.c.id, { headX: a.x, headY: a.y - k * 2.1 });
+        }
+        continue;
+      }
       const anchor = isoDrawChar(ctx, it.c, ox, oy, k, time, showNames, hasBubble(it.c));
       if (hasBubble(it.c)) anchors.set(it.c.id, anchor);
     }
