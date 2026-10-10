@@ -34,7 +34,7 @@ export function OfficeCanvas({
   viewRef.current = view;
   const onViewChangeRef = useRef(onViewChange);
   onViewChangeRef.current = onViewChange;
-  const dragRef = useRef<{ x: number; y: number; panX: number; panY: number; moved: boolean } | null>(null);
+  const dragRef = useRef<{ x: number; y: number; panX: number; panY: number; moved: boolean; rot?: number; rotStartX?: number } | null>(null);
   const suppressClickRef = useRef(false);
 
   /** 应用一次视口变更（钳制后交给父组件；3D/2D 各自钳制语义）。 */
@@ -122,9 +122,13 @@ export function OfficeCanvas({
   }, [engine]);
 
   const handlePointerDown = (e: ReactPointerEvent<HTMLCanvasElement>): void => {
-    if (e.button !== 0) return;
     const v = viewRef.current ?? {};
-    dragRef.current = { x: e.clientX, y: e.clientY, panX: v.panX ?? 0, panY: v.panY ?? 0, moved: false };
+    // 右键 = 视角旋转（左右拖拽，每 90px 转 90°）；左键 = 平移
+    if (e.button === 2) {
+      dragRef.current = { x: e.clientX, y: e.clientY, panX: v.panX ?? 0, panY: v.panY ?? 0, moved: false, rot: v.rot ?? 0, rotStartX: e.clientX };
+    } else if (e.button === 0) {
+      dragRef.current = { x: e.clientX, y: e.clientY, panX: v.panX ?? 0, panY: v.panY ?? 0, moved: false };
+    } else return;
     try {
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
     } catch { /* 已释放则忽略 */ }
@@ -137,6 +141,13 @@ export function OfficeCanvas({
     const dy = e.clientY - d.y;
     if (!d.moved && Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
     d.moved = true;
+    if (d.rot !== undefined && d.rotStartX !== undefined) {
+      // 旋转拖拽：以按下时的 rot 为基准，向右拖 = 顺时针
+      const rot = ((((d.rot + Math.round((e.clientX - d.rotStartX) / 90)) % 4) + 4) % 4);
+      const v = viewRef.current ?? {};
+      onViewChangeRef.current?.({ zoom: v.zoom ?? 1, panX: v.panX ?? 0, panY: v.panY ?? 0, rot });
+      return;
+    }
     applyView((viewRef.current ?? {}).zoom ?? 1, d.panX + dx, d.panY + dy);
   };
 
@@ -166,6 +177,7 @@ export function OfficeCanvas({
     <canvas
       ref={canvasRef}
       className={className}
+      onContextMenu={(e) => e.preventDefault()}
       style={{ display: 'block', width: '100%', height: '100%', cursor: onCanvasClick || onClickCell ? 'pointer' : undefined }}
       onClick={handleClick}
       onPointerDown={handlePointerDown}
