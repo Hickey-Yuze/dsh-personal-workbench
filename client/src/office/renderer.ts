@@ -20,8 +20,8 @@ const DESK_SIDE = '#c2a070';
 const SCREEN_BEZEL = '#363c44';
 const SCREEN_BG = '#a9d3ef';
 const SCREEN_LIT = '#d9edfb';
-const CHAIR_BACK = '#c9d2dc';
-const CHAIR_SEAT = '#93a7ba';
+const CHAIR_BACK = '#e0673f';
+const CHAIR_SEAT = '#f0784a';
 const POT_BODY = '#cf7a52';
 const POT_RIM = '#e09468';
 const LEAF_BACK = '#3e7a44';
@@ -356,31 +356,30 @@ function drawCoffee(ctx: CanvasRenderingContext2D, f: Furniture, s: number, ox: 
   ctx.fillRect(X + s * 0.68, Y + s * 0.22, s * 0.08, s * 0.08);
 }
 
-/** 隔断墙：灰蓝墙体 + 顶部高光 + 交错砖缝（1×1，阻挡走位）。 */
+/** 隔断墙（2D 俯视）：黑框玻璃 + 斜向反光，与 3D 场景的玻璃隔断一致。 */
 function drawWall(ctx: CanvasRenderingContext2D, f: Furniture, s: number, ox: number, oy: number): void {
   const X = ox + f.x * s;
   const Y = oy + f.y * s;
-  softShadow(ctx, X + s * 0.5, Y + s * 0.92, s * 0.36, s * 0.07);
-  ctx.fillStyle = '#aeb6c2';
-  rr(ctx, X + s * 0.08, Y + s * 0.12, s * 0.84, s * 0.74, s * 0.05);
+  softShadow(ctx, X + s * 0.5, Y + s * 0.92, s * 0.34, s * 0.06);
+  ctx.fillStyle = 'rgba(206,222,232,0.55)';
+  rr(ctx, X + s * 0.1, Y + s * 0.12, s * 0.8, s * 0.76, s * 0.04);
   ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  ctx.fillRect(X + s * 0.08, Y + s * 0.12, s * 0.84, Math.max(1.5, s * 0.08));
-  ctx.strokeStyle = 'rgba(70,78,90,0.35)';
-  ctx.lineWidth = 1;
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
   ctx.beginPath();
-  ctx.moveTo(X + s * 0.08, Y + s * 0.37);
-  ctx.lineTo(X + s * 0.92, Y + s * 0.37);
-  ctx.moveTo(X + s * 0.08, Y + s * 0.62);
-  ctx.lineTo(X + s * 0.92, Y + s * 0.62);
+  ctx.moveTo(X + s * 0.24, Y + s * 0.2);
+  ctx.lineTo(X + s * 0.38, Y + s * 0.2);
+  ctx.lineTo(X + s * 0.2, Y + s * 0.8);
+  ctx.lineTo(X + s * 0.14, Y + s * 0.8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#3a4046';
+  ctx.lineWidth = Math.max(1.5, s * 0.08);
+  rr(ctx, X + s * 0.1, Y + s * 0.12, s * 0.8, s * 0.76, s * 0.04);
+  ctx.stroke();
+  ctx.lineWidth = Math.max(1, s * 0.05);
+  ctx.beginPath();
   ctx.moveTo(X + s * 0.5, Y + s * 0.12);
-  ctx.lineTo(X + s * 0.5, Y + s * 0.37);
-  ctx.moveTo(X + s * 0.3, Y + s * 0.37);
-  ctx.lineTo(X + s * 0.3, Y + s * 0.62);
-  ctx.moveTo(X + s * 0.7, Y + s * 0.37);
-  ctx.lineTo(X + s * 0.7, Y + s * 0.62);
-  ctx.moveTo(X + s * 0.5, Y + s * 0.62);
-  ctx.lineTo(X + s * 0.5, Y + s * 0.86);
+  ctx.lineTo(X + s * 0.5, Y + s * 0.88);
   ctx.stroke();
 }
 
@@ -412,16 +411,75 @@ function drawFridge(ctx: CanvasRenderingContext2D, f: Furniture, s: number, ox: 
   const X = ox + f.x * s;
   const Y = oy + f.y * s;
   softShadow(ctx, X + s * 0.5, Y + s * 0.95, s * 0.34, s * 0.07);
-  ctx.fillStyle = '#c9d0d9';
+  ctx.fillStyle = '#23262b';
   rr(ctx, X + s * 0.16, Y + s * 0.06, s * 0.68, s * 0.86, s * 0.06);
   ctx.fill();
-  ctx.fillStyle = 'rgba(70,78,90,0.4)';
+  ctx.fillStyle = 'rgba(255,255,255,0.22)';
   ctx.fillRect(X + s * 0.16, Y + s * 0.4, s * 0.68, Math.max(1, s * 0.03));
-  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
   ctx.fillRect(X + s * 0.2, Y + s * 0.1, Math.max(1.5, s * 0.05), s * 0.78);
-  ctx.fillStyle = '#7c8593';
+  ctx.fillStyle = '#9aa1ad';
   ctx.fillRect(X + s * 0.7, Y + s * 0.14, s * 0.06, s * 0.2);
   ctx.fillRect(X + s * 0.7, Y + s * 0.46, s * 0.06, s * 0.34);
+}
+
+
+/** 地毯（2D 俯视，地面铺层）：米色柔边 + 内层细纹，与 3D 软毯一致。 */
+function drawCarpet(ctx: CanvasRenderingContext2D, f: Furniture, s: number, ox: number, oy: number): void {
+  const X = ox + f.x * s;
+  const Y = oy + f.y * s;
+  ctx.fillStyle = 'rgba(120,104,80,0.10)';
+  rr(ctx, X - s * 0.05, Y - s * 0.05, f.w * s + s * 0.1, f.h * s + s * 0.1, s * 0.22);
+  ctx.fill();
+  ctx.fillStyle = '#efe7da';
+  rr(ctx, X, Y, f.w * s, f.h * s, s * 0.2);
+  ctx.fill();
+  ctx.fillStyle = '#eae1d2';
+  rr(ctx, X + s * 0.16, Y + s * 0.16, f.w * s - s * 0.32, f.h * s - s * 0.32, s * 0.16);
+  ctx.fill();
+}
+
+/** 圆桌（2D 俯视）：白色圆台面 + 侧厚 + 四把圆凳。 */
+function drawRoundTable(ctx: CanvasRenderingContext2D, f: Furniture, s: number, ox: number, oy: number): void {
+  const cx = ox + (f.x + f.w / 2) * s;
+  const cy = oy + (f.y + f.h / 2) * s;
+  softShadow(ctx, cx, cy + s * 0.5, s * 0.95, s * 0.12);
+  ctx.fillStyle = '#f2f3f5';
+  for (const [dx, dy] of [[-0.85, 0], [0.85, 0], [0, -0.85], [0, 0.85]] as const) {
+    ctx.beginPath();
+    ctx.ellipse(cx + dx * s * 0.62, cy + dy * s * 0.62, s * 0.2, s * 0.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#dde1e5';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + s * 0.07, s * 0.86, s * 0.86, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, s * 0.86, s * 0.86, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/** 抽屉柜（2D 俯视）：白色柜体 + 三层抽屉缝 + 拉手。 */
+function drawCabinet(ctx: CanvasRenderingContext2D, f: Furniture, s: number, ox: number, oy: number): void {
+  const X = ox + f.x * s;
+  const Y = oy + f.y * s;
+  softShadow(ctx, X + s * 0.5, Y + s * 0.95, s * 0.34, s * 0.07);
+  ctx.fillStyle = '#fbfcfd';
+  rr(ctx, X + s * 0.1, Y + s * 0.1, s * 0.8, s * 0.8, s * 0.06);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(70,78,90,0.28)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 1; i <= 2; i++) {
+    const yy = Y + s * (0.1 + (0.8 / 3) * i);
+    ctx.moveTo(X + s * 0.12, yy);
+    ctx.lineTo(X + s * 0.88, yy);
+  }
+  ctx.stroke();
+  ctx.fillStyle = '#b6bcc4';
+  ctx.fillRect(X + s * 0.42, Y + s * 0.24, s * 0.16, Math.max(1.5, s * 0.05));
+  ctx.fillRect(X + s * 0.42, Y + s * 0.5, s * 0.16, Math.max(1.5, s * 0.05));
 }
 
 /* ───────────── 气泡 ───────────── */
@@ -746,6 +804,11 @@ function renderTopDown(
   }
   ctx.drawImage(cached.layer, 0, 0, cssW, cssH);
 
+  // 地毯先画（地面铺层，压在所有家具之下）
+  for (const f of furniture) {
+    if (f.kind === 'carpet') drawCarpet(ctx, f, scale, ox, oy);
+  }
+
   // 家具
   for (const f of furniture) {
     switch (f.kind) {
@@ -770,6 +833,14 @@ function renderTopDown(
       case 'fridge':
         drawFridge(ctx, f, scale, ox, oy);
         break;
+      case 'roundtable':
+        drawRoundTable(ctx, f, scale, ox, oy);
+        break;
+      case 'cabinet':
+        drawCabinet(ctx, f, scale, ox, oy);
+        break;
+      case 'carpet':
+        break; // 已在铺底层画过
     }
   }
 
