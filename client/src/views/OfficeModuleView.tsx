@@ -845,6 +845,20 @@ export function OfficeModuleView(): ReactElement {
                   <button title="复位视角" onClick={() => setOfficeView({})}>
                     ⭯
                   </button>
+                  {/* 显式平移按钮：用户多轮反馈「放到最大看不到左上角」「拖不动」。
+                      拖拽若在触控板/指针事件上失效，这四个按钮是保底手段——每下移 90px 视口。 */}
+                  <button title="视角左移" onClick={() => setOfficeView((v) => ({ ...v, panX: (v.panX ?? 0) - 90 }))}>
+                    ◀
+                  </button>
+                  <button title="视角右移" onClick={() => setOfficeView((v) => ({ ...v, panX: (v.panX ?? 0) + 90 }))}>
+                    ▶
+                  </button>
+                  <button title="视角上移" onClick={() => setOfficeView((v) => ({ ...v, panY: (v.panY ?? 0) - 90 }))}>
+                    ▲
+                  </button>
+                  <button title="视角下移" onClick={() => setOfficeView((v) => ({ ...v, panY: (v.panY ?? 0) + 90 }))}>
+                    ▼
+                  </button>
                 </div>
               </div>
             </div>
