@@ -241,24 +241,23 @@ function buildGlassCell(f: Furniture, g: THREE.Group, wallSet: Set<string>): voi
     mesh.receiveShadow = true;
     return mesh;
   };
+  // 竖梃只在「整段玻璃的起止端」加：原来每格两端都加柱子，13 格连起来像黑栅栏而不是玻璃墙
   if (hasX) {
-    // 沿 x 排布：X 向玻璃 + 端柱 + 上下横梁
     const gm = new THREE.Mesh(new THREE.BoxGeometry(1, 2.1, 0.035), glass);
     gm.position.set(cx, 1.05, cz);
     g.add(gm);
-    g.add(mk(new THREE.BoxGeometry(0.05, 2.14, 0.05), f.x, 1.07, cz));
-    g.add(mk(new THREE.BoxGeometry(0.05, 2.14, 0.05), f.x + 1, 1.07, cz));
-    g.add(mk(new THREE.BoxGeometry(1, 0.05, 0.05), cx, 2.12, cz));
-    g.add(mk(new THREE.BoxGeometry(1, 0.05, 0.05), cx, 0.02, cz));
+    g.add(mk(new THREE.BoxGeometry(1, 0.06, 0.05), cx, 2.12, cz));
+    g.add(mk(new THREE.BoxGeometry(1, 0.06, 0.05), cx, 0.02, cz));
+    if (!wallSet.has(`${f.x - 1},${f.y}`)) g.add(mk(new THREE.BoxGeometry(0.06, 2.14, 0.06), f.x, 1.07, cz));
+    if (!wallSet.has(`${f.x + 1},${f.y}`)) g.add(mk(new THREE.BoxGeometry(0.06, 2.14, 0.06), f.x + 1, 1.07, cz));
   } else {
-    // 沿 z 排布
     const gm = new THREE.Mesh(new THREE.BoxGeometry(0.035, 2.1, 1), glass);
     gm.position.set(cx, 1.05, cz);
     g.add(gm);
-    g.add(mk(new THREE.BoxGeometry(0.05, 2.14, 0.05), cx, 1.07, f.y));
-    g.add(mk(new THREE.BoxGeometry(0.05, 2.14, 0.05), cx, 1.07, f.y + 1));
-    g.add(mk(new THREE.BoxGeometry(0.05, 0.05, 1), cx, 2.12, cz));
-    g.add(mk(new THREE.BoxGeometry(0.05, 0.05, 1), cx, 0.02, cz));
+    g.add(mk(new THREE.BoxGeometry(0.05, 0.06, 1), cx, 2.12, cz));
+    g.add(mk(new THREE.BoxGeometry(0.05, 0.06, 1), cx, 0.02, cz));
+    if (!wallSet.has(`${f.x},${f.y - 1}`)) g.add(mk(new THREE.BoxGeometry(0.06, 2.14, 0.06), cx, 1.07, f.y));
+    if (!wallSet.has(`${f.x},${f.y + 1}`)) g.add(mk(new THREE.BoxGeometry(0.06, 2.14, 0.06), cx, 1.07, f.y + 1));
   }
 }
 
