@@ -131,7 +131,10 @@ export function OfficeCanvas({
           // 全 3D 场景：WebGL 主画布 + 2D 气泡覆盖层；视口 (zoom/pan/rot) 与 2D 同源
           const oc = overlayRef.current;
           const bc = bubbleRef.current;
-          if (oc !== null && bc !== null) {
+          if (oc === null || bc === null) {
+            // 画布/气泡层 ref 未就绪：静默不画 = 用户看到「整片空白」且永远不会回退
+            if (++failStreak >= FAIL_LIMIT) setOverlayFailed(true);
+          } else {
             const v = viewRef.current ?? {};
             try {
               const ok = renderScene3d(oc, bc, engine.map.furniture, engine.chars, engine.time, {
