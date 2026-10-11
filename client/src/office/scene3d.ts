@@ -754,6 +754,7 @@ export function pickCell3d(
   const dims = rot % 2 === 1 ? { w: MAP_H, h: MAP_W } : { w: MAP_W, h: MAP_H };
   const k = Math.min(cssW / (dims.w + dims.h), (cssH * 2) / (dims.w + dims.h)) * opts.zoom;
   const P = Math.SQRT2 * k;
+  if (!Number.isFinite(P) || P <= 0) return null; // 拾取会话相机退化：本次点击无效
   s.camera.left = -cssW / (2 * P);
   s.camera.right = cssW / (2 * P);
   s.camera.top = cssH / (2 * P);
@@ -874,6 +875,7 @@ export function renderScene3d(
   const dims = rot % 2 === 1 ? { w: MAP_H, h: MAP_W } : { w: MAP_W, h: MAP_H };
   const k = Math.min(cssW / (dims.w + dims.h), (cssH * 2) / (dims.w + dims.h)) * opts.zoom;
   const P = Math.SQRT2 * k;
+  if (!Number.isFinite(P) || P <= 0) return false; // 相机退化 → 判失败，调用方回退 2D，避免永久空白画布
   s.camera.left = -cssW / (2 * P);
   s.camera.right = cssW / (2 * P);
   s.camera.top = cssH / (2 * P);
