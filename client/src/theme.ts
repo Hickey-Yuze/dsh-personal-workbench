@@ -1837,7 +1837,7 @@ html { color-scheme: light !important; }
   flex-shrink: 0;
 }
 /* 地图编辑器 */
-.dsh-pwb-office-ed { display: flex; gap: 12px; align-items: stretch; flex: 1; min-height: 0; width: 100%; }
+.dsh-pwb-office-ed { display: flex; gap: 12px; align-items: stretch; flex: 1; min-height: 0; width: 100%; overflow: hidden; }
 .dsh-pwb-office-ed-catalog {
   flex: 0 0 150px;
   display: flex;
