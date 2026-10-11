@@ -850,7 +850,16 @@ export function OfficeModuleView(): ReactElement {
             </div>
           )}
 
-          {tab === 'data' && <OfficeProfileView members={members} roster={roster} builtin={builtinOverrides} onBuiltinSaved={setBuiltinOverrides} />}
+          {tab === 'data' && (
+            <OfficeProfileView
+              members={members}
+              roster={roster}
+              builtin={builtinOverrides}
+              onBuiltinSaved={setBuiltinOverrides}
+              desks={engine.listDesks().map((d, i) => ({ id: d.id, label: `工位${i + 1} · (${d.x},${d.y})` }))}
+              onDeskAssigned={(id, deskId) => engine.assignDesk(id, deskId)}
+            />
+          )}
 
           {tab === 'edit' && (
             <>

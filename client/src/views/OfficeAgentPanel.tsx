@@ -16,7 +16,7 @@ import {
   saveBuiltin,
   setAutopilot,
 } from '../office/agentClient.js';
-import type { AgentRow, BuiltinOverride, MemoryNote, OfficeModelOption, RosterEntry } from '../office/agentClient.js';
+import type { AgentRow, BuiltinOverride, OfficeModelOption, RosterEntry } from '../office/agentClient.js';
 
 export type OfficeAgentPanelProps = {
   /** 派活入口：让老板切到该员工的聊天里派活（id 即 npcId，自定义员工为 custom-<序号>）。 */
@@ -28,7 +28,6 @@ export type OfficeAgentPanelProps = {
 };
 
 const POLL_MS = 2500;
-const MEM_SHOW = 5;
 
 /* ── 内联样式：软 3D 玩具风（无硬描边 / 柔影 / 胶囊按钮），与场景和 theme.ts 统一 ── */
 const card: CSSProperties = {
@@ -84,7 +83,7 @@ function statusDot(row: AgentRow | undefined): { color: string; label: string } 
   return { color: '#d1d5db', label: '未派活' };
 }
 
-export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved, desks }: OfficeAgentPanelProps): ReactElement {
+export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved }: OfficeAgentPanelProps): ReactElement {
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [rosterErr, setRosterErr] = useState('');
   const [agentRows, setAgentRows] = useState<Record<string, AgentRow>>({});
@@ -99,9 +98,6 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved, desks }: OfficeAg
   /** 编辑卡：展开的员工 id + 表单草稿 + 记忆区。 */
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [draft, setDraft] = useState({ name: '', role: '', persona: '', links: '', desk: '', model: '' });
-  /** 可选模型清单（宿主 office/models；拉取失败 = 空数组，下拉只剩「跟随默认」）。 */
-  const [modelOptions, setModelOptions] = useState<OfficeModelOption[]>([]);
-  const [mem, setMem] = useState<{ loading: boolean; notes: MemoryNote[]; err: string }>({ loading: false, notes: [], err: '' });
   const [empErr, setEmpErr] = useState('');
   const [saving, setSaving] = useState(false);
   const [savedHint, setSavedHint] = useState('');
@@ -122,17 +118,6 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved, desks }: OfficeAg
   useEffect(() => {
     refreshRoster();
   }, [refreshRoster]);
-
-  /* 模型清单懒加载一次（失败静默：下拉只剩「跟随默认」） */
-  useEffect(() => {
-    let alive = true;
-    void officeListModels().then((list) => {
-      if (alive) setModelOptions(list);
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   /* office/agents 轮询：状态圆点 + 最近汇报尾部（旧宿主 404 → 停轮询，同 OfficeModuleView 口径） */
   useEffect(() => {
@@ -195,12 +180,8 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved, desks }: OfficeAg
         desk: ov.deskId ?? '',
         model: ov.provider !== undefined && ov.model !== undefined && ov.provider !== '' && ov.model !== '' ? `${ov.provider}::${ov.model}` : '',
       });
-      setMem({ loading: true, notes: [], err: '' });
       setEmpErr('');
       setSavedHint('');
-      fetchMemory(emp.id)
-        .then((notes) => setMem({ loading: false, notes, err: '' }))
-        .catch((err: unknown) => setMem({ loading: false, notes: [], err: err instanceof Error ? err.message : '记忆加载失败' }));
     },
     [builtin],
   );
@@ -367,57 +348,6 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved, desks }: OfficeAg
                     value={draft.persona}
                     onChange={(e) => setDraft((d) => ({ ...d, persona: e.target.value }))}
                   />
-                  <textarea
-                    className="dsh-pwb-office-emp-area"
-                    rows={2}
-                    placeholder="同事链（每行一条 ≤40 字）：如「前端做完移交给大鹏测试」"
-                    value={draft.links}
-                    onChange={(e) => setDraft((d) => ({ ...d, links: e.target.value }))}
-                  />
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#374151' }}>
-                    工位
-                    <select
-                      value={draft.desk}
-                      onChange={(e) => setDraft((d) => ({ ...d, desk: e.target.value }))}
-                      style={{ flex: 1, minWidth: 0, padding: '5px 8px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12.5, background: '#fff', color: '#111827' }}
-                    >
-                      <option value="">自动分配</option>
-                      {(desks ?? []).map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#374151' }}>
-                    模型
-                    <select
-                      value={draft.model}
-                      onChange={(e) => setDraft((d) => ({ ...d, model: e.target.value }))}
-                      style={{ flex: 1, minWidth: 0, padding: '5px 8px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12.5, background: '#fff', color: '#111827' }}
-                    >
-                      <option value="">跟随默认</option>
-                      {modelOptions.map((m) => (
-                        <option key={`${m.provider}::${m.id}`} value={`${m.provider}::${m.id}`}>
-                          {m.provider} / {m.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <div className="dsh-pwb-office-emp-mem">
-                    {mem.loading
-                      ? '记忆加载中…'
-                      : mem.err !== ''
-                        ? `⚠️ ${mem.err}`
-                        : mem.notes.length === 0
-                          ? '暂无工作记录（派活后这里会出现 TA 的真实工作记录）'
-                          : `【工作记录】共 ${mem.notes.length} 条（最近 ${Math.min(MEM_SHOW, mem.notes.length)} 条）`}
-                    {mem.notes.slice(-MEM_SHOW).map((n, i) => (
-                      <div key={i} className="dsh-pwb-office-emp-mem-item" title={n.text}>
-                        {n.text}
-                      </div>
-                    ))}
-                  </div>
                   <div className="dsh-pwb-office-emp-actions">
                     <button style={primaryBtn} disabled={saving} onClick={saveEmp}>
                       {saving ? '保存中…' : '保存'}

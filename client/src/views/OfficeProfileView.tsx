@@ -5,8 +5,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { addMemoryNote, clearMemory, fetchMemory, listAssetFiles, removeMemoryNote, saveBuiltin } from '../office/agentClient.js';
-import type { BuiltinOverride, MemoryNote, RosterEntry } from '../office/agentClient.js';
+import { addMemoryNote, clearMemory, fetchMemory, listAssetFiles, officeListModels, removeMemoryNote, saveBuiltin } from '../office/agentClient.js';
+import type { BuiltinOverride, MemoryNote, OfficeModelOption, RosterEntry } from '../office/agentClient.js';
 import { BUILTIN_STAFF } from '../office/engine.js';
 import { modelForChar } from '../office/objModels.js';
 import { modelThumb } from '../office/modelThumb.js';
@@ -54,23 +54,29 @@ type Props = {
   roster: RosterEntry[];
   builtin: Record<string, BuiltinOverride>;
   onBuiltinSaved: (builtin: Record<string, BuiltinOverride>) => void;
+  /** 工位下拉选项（lead 从引擎实时取：id + 展示名）。 */
+  desks?: Array<{ id: string; label: string }>;
+  /** 工位改选后同步引擎：空串 = 恢复自动分配。 */
+  onDeskAssigned?: (id: string, deskId: string) => void;
 };
 
-type Draft = { persona: string; links: string[]; skills: Record<string, number>; avatar: string };
+type Draft = { persona: string; links: string[]; skills: Record<string, number>; avatar: string; desk: string; llm: string };
 
-export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved }: Props): ReactElement {
+export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, desks, onDeskAssigned }: Props): ReactElement {
   const chars = useMemo(() => [...BUILTIN_STAFF, ...roster], [roster]);
   const [selId, setSelId] = useState('');
   const sel = chars.find((c) => c.id === selId) ?? chars[0];
   const ov: BuiltinOverride = builtin[sel?.id ?? ''] ?? {};
 
-  const [draft, setDraft] = useState<Draft>({ persona: '', links: [], skills: {}, avatar: '' });
+  const [draft, setDraft] = useState<Draft>({ persona: '', links: [], skills: {}, avatar: '', desk: '', llm: '' });
   /** 可选 3D 人物模型（assets/models 下的 .gltf/.glb）。 */
   const [models, setModels] = useState<string[]>([]);
   /** 模型头像（文件名 → dataURL）：员工列表/档案头与选型预览共用。 */
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   /** 当前选中模型的全身预览图。 */
   const [preview, setPreview] = useState('');
+  /** 可选 LLM 模型（宿主 office/models；失败 = 空，下拉只剩「跟随默认」）。 */
+  const [modelOptions, setModelOptions] = useState<OfficeModelOption[]>([]);
   const [linkInput, setLinkInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState(''); // '' | '已保存 ✓' | 错误文案
@@ -90,6 +96,11 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved }: 
       links: Array.isArray(cur.links) ? [...cur.links] : [],
       skills: cur.skills !== undefined && typeof cur.skills === 'object' ? { ...cur.skills } : {},
       avatar: typeof cur.avatar === 'string' ? cur.avatar : '',
+      desk: typeof cur.deskId === 'string' ? cur.deskId : '',
+      llm:
+        typeof cur.provider === 'string' && cur.provider !== '' && typeof cur.model === 'string' && cur.model !== ''
+          ? `${cur.provider}::${cur.model}`
+          : '',
     });
     setLinkInput('');
     setSaveMsg('');
@@ -112,6 +123,12 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved }: 
     if (JSON.stringify(draft.links) !== JSON.stringify(Array.isArray(cur.links) ? cur.links : [])) return true;
     if (JSON.stringify(draft.skills) !== JSON.stringify(curSkills)) return true;
     if (draft.avatar !== (typeof cur.avatar === 'string' ? cur.avatar : '')) return true;
+    if (draft.desk !== (typeof cur.deskId === 'string' ? cur.deskId : '')) return true;
+    const curLlm =
+      typeof cur.provider === 'string' && cur.provider !== '' && typeof cur.model === 'string' && cur.model !== ''
+        ? `${cur.provider}::${cur.model}`
+        : '';
+    if (draft.llm !== curLlm) return true;
     return false;
   }, [builtin, draft, sel?.id]);
 
@@ -120,15 +137,39 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved }: 
     setSaving(true);
     setSaveMsg('');
     try {
-      const table = await saveBuiltin(sel.id, { persona: draft.persona, links: draft.links, skills: draft.skills, avatar: draft.avatar });
+      const sep = draft.llm.indexOf('::');
+      const llmProvider = sep > 0 ? draft.llm.slice(0, sep) : '';
+      const llmModel = sep > 0 ? draft.llm.slice(sep + 2) : '';
+      const table = await saveBuiltin(sel.id, {
+        persona: draft.persona,
+        links: draft.links,
+        skills: draft.skills,
+        avatar: draft.avatar,
+        deskId: draft.desk,
+        provider: llmProvider,
+        model: llmModel,
+      });
       onBuiltinSaved(table);
+      // 工位只影响场景座位：同步给引擎（空串 = 恢复自动分配）
+      onDeskAssigned?.(sel.id, draft.desk);
       setSaveMsg('已保存 ✓');
     } catch (err) {
       setSaveMsg(err instanceof Error ? err.message : '保存失败');
     } finally {
       setSaving(false);
     }
-  }, [draft, onBuiltinSaved, saving, sel]);
+  }, [draft, onBuiltinSaved, onDeskAssigned, saving, sel]);
+
+  /* LLM 模型清单：挂载时拉一次（失败静默，下拉只剩「跟随默认」） */
+  useEffect(() => {
+    let alive = true;
+    void officeListModels().then((list) => {
+      if (alive) setModelOptions(list);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   /* 3D 模型清单：挂载时拉一次（失败静默，下拉只剩「自动分配」） */
   useEffect(() => {
@@ -314,6 +355,24 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved }: 
 
         <div className="dsh-pwb-office-prof-section">
           <div className="dsh-pwb-office-prof-sec-title">
+            工位<i>场景里该员工坐哪张桌子；自动分配 = 由引擎安排空位</i>
+          </div>
+          <select
+            className="dsh-pwb-office-prof-input"
+            value={draft.desk}
+            onChange={(e) => setDraft((d) => ({ ...d, desk: e.target.value }))}
+          >
+            <option value="">自动分配</option>
+            {(desks ?? []).map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="dsh-pwb-office-prof-section">
+          <div className="dsh-pwb-office-prof-sec-title">
             3D 人物模型<i>场景里该员工的长相；自动分配 = 按名字固定挑一个</i>
           </div>
           <select
@@ -339,6 +398,24 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved }: 
               {draft.avatar === '' && previewFile !== '' ? '（自动分配）' : ''}
             </span>
           </div>
+        </div>
+
+        <div className="dsh-pwb-office-prof-section">
+          <div className="dsh-pwb-office-prof-sec-title">
+            AI 模型<i>该员工派活/私聊时用哪个 LLM；跟随默认 = 用宿主全局选择</i>
+          </div>
+          <select
+            className="dsh-pwb-office-prof-input"
+            value={draft.llm}
+            onChange={(e) => setDraft((d) => ({ ...d, llm: e.target.value }))}
+          >
+            <option value="">跟随默认</option>
+            {modelOptions.map((m) => (
+              <option key={`${m.provider}::${m.id}`} value={`${m.provider}::${m.id}`}>
+                {m.provider} / {m.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="dsh-pwb-office-prof-section">
