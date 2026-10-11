@@ -171,7 +171,8 @@ function placeFurnModel(s: Scene3D, kind: string, cx: number, cz: number, target
   if (file === undefined) return false;
   const cached = s.furnModels.get(file);
   if (cached === undefined || cached === null) return false;
-  const inst = cached;
+  // 每个摆放位置一个独立拷贝：直接 add 共享实例会把它从上一个 parent 挪走（只剩最后一个）
+  const inst = cloneSkeleton(cached);
   // 包围盒
   const bbox = new THREE.Box3().setFromObject(inst);
   const size = bbox.getSize(new THREE.Vector3());
