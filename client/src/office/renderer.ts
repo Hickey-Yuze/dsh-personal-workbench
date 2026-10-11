@@ -101,13 +101,12 @@ export function clampViewPan(panX: number, panY: number, zoom: number, cssW: num
   const k = Math.min(cssW / (w + h), (cssH * 2) / (w + h)) * zoom;
   const mapW = k * (w + h);
   const mapH = (k * (w + h)) / 2;
-  // ① 地图比视口小时原来 slack 直接取 0（跟随居中、完全不能拖）；② 墙体(2.6)/人物(1.75) 的高度
-  // 投影到屏幕会让内容超出「地板菱形」的范围——只按地板算 slackY 的话，放到最大时墙顶/左上角
-  // 永远拖不到（用户反馈「放到最大，左上角的无法拖动看到」）。
-  // 这里：每方向保底 30% 视口 + 额外留 k*3.5 的高度余量（k 是等距缩放，随 zoom 变大）。
-  const roomMargin = k * 3.5;
-  const slackX = Math.max((mapW - cssW) / 2, cssW * 0.3) + roomMargin;
-  const slackY = Math.max((mapH - cssH) / 2, cssH * 0.3) + roomMargin;
+  // 每方向给到「能把地图任意一点拖到视口正中」的自由度：slack = 地图投影尺寸的一半。
+  // 原来只在 map 比视口大时才给 slack（= (mapW-cssW)/2），放到最大后左上角/墙顶永远拖不到
+  // （用户两次反馈「放到最大，左上角的无法拖动看到」「还是看不到左上角」）。
+  // 纵向再补 k*3.5：墙体(2.6)与人物(1.75) 的高度投影会让内容超出「地板菱形」的上沿。
+  const slackX = mapW / 2 + k * 1.5;
+  const slackY = mapH / 2 + k * 3.5;
   const cx = Math.min(Math.max(panX, -slackX), slackX);
   const cy = Math.min(Math.max(panY, -slackY), slackY);
   return { panX: cx, panY: cy };

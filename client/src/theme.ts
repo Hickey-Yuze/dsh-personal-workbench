@@ -1376,7 +1376,8 @@ html { color-scheme: light !important; }
 /* 「⟲布局」是三字按钮：固定 30px 宽放不下 → 文字挤成一列（用户报「布局按钮的字错乱」） */
 .dsh-pwb-office-zoom button.dsh-pwb-office-zoom-wide {
   width: auto;
-  min-width: 30px;
+  /* 显式给足宽度：flex column 下 width:auto 会随容器交叉轴收缩，导致「⟲布局」仍折成两行 */
+  min-width: 58px;
   padding: 0 8px;
   white-space: nowrap;
   font-size: 12px;
