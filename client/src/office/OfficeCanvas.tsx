@@ -55,10 +55,11 @@ export function OfficeCanvas({
     [],
   );
 
-  /* 滚轮缩放：以鼠标为锚点（React onWheel 是 passive，preventDefault 无效 → 原生监听） */
+  /* 滚轮缩放：以鼠标为锚点（React onWheel 是 passive，preventDefault 无效 → 原生监听）。
+   * 3D 模式下 2D canvas 不挂载 → 监听挂到容器 div（wheelRef 指向实际存在的一个）。 */
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (canvas === null) return;
+    const target: HTMLElement | null = canvasRef.current ?? overlayRef.current?.parentElement ?? null;
+    if (target === null) return;
     const handler = (e: WheelEvent): void => {
       if (onViewChangeRef.current === undefined) return;
       e.preventDefault();
@@ -67,7 +68,7 @@ export function OfficeCanvas({
       const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
       const newZoom = Math.min(2.5, Math.max(0.5, oldZoom * factor));
       if (newZoom === oldZoom) return;
-      const rect = canvas.getBoundingClientRect();
+      const rect = target.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
       const ratio = newZoom / oldZoom;
@@ -75,9 +76,9 @@ export function OfficeCanvas({
       const panY = v.panY ?? 0;
       applyView(newZoom, mx - ratio * (mx - panX), my - ratio * (my - panY));
     };
-    canvas.addEventListener('wheel', handler, { passive: false });
-    return () => canvas.removeEventListener('wheel', handler);
-  }, [applyView]);
+    target.addEventListener('wheel', handler, { passive: false });
+    return () => target.removeEventListener('wheel', handler);
+  }, [applyView, char3d, overlayFailed]);
 
   /* rAF 渲染循环：tick 引擎 + 画一帧（view 从 ref 取，循环不因缩放/平移重建）。
    * 无人在走动时降到 30fps：呼吸/冒泡动画依旧平滑，合成器压力减半，

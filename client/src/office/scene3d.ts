@@ -41,7 +41,7 @@ type Scene3D = {
   boardMats: THREE.MeshStandardMaterial[]; // 白板板面（会议呼吸高亮）
   sceneKey: string; // 家具内容指纹（本实例当前场景组对应的）
   sceneGroup: THREE.Group | null;
-  instances: Map<string, { obj: THREE.Group; state: string; mixer?: THREE.AnimationMixer; walk?: THREE.AnimationAction; idle?: THREE.AnimationAction; sit?: THREE.AnimationAction; clipName?: string }>;
+  instances: Map<string, { obj: THREE.Group; state: string; mixer?: THREE.AnimationMixer; walk?: THREE.AnimationAction; idle?: THREE.AnimationAction; sit?: THREE.AnimationAction; clipName?: string; lastGx?: number; lastGy?: number; faceRotSm?: number }>;
   loaded: Map<string, boolean>;
   requested: Set<string>;
   meeting: boolean;
@@ -421,14 +421,28 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
       }
     }
     inst.obj.position.set(gx, seatLift, gy);
-    // glTF 人物库（Blender 导出）原生面朝 +z（Walk 摆腿绕 X 轴=沿 Z 前进）。
-    // 相机从 +x+z 方向看：face=1（朝南/+z，面向相机）= rot 0；face=-1 背对相机 = rot π。
-    // 斜向分量 0.6 rad 让人物不完全正对/背对镜头，观感更自然。
-    const faceRot = c.face === 1 ? 0.6 : Math.PI + 0.6;
-    inst.obj.rotation.y += (faceRot - inst.obj.rotation.y) * 0.25;
     const walking = c.state === 'walking';
     if (walking) inst.obj.position.y = Math.abs(Math.sin(time * 9 + c.phase)) * 0.05;
     else inst.obj.position.y = 0;
+    // 朝向：走路按移动方向转身（glTF 原生面朝 +z，rotation.y = atan2(dx, dz) 恰好对齐该约定）；
+    // 非走路回到 face 二值朝向（面向/背对镜头斜 0.6）
+    let faceRot: number;
+    if (walking && inst.lastGx !== undefined && inst.lastGy !== undefined) {
+      const mdx = gx - inst.lastGx;
+      const mdz = gy - inst.lastGy;
+      if (Math.abs(mdx) > 0.001 || Math.abs(mdz) > 0.001) {
+        faceRot = Math.atan2(mdx, mdz);
+        inst.faceRotSm = faceRot;
+      } else {
+        faceRot = inst.faceRotSm ?? 0.6;
+      }
+    } else {
+      faceRot = c.face === 1 ? 0.6 : Math.PI + 0.6;
+      inst.faceRotSm = faceRot;
+    }
+    inst.lastGx = gx;
+    inst.lastGy = gy;
+    inst.obj.rotation.y += (faceRot - inst.obj.rotation.y) * 0.25;
     // 动画切换：走路播 Walk、工作/咖啡播 SitDown、其余 Idle（互斥权重）
     if (inst.mixer !== undefined) {
       const want: 'walk' | 'sit' | 'idle' = walking ? 'walk' : sitting ? 'sit' : 'idle';
@@ -486,6 +500,31 @@ function drawBubbles(
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssW, cssH);
   const v = new THREE.Vector3();
+  // 头顶名字（所有人常显；有气泡的人跳过名字避免重叠）
+  const nameFs = 11;
+  ctx.font = `600 ${nameFs}px -apple-system, "PingFang SC", sans-serif`;
+  ctx.textBaseline = 'middle';
+  for (const c of chars) {
+    if (bubbles.get(c.id) !== undefined) continue;
+    v.set(c.rx + 0.5, 1.62 * CHAR_SCALE, c.ry + 0.5).project(s.camera);
+    const px = ((v.x + 1) / 2) * cssW;
+    const py = ((1 - v.y) / 2) * cssH;
+    if (px < -40 || px > cssW + 40 || py < -20 || py > cssH + 20) continue;
+    const label = `${c.name}${c.isSelf ? '（我）' : ''}`;
+    const tw = ctx.measureText(label).width;
+    const bw = tw + 12;
+    const bh = 18;
+    let bx = px - bw / 2;
+    const by = py - bh - 6;
+    bx = Math.max(4, Math.min(cssW - bw - 4, bx));
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') ctx.roundRect(bx, by, bw, bh, 9);
+    else ctx.rect(bx, by, bw, bh);
+    ctx.fill();
+    ctx.fillStyle = '#3a3f47';
+    ctx.fillText(label, bx + 6, by + bh / 2 + 0.5);
+  }
   for (const c of chars) {
     const b = bubbles.get(c.id);
     if (b === undefined) continue;
