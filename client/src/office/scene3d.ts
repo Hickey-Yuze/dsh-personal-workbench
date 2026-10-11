@@ -412,7 +412,8 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
       }
     }
     inst.obj.position.set(gx, 0, gy);
-    const faceRot = c.face === 1 ? -0.6 : Math.PI + 0.6;
+    // RobotExpressive 原生面朝 -z（走路动画面向-Z）；face=1 = 朝南(+z) 要转 180°
+    const faceRot = c.face === 1 ? Math.PI + 0.6 : -0.6;
     inst.obj.rotation.y += (faceRot - inst.obj.rotation.y) * 0.25;
     const walking = c.state === 'walking';
     if (walking) inst.obj.position.y = Math.abs(Math.sin(time * 9 + c.phase)) * 0.05;
