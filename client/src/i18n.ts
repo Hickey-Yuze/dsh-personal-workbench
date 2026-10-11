@@ -1,3 +1,4 @@
+declare const __DSH_PWB_BUILD__: string;
 /**
  * 文案：注册到宿主 locale（命名空间 dsh-personal-workbench），取不到时回退本地字典。
  * 新增键必须 zh/en 同时补齐 —— build-client 的接线自检会核对命名空间标记。
@@ -36,7 +37,7 @@ const zh: Record<string, string> = {
   'mod.knowledge.label': '知识库',
   'mod.knowledge.desc': '浏览与搜索本机 Obsidian 笔记',
   'mod.office.label': '办公室',
-  'mod.office.desc': '像素办公室 · 同事实时动态',
+  'mod.office.desc': `像素办公室 · 同事实时动态 · 构建 ${typeof __DSH_PWB_BUILD__ === 'string' ? __DSH_PWB_BUILD__ : 'dev'}`,
 
   'pending.archive': '文件归档需要选定归档根目录（本机路径）。等你确认要浏览哪个目录，我接上 Host 侧的文件读取。',
   'mod.wip.label': '开发中…',

@@ -32,6 +32,10 @@ const result = await build({
   logLevel: 'info',
   // 待办看板的 Tailwind CSS 以文本形式内联进 bundle，运行时注入 <style>
   loader: { '.css': 'text' },
+  // 构建戳：注入 bundle，界面副标题显示，用来一眼判断浏览器跑的是哪一版
+  define: {
+    __DSH_PWB_BUILD__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ')),
+  },
 });
 
 let body = result.outputFiles[0].text;
