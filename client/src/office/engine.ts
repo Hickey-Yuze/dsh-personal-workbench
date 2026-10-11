@@ -130,10 +130,17 @@ export class OfficeEngine {
     );
   }
 
-  /** 延伸区感知 BFS（坐标可为负；地图内外统一 4 邻接）。 */
+  /**
+   * 延伸区感知 BFS（坐标可为负；地图内外统一 4 邻接）。
+   * 关键约束：起终点都在房间内时，寻路限制在房间内——否则外圈墙在 arena>0 时被 free() 当成「门口」，
+   * BFS 会为抄近路绕到房间外的沙地上，NPC 就会跑到屋外游荡（用户截图里的「人在房间外」）。
+   * 玩家点击房间外的延伸格时（to 在房间外）才启用全 arena 寻路。
+   */
   private path(from: Vec, to: Vec): Vec[] {
     if (from.x === to.x && from.y === to.y) return [];
     if (!this.free(from.x, from.y) || !this.free(to.x, to.y)) return [];
+    const inRoom = (v: Vec): boolean => v.x >= 0 && v.y >= 0 && v.x < MAP_W && v.y < MAP_H;
+    const bounded = inRoom(from) && inRoom(to);
     const w = MAP_W + this.arenaLeft + this.arenaRight;
     const h = MAP_H + this.arenaTop + this.arenaBottom;
     const start = (from.y + this.arenaTop) * w + (from.x + this.arenaLeft);
@@ -157,7 +164,11 @@ export class OfficeEngine {
       ];
       for (const [nx, ny] of nexts) {
         if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-        if (!this.free(nx - this.arenaLeft, ny - this.arenaTop)) continue;
+        const gx = nx - this.arenaLeft;
+        const gy = ny - this.arenaTop;
+        if (!this.free(gx, gy)) continue;
+        // 起终点都在房间内时：只走房间内的真实空格（外圈墙的「门口」与房间外一律不可通行）
+        if (bounded && !(gx >= 0 && gy >= 0 && gx < MAP_W && gy < MAP_H && this.blocked[gy * MAP_W + gx] === 0)) continue;
         const ni = ny * w + nx;
         if (seen[ni] === 1) continue;
         seen[ni] = 1;
