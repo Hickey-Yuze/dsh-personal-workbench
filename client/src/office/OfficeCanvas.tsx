@@ -227,9 +227,12 @@ export function OfficeCanvas({
     const offsetX = e.clientX - rect.left;
     const offsetY = e.clientY - rect.top;
     const v = viewRef.current ?? {};
+    // 注意：pickCell3d 内部会用 canvas.getBoundingClientRect() 自己换算 NDC，
+    // 所以这里必须传「视口坐标」clientX/clientY，不能传已经减过容器 rect 的 offsetX/offsetY
+    // —— 否则等于把 rect.left 减了两次，射线打到房间外，pickCell3d 返回 null，点地面没反应。
     const cell =
       char3d === true && !overlayFailed
-        ? pickCell3d(overlayRef.current as HTMLCanvasElement, offsetX, offsetY, {
+        ? pickCell3d(overlayRef.current as HTMLCanvasElement, e.clientX, e.clientY, {
             zoom: v.zoom !== undefined && Number.isFinite(v.zoom) && v.zoom > 0 ? v.zoom : 1,
             panX: v.panX !== undefined && Number.isFinite(v.panX) ? v.panX : 0,
             panY: v.panY !== undefined && Number.isFinite(v.panY) ? v.panY : 0,
