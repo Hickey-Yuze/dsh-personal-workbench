@@ -251,7 +251,9 @@ function buildDeskProps(f: Furniture, g: THREE.Group, deskW: number, deskD: numb
 function buildGlassCell(f: Furniture, g: THREE.Group, wallSet: Set<string>): void {
   const cx = f.x + 0.5, cz = f.y + 0.5;
   const hasX = wallSet.has(`${f.x - 1},${f.y}`) || wallSet.has(`${f.x + 1},${f.y}`);
-  const frame = mat(C_METAL, { rough: 0.5 });
+  // 框料用中灰而不是近黑的 C_METAL：近黑 + 每格竖梃会读成「黑栏杆/栅栏」；
+  // 参考图里玻璃隔断是「中灰细框 + 大块玻璃」。
+  const frame = mat('#7d8794', { rough: 0.55 });
   const glass = new THREE.MeshStandardMaterial({
     // 透明度 0.3 太透：整段玻璃在浅色背景上几乎看不见（用户反馈「有墙隔断，没有显示」）
     color: C_GLASS, roughness: 0.12, metalness: 0.05, transparent: true, opacity: 0.52, depthWrite: false,
