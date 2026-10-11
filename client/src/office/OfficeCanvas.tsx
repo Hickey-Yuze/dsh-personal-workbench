@@ -90,6 +90,9 @@ export function OfficeCanvas({
     let raf = 0;
     let last = performance.now();
     let acc = 0;
+    // 连续失败计数：单帧失败（如刚挂载时画布尺寸为 0 → 相机退化）不应永久回退 2D
+    let failStreak = 0;
+    const FAIL_LIMIT = 3;
     const loop = (now: number): void => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
@@ -141,12 +144,14 @@ export function OfficeCanvas({
                 bubbles: engine.bubbles,
                 dt,
               });
-              // 场景不可用（WebGL 创建失败 / 上下文丢失 / 相机退化 / 渲染出 0 个三角面）→ 回退 2D
-              // 用户截图里出现过「整片空白画布」：渲染器在跑、背景色正常，但什么都没画出来
-              if (!ok) setOverlayFailed(true);
+              // 场景不可用（WebGL 创建失败 / 上下文丢失 / 相机退化 / 渲染出 0 个三角面）
+              // → 连续 FAIL_LIMIT 帧都失败才永久回退 2D；单帧失败（画布刚挂载尺寸为 0）不算
+              if (ok) failStreak = 0;
+              else if (++failStreak >= FAIL_LIMIT) setOverlayFailed(true);
             } catch {
-              // 3D 渲染抛异常（WebGL 上下文丢失/几何异常）→ 永久回退 2D，而不是让 rAF 循环整体中断（表现为场景白屏卡死）
-              setOverlayFailed(true);
+              // 3D 渲染抛异常（WebGL 上下文丢失/几何异常）→ 同样连续失败才回退，
+              // 避免让 rAF 循环整体中断（表现为场景白屏卡死）
+              if (++failStreak >= FAIL_LIMIT) setOverlayFailed(true);
             }
           }
         } else {
