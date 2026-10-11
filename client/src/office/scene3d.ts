@@ -142,7 +142,7 @@ function floorTexture(): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(c);
   t.wrapS = THREE.RepeatWrapping;
   t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(80, 80);
+  t.repeat.set(MAP_W / 2, MAP_H / 2);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
@@ -355,15 +355,23 @@ function buildRoundTable(f: Furniture, g: THREE.Group): void {
 /** 由家具列表构建静态场景组（地板/底座/周墙/家具/工位椅）。 */
 function buildScene(s: Scene3D, furniture: Furniture[], boardMats: THREE.MeshStandardMaterial[]): THREE.Group {
   const g = new THREE.Group();
-  // 白底座（地图外扩 0.8 的裙边）
-  g.add(box(MAP_W + 1.6, 0.68, MAP_H + 1.6, mat(C_BASE, { rough: 0.8 }), MAP_W / 2, -0.36, MAP_H / 2, false));
-  // 大木地板（延伸走位区连续）
+  // 室外浅色台面（延伸走位区连续）：参考图里房间之外是干净浅色，不是木地板
+  const ground = new THREE.Mesh(
+    new THREE.BoxGeometry(200, 0.06, 200),
+    mat('#f3f1ee', { rough: 0.95 }),
+  );
+  ground.position.set(MAP_W / 2, -0.03, MAP_H / 2);
+  ground.receiveShadow = true;
+  g.add(ground);
+  // 厚白底座（房间外扩 0.8 的裙边；顶面与室外齐平 → 露出白边）
+  g.add(box(MAP_W + 1.6, 0.9, MAP_H + 1.6, mat(C_BASE, { rough: 0.8 }), MAP_W / 2, -0.45, MAP_H / 2, false));
+  // 房间木地板：只铺室内（参考图：木地板是房间的，不是整片沙漠）
   if (floorTex === null) floorTex = floorTexture();
   const floor = new THREE.Mesh(
-    new THREE.BoxGeometry(160, 0.04, 160),
+    new THREE.BoxGeometry(MAP_W + 0.04, 0.06, MAP_H + 0.04),
     new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.9, metalness: 0 }),
   );
-  floor.position.set(MAP_W / 2, -0.02, MAP_H / 2);
+  floor.position.set(MAP_W / 2, 0.01, MAP_H / 2);
   floor.receiveShadow = true;
   g.add(floor);
   // 拾取面（不可见，Raycaster 专用）：与地板同尺寸
@@ -372,7 +380,7 @@ function buildScene(s: Scene3D, furniture: Furniture[], boardMats: THREE.MeshSta
     new THREE.MeshBasicMaterial({ visible: false }),
   );
   pickFloor.rotation.x = -Math.PI / 2;
-  pickFloor.position.set(MAP_W / 2, 0.02, MAP_H / 2);
+  pickFloor.position.set(MAP_W / 2, 0.08, MAP_H / 2);
   pickFloor.userData.isPickFloor = true;
   g.add(pickFloor);
   // 两面周墙（rot=0 的背景面）：z=0 带窗 + x=0 素墙
