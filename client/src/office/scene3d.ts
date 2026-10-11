@@ -536,8 +536,11 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
         gx = desk.x + 0.5;
         gy = desk.y + 1.55;
         seatLift = 0.1; // 坐姿抬升：让臀部落在 Chair.glb 座面（约 0.37）上
-        // 面朝桌子中心：模型原生面朝 +z，rotation.y = atan2(dx, dz) 使 +z 指向桌心
-        sitFace = Math.atan2(desk.x + 1 - gx, desk.y + 1 - gy);
+        // 面朝显示器（比朝桌心更准）：显示器在桌面后缘 monZ = (desk.y+1) - deskD*0.5 + 0.16
+        const deskD = 0.61; // Table.glb 归一化后的深度
+        const monX = desk.x + 1;
+        const monZ = desk.y + 1 - deskD * 0.5 + 0.16;
+        sitFace = Math.atan2(monX - gx, monZ - gy);
       }
     }
     inst.obj.position.set(gx, seatLift, gy);
