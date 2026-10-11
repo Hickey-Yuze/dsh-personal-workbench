@@ -599,7 +599,7 @@ export class OfficeEngine {
     for (let tries = 0; tries < 12; tries++) {
       const x = 1 + Math.floor(Math.random() * (MAP_W - 2));
       const y = 1 + Math.floor(Math.random() * (MAP_H - 2));
-      if (!this.free(x, y)) continue;
+      if (!this.free(x, y) || this.blocked[y * MAP_W + x] !== 0) continue; // 只在房间内空格闲逛（延伸区不自主进入）
       if (x === c.cx && y === c.cy) continue;
       const path = this.path({ x: c.cx, y: c.cy }, { x, y });
       if (path.length === 0) continue;

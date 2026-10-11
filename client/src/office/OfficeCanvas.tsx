@@ -10,7 +10,7 @@ import type { OfficeEngine } from './engine.js';
 import { MAP_H, MAP_W } from './map.js';
 import { cellAtPoint, clampViewPan, renderOffice } from './renderer.js';
 import type { OfficeView } from './renderer.js';
-import { renderScene3d } from './scene3d.js';
+import { renderScene3d, pickCell3d } from './scene3d.js';
 import type { Vec } from './types.js';
 
 export function OfficeCanvas({
@@ -135,6 +135,7 @@ export function OfficeCanvas({
               panX: v.panX !== undefined && Number.isFinite(v.panX) ? v.panX : 0,
               panY: v.panY !== undefined && Number.isFinite(v.panY) ? v.panY : 0,
               rot: v.rot !== undefined && Number.isFinite(v.rot) ? v.rot : 0,
+              rotDeg: v.rotDeg !== undefined && Number.isFinite(v.rotDeg) ? v.rotDeg : 0,
               meeting: engine.meetingActive,
               bubbles: engine.bubbles,
               dt,
@@ -161,7 +162,7 @@ export function OfficeCanvas({
     const v = viewRef.current ?? {};
     // 右键 = 视角旋转（左右拖拽，每 90px 转 90°）；左键 = 平移
     if (e.button === 2) {
-      dragRef.current = { x: e.clientX, y: e.clientY, panX: v.panX ?? 0, panY: v.panY ?? 0, moved: false, rot: v.rot ?? 0, rotStartX: e.clientX };
+      dragRef.current = { x: e.clientX, y: e.clientY, panX: v.panX ?? 0, panY: v.panY ?? 0, moved: false, rot: v.rotDeg ?? 0, rotStartX: e.clientX };
     } else if (e.button === 0) {
       dragRef.current = { x: e.clientX, y: e.clientY, panX: v.panX ?? 0, panY: v.panY ?? 0, moved: false };
     } else return;
@@ -207,7 +208,17 @@ export function OfficeCanvas({
     const rect = host.getBoundingClientRect();
     const offsetX = e.clientX - rect.left;
     const offsetY = e.clientY - rect.top;
-    const cell = cellAtPoint(offsetX, offsetY, host.clientWidth, host.clientHeight, viewRef.current);
+    const v = viewRef.current ?? {};
+    const cell =
+      char3d === true && !overlayFailed
+        ? pickCell3d(overlayRef.current as HTMLCanvasElement, offsetX, offsetY, {
+            zoom: v.zoom !== undefined && Number.isFinite(v.zoom) && v.zoom > 0 ? v.zoom : 1,
+            panX: v.panX !== undefined && Number.isFinite(v.panX) ? v.panX : 0,
+            panY: v.panY !== undefined && Number.isFinite(v.panY) ? v.panY : 0,
+            rot: v.rot !== undefined && Number.isFinite(v.rot) ? v.rot : 0,
+            rotDeg: v.rotDeg !== undefined && Number.isFinite(v.rotDeg) ? v.rotDeg : 0,
+          })
+        : cellAtPoint(offsetX, offsetY, host.clientWidth, host.clientHeight, viewRef.current);
     if (cell !== null) onClickCell(cell);
   };
 

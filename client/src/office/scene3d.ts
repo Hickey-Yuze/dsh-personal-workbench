@@ -295,6 +295,15 @@ function buildScene(furniture: Furniture[], boardMats: THREE.MeshStandardMateria
   floor.position.set(MAP_W / 2, -0.02, MAP_H / 2);
   floor.receiveShadow = true;
   g.add(floor);
+  // 拾取面（不可见，Raycaster 专用）：与地板同尺寸
+  const pickFloor = new THREE.Mesh(
+    new THREE.PlaneGeometry(160, 160),
+    new THREE.MeshBasicMaterial({ visible: false }),
+  );
+  pickFloor.rotation.x = -Math.PI / 2;
+  pickFloor.position.set(MAP_W / 2, 0.02, MAP_H / 2);
+  pickFloor.userData.isPickFloor = true;
+  g.add(pickFloor);
   // 两面周墙（rot=0 的背景面）：z=0 带窗 + x=0 素墙
   const wallM = mat(C_WALL, { rough: 0.9 });
   g.add(box(MAP_W, 2.6, 0.16, wallM, MAP_W / 2, 1.3, -0.08));
@@ -370,6 +379,17 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
         if (model === null) return;
         // 骨骼蒙皮模型必须用 SkeletonUtils.clone（普通 clone 丢骨骼绑定 → 人物不可见）
         const clone = cloneSkeleton(model.group);
+        // 按员工染衣：gltf 内 shirt 色（#7f95b5 语义蓝）的材质替换为员工色
+        if (c.color !== '') {
+          clone.traverse((node) => {
+            if (node instanceof THREE.Mesh) {
+              const m = node.material as THREE.MeshStandardMaterial;
+              if (m !== null && typeof m.color?.getHexString === 'function' && m.color.getHexString() === '7f95b5') {
+                node.material = new THREE.MeshStandardMaterial({ color: c.color, roughness: 0.8, metalness: 0.04 });
+              }
+            }
+          });
+        }
         clone.scale.setScalar(CHAR_SCALE);
         clone.traverse((node) => {
           if (node instanceof THREE.Mesh) {
@@ -561,12 +581,82 @@ function drawBubbles(
   }
 }
 
+/* ───────────── 点击拾取（Raycaster） ───────────── */
+
+/** 3D 场景点击换算：屏幕 CSS 坐标 → 地图格（出 160 地板范围返回 null）。与渲染相机/旋转永远同步。 */
+export function pickCell3d(
+  canvas: HTMLCanvasElement,
+  cssX: number,
+  cssY: number,
+  opts: { zoom: number; panX: number; panY: number; rot: number; rotDeg?: number },
+): { x: number; y: number } | null {
+  const s = scenes.get(canvas);
+  if (s === undefined) return null;
+  const cssW = canvas.clientWidth || 800;
+  const cssH = canvas.clientHeight || 600;
+  const rect = canvas.getBoundingClientRect();
+  const ndc = new THREE.Vector2(
+    ((cssX - rect.left) / rect.width) * 2 - 1,
+    -((cssY - rect.top) / rect.height) * 2 + 1,
+  );
+  // 重建相机参数（与 renderScene3d 一致——用同一套 k/pan/lookAt）
+  const rot = ((Math.round(opts.rot) % 4) + 4) % 4;
+  const dims = rot % 2 === 1 ? { w: MAP_H, h: MAP_W } : { w: MAP_W, h: MAP_H };
+  const k = Math.min(cssW / (dims.w + dims.h), (cssH * 2) / (dims.w + dims.h)) * opts.zoom;
+  const P = Math.SQRT2 * k;
+  s.camera.left = -cssW / (2 * P);
+  s.camera.right = cssW / (2 * P);
+  s.camera.top = cssH / (2 * P);
+  s.camera.bottom = -cssH / (2 * P);
+  const panX = Number.isFinite(opts.panX) ? opts.panX : 0;
+  const panY = Number.isFinite(opts.panY) ? opts.panY : 0;
+  const rotRad = opts.rotDeg !== undefined && Number.isFinite(opts.rotDeg)
+    ? -(opts.rotDeg * Math.PI) / 180
+    : -(((Math.round(opts.rot) % 4) + 4) % 4) * (Math.PI / 2);
+  const R2 = Math.SQRT1_2;
+  const rxv = new THREE.Vector3(R2, 0, -R2).applyAxisAngle(new THREE.Vector3(0, 1, 0), rotRad);
+  const dzv = new THREE.Vector3(R2, 0, R2).applyAxisAngle(new THREE.Vector3(0, 1, 0), rotRad);
+  const tx = MAP_W / 2 - (panX * rxv.x + panY * dzv.x) / P;
+  const tz = MAP_H / 2 - (panX * rxv.z + panY * dzv.z) / P;
+  const D = 120;
+  s.camera.position.set(tx + D * 0.866 * R2, D * 0.5, tz + D * 0.866 * R2);
+  s.camera.lookAt(tx, 0, tz);
+  s.camera.updateProjectionMatrix();
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(ndc, s.camera);
+  const hits = ray.intersectObjects(s.pivot.children, true);
+  for (const hit of hits) {
+    // 命中拾取面 → 直接格坐标
+    if ((hit.object.userData as { isPickFloor?: boolean }).isPickFloor === true) {
+      const gx = Math.floor(hit.point.x);
+      const gy = Math.floor(hit.point.z);
+      if (gx < 0 || gy < 0 || gx >= MAP_W || gy >= MAP_H) return null;
+      return { x: gx, y: gy };
+    }
+    // 命中家具/墙等实体的顶面也换算（人物脚下不在地板时点击人物=点他所在格）
+    if (hit.face !== null && hit.point.y > 0.02 && hit.point.y < 2.6) {
+      // 非地板实体命中：取命中点在 XZ 的格（世界未旋转系需逆旋转）
+      const inv = -rotRad;
+      const cxw = hit.point.x - MAP_W / 2;
+      const czw = hit.point.z - MAP_H / 2;
+      const wx = cxw * Math.cos(inv) - czw * Math.sin(inv) + MAP_W / 2;
+      const wz = cxw * Math.sin(inv) + czw * Math.cos(inv) + MAP_H / 2;
+      const gx = Math.floor(wx);
+      const gy = Math.floor(wz);
+      if (gx < 0 || gy < 0 || gx >= MAP_W || gy >= MAP_H) return null;
+      return { x: gx, y: gy };
+    }
+  }
+  return null;
+}
+
 /* ───────────── 主入口 ───────────── */
 export type Scene3DOpts = {
   zoom: number;
   panX: number;
   panY: number;
   rot: number;
+  rotDeg?: number;
   meeting: boolean;
   bubbles: Map<string, { text: string; until: number }>;
 };
@@ -610,7 +700,11 @@ export function renderScene3d(
     s.sun.position.set(MAP_W / 2 - 18, 30, MAP_H / 2 + 14);
     s.sun.target.position.set(MAP_W / 2, 0, MAP_H / 2);
   }
-  s.pivot.rotation.y = -(((Math.round(opts.rot) % 4) + 4) % 4) * (Math.PI / 2);
+  // 旋转：rotDeg（连续角度，拖拽）优先；否则 rot（90° 步进）
+  const rotRad = opts.rotDeg !== undefined && Number.isFinite(opts.rotDeg)
+    ? -(opts.rotDeg * Math.PI) / 180
+    : -(((Math.round(opts.rot) % 4) + 4) % 4) * (Math.PI / 2);
+  s.pivot.rotation.y = rotRad;
 
   // 相机：方位 45°/仰角 30° 正交；k 由 zoom 推出（与 2D isoFit 同式）
   const rot = ((Math.round(opts.rot) % 4) + 4) % 4;
