@@ -204,20 +204,25 @@ function placeFurnModel(s: Scene3D, kind: string, cx: number, cz: number, target
   return true;
 }
 
-function buildDesk(f: Furniture, g: THREE.Group): void {
+/** 几何桌体（Table.glb 未就绪时的兜底：桌面 + 腿板 + 抽屉柜）。 */
+function buildDeskShell(f: Furniture, g: THREE.Group): void {
   const cx = f.x + 1, cz = f.y + 1; // 2×2 中心
   const white = mat(C_WHITE, { rough: 0.6 });
   g.add(box(2, 0.1, 1.3, white, cx, 0.75, cz - 0.15));
   g.add(box(0.08, 0.72, 1.3, white, cx - 0.96, 0.36, cz - 0.15));
   g.add(box(0.08, 0.72, 1.3, white, cx + 0.96, 0.36, cz - 0.15));
   g.add(box(0.55, 0.55, 1.1, mat(C_WHITE2), cx + 0.55, 0.28, cz - 0.15));
-  // 显示器（屏面朝 +z，坐姿在桌前 z+ 侧）
-  g.add(box(0.3, 0.05, 0.2, mat(C_WHITE2), cx - 0.3, 0.83, cz - 0.35));
-  g.add(box(0.06, 0.22, 0.06, mat(C_WHITE2), cx - 0.3, 0.95, cz - 0.35));
-  const bezel = box(0.74, 0.48, 0.05, mat('#e8eaed'), cx - 0.3, 1.28, cz - 0.42);
-  g.add(bezel);
-  g.add(box(0.64, 0.38, 0.03, mat('#2f3438', { rough: 0.35 }), cx - 0.3, 1.28, cz - 0.39));
-  g.add(box(0.44, 0.03, 0.15, mat('#eceff2'), cx - 0.3, 0.82, cz + 0.15));
+}
+
+/** 桌面陈设：显示器（屏面朝 +z，坐姿在桌前 z+ 侧）+ 键盘。GLB 桌面同样叠加。 */
+function buildDeskProps(f: Furniture, g: THREE.Group): void {
+  const cx = f.x + 1, cz = f.y + 1;
+  const topY = 0.0; // 桌面高度差（几何桌 0.75 / Table.glb 0.78 近似，取 0 通用）
+  g.add(box(0.3, 0.05, 0.2, mat(C_WHITE2), cx - 0.3, 0.83 + topY, cz - 0.35));
+  g.add(box(0.06, 0.22, 0.06, mat(C_WHITE2), cx - 0.3, 0.95 + topY, cz - 0.35));
+  g.add(box(0.74, 0.48, 0.05, mat('#e8eaed'), cx - 0.3, 1.28 + topY, cz - 0.42));
+  g.add(box(0.64, 0.38, 0.03, mat('#2f3438', { rough: 0.35 }), cx - 0.3, 1.28 + topY, cz - 0.39));
+  g.add(box(0.44, 0.03, 0.15, mat('#eceff2'), cx - 0.3, 0.82 + topY, cz + 0.15));
 }
 
 function buildGlassCell(f: Furniture, g: THREE.Group, wallSet: Set<string>): void {
@@ -382,8 +387,9 @@ function buildScene(s: Scene3D, furniture: Furniture[], boardMats: THREE.MeshSta
   const wallSet = new Set(furniture.filter((f) => f.kind === 'wall').map((f) => `${f.x},${f.y}`));
   for (const f of furniture) {
     if (f.kind === 'desk') {
-      // 办公桌：Table.glb（棕木桌）优先；就绪前用几何桌
-      if (!placeFurnModel(s, 'desk', f.x + 1, f.y + 1, 0.78, 0, g)) buildDesk(f, g);
+      // 办公桌：Table.glb（棕木桌）优先；就绪前用几何桌。桌面陈设（显示器/键盘）两种情况下都叠加
+      if (!placeFurnModel(s, 'desk', f.x + 1, f.y + 1, 0.78, 0, g)) buildDeskShell(f, g);
+      buildDeskProps(f, g);
       // 工位椅（椅背在 +z，人坐椅上）：Chair.glb 优先，回退几何椅
       const chx = f.x + 0.5, chz = f.y + 1.5;
       if (!placeFurnModel(s, 'chair', chx, chz + 0.1, 0.62, Math.PI, g)) {
@@ -770,7 +776,10 @@ export function renderScene3d(
 
   // 家具 GLB：先把用到的都请求起来（就绪数变化 → 重建场景以替换几何体）
   for (const f of furniture) {
-    if (f.kind === 'desk' || f.kind === 'plant' || f.kind === 'microwave' || f.kind === 'fridge') {
+    if (f.kind === 'desk') {
+      requestFurnModel(s, 'desk');
+      requestFurnModel(s, 'chair'); // 工位椅：desk 分支同时摆放，必须一起请求
+    } else if (f.kind === 'plant' || f.kind === 'microwave' || f.kind === 'fridge') {
       requestFurnModel(s, f.kind);
     }
   }
