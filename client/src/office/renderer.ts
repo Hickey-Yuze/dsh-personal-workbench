@@ -97,6 +97,9 @@ function resolveView(view?: OfficeView): { zoom: number; panX: number; panY: num
  * pan 围绕 0 对称 ±(box-css)/2——放大后边缘恰好贴到画布边缘；小于画布锁定 0。
  */
 export function clampViewPan(panX: number, panY: number, zoom: number, cssW: number, cssH: number, rot = 0): { panX: number; panY: number } {
+  // 视口尺寸拿不到时（canvas 尚未布局 / clientWidth 为 0）k 会算成 0，slack 随之变 0 →
+  // pan 被强行钳到 0，表现就是「怎么拖都不动」。此时直接放行，不钳制。
+  if (!Number.isFinite(cssW) || !Number.isFinite(cssH) || cssW <= 0 || cssH <= 0) return { panX, panY };
   const { w, h } = rotDims(rot);
   const k = Math.min(cssW / (w + h), (cssH * 2) / (w + h)) * zoom;
   const mapW = k * (w + h);
@@ -105,8 +108,8 @@ export function clampViewPan(panX: number, panY: number, zoom: number, cssW: num
   // 原来只在 map 比视口大时才给 slack（= (mapW-cssW)/2），放到最大后左上角/墙顶永远拖不到
   // （用户两次反馈「放到最大，左上角的无法拖动看到」「还是看不到左上角」）。
   // 纵向再补 k*3.5：墙体(2.6)与人物(1.75) 的高度投影会让内容超出「地板菱形」的上沿。
-  const slackX = mapW / 2 + k * 1.5;
-  const slackY = mapH / 2 + k * 3.5;
+  const slackX = mapW + k * 3;
+  const slackY = mapH + k * 3;
   const cx = Math.min(Math.max(panX, -slackX), slackX);
   const cy = Math.min(Math.max(panY, -slackY), slackY);
   return { panX: cx, panY: cy };

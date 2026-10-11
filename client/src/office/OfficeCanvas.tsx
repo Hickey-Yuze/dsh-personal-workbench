@@ -49,8 +49,15 @@ export function OfficeCanvas({
     (zoom: number, panX: number, panY: number): void => {
       const canvas = overlayRef.current ?? canvasRef.current;
       if (canvas === null) return;
-      const clamped = clampViewPan(panX, panY, zoom, canvas.clientWidth, canvas.clientHeight, viewRef.current?.rot);
-      onViewChangeRef.current?.({ zoom, ...clamped });
+      const cur = viewRef.current ?? {};
+      const clamped = clampViewPan(panX, panY, zoom, canvas.clientWidth, canvas.clientHeight, cur.rot);
+      // 保留旋转：原来只回传 { zoom, panX, panY }，会把 rot/rotDeg 抹掉 → 拖动一次视角旋转就丢
+      onViewChangeRef.current?.({
+        zoom,
+        ...clamped,
+        ...(cur.rot !== undefined ? { rot: cur.rot } : {}),
+        ...(cur.rotDeg !== undefined ? { rotDeg: cur.rotDeg } : {}),
+      });
     },
     [],
   );
