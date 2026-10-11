@@ -97,6 +97,11 @@ function resolveView(view?: OfficeView): { zoom: number; panX: number; panY: num
  * pan 围绕 0 对称 ±(box-css)/2——放大后边缘恰好贴到画布边缘；小于画布锁定 0。
  */
 export function clampViewPan(panX: number, panY: number, zoom: number, cssW: number, cssH: number, rot = 0): { panX: number; panY: number } {
+  // 【临时】彻底关掉平移钳制：先前四轮（fe4000d→3efbcef→59c7ddc→62af393）都在调 slack，
+  // 用户仍报「放到最大看不到左上角」。直接把钳制拿掉，用来判定问题到底是「范围不够」
+  // 还是「拖拽根本没生效」。用户可用工具条第 4 个按钮「⭯ 复位视角」（setOfficeView({})）回正中。
+  return { panX, panY };
+  // eslint-disable-next-line no-unreachable
   // 视口尺寸拿不到时（canvas 尚未布局 / clientWidth 为 0）k 会算成 0，slack 随之变 0 →
   // pan 被强行钳到 0，表现就是「怎么拖都不动」。此时直接放行，不钳制。
   if (!Number.isFinite(cssW) || !Number.isFinite(cssH) || cssW <= 0 || cssH <= 0) return { panX, panY };
