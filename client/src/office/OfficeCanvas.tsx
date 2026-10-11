@@ -44,10 +44,10 @@ export function OfficeCanvas({
   const dragRef = useRef<{ x: number; y: number; panX: number; panY: number; moved: boolean; rot?: number; rotStartX?: number } | null>(null);
   const suppressClickRef = useRef(false);
 
-  /** 应用一次视口变更（钳制后交给父组件；3D/2D 各自钳制语义）。 */
+  /** 应用一次视口变更（钳制后交给父组件）。尺寸基准：3D 用 WebGL 画布，2D 用主画布。 */
   const applyView = useCallback(
     (zoom: number, panX: number, panY: number): void => {
-      const canvas = canvasRef.current;
+      const canvas = overlayRef.current ?? canvasRef.current;
       if (canvas === null) return;
       const clamped = clampViewPan(panX, panY, zoom, canvas.clientWidth, canvas.clientHeight, viewRef.current?.rot);
       onViewChangeRef.current?.({ zoom, ...clamped });
