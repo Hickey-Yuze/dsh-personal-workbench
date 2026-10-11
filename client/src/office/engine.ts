@@ -194,7 +194,7 @@ export class OfficeEngine {
         face: 1,
         path: [],
         state: 'working',
-        stateUntil: rand(6, 18),
+        stateUntil: rand(30, 60), // 初始在工位待久（原来 6-18s，一进场景就有人开始乱走）
         intent: null,
         deskId: desk.id,
         phase: Math.random() * Math.PI * 2,
@@ -520,10 +520,11 @@ export class OfficeEngine {
   }
 
   private decide(c: Character): void {
+    // 概率偏向「回工位工作」：参考图观感是全员在工位，只有少数人在走动/喝咖啡/串门
     const r = Math.random();
-    if (r < 0.5 && this.goWork(c)) return;
-    if (r < 0.68 && this.goCoffee(c)) return;
-    if (r < 0.85 && this.goVisit(c)) return;
+    if (r < 0.75 && this.goWork(c)) return;
+    if (r < 0.85 && this.goCoffee(c)) return;
+    if (r < 0.93 && this.goVisit(c)) return;
     this.goWander(c); // 兜底：闲逛总能走
   }
 
@@ -538,7 +539,7 @@ export class OfficeEngine {
     if (this.occupied(c, chair.x, chair.y)) return false;
     if (c.cx === chair.x && c.cy === chair.y) {
       c.state = 'working';
-      c.stateUntil = this.time + rand(14, 34);
+      c.stateUntil = this.time + rand(24, 50); // 在工位待久一点（原来 14-34s 太短，场景里总有人在乱走）
       this.mumble(c);
       return true;
     }
