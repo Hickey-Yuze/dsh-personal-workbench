@@ -1848,6 +1848,8 @@ html { color-scheme: light !important; }
   border-radius: 12px;
   background: var(--pwb-card);
   min-height: 0;
+  /* max-height 兜底：编辑器父级高度不确定时，目录自己滚动，提示文字不会外溢压住「员工入职」行 */
+  max-height: min(58vh, 520px);
   overflow-y: auto;
 }
 .dsh-pwb-office-ed-catalog-title { font-size: 12.5px; font-weight: 700; color: var(--pwb-text); }
