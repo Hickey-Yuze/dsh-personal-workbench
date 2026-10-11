@@ -11,7 +11,7 @@
 import * as THREE from 'three';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { MAP_H, MAP_W } from './map.js';
-import { loadCharModel, modelForChar } from './objModels.js';
+import { loadCharModel, loadObjModel, modelForChar } from './objModels.js';
 import type { AnimationAction } from 'three';
 import type { Character, Furniture } from './types.js';
 
@@ -46,6 +46,9 @@ type Scene3D = {
   requested: Set<string>;
   meeting: boolean;
   lastDt: number; // 上一帧 dt（AnimationMixer 推进用）
+  furnModels: Map<string, THREE.Group | null>; // 家具 GLB 缓存（name → group，null=失败）
+  furnRequested: Set<string>;
+  furnVersion: number; // 家具模型就绪数变化 → 重建场景
 };
 
 const scenes = new WeakMap<HTMLCanvasElement, Scene3D>();
@@ -85,6 +88,7 @@ function ensureScene(canvas: HTMLCanvasElement): Scene3D | null {
     s = {
       renderer, scene, camera, pivot, sun, charGroup,
       boardMats: [], sceneKey: '', sceneGroup: null, instances: new Map(), loaded: new Map(), requested: new Set(), meeting: false, lastDt: 0.016,
+      furnModels: new Map(), furnRequested: new Set(), furnVersion: 0,
     };
     scenes.set(canvas, s);
     return s;
@@ -140,6 +144,59 @@ function floorTexture(): THREE.CanvasTexture {
 let floorTex: THREE.CanvasTexture | null = null;
 
 /* ───────────── 家具构建 ───────────── */
+
+/** 家具 GLB：kind → 文件名（assets/models）。 */
+const FURN_GLB: Partial<Record<string, string>> = {
+  chair: 'Chair.glb',
+  roundtable: 'Table.glb',
+  plant: 'Plant.glb',
+  microwave: 'Microwave.glb',
+  fridge: 'Fridge.glb',
+};
+
+/** 请求一个家具模型（缓存；就绪时 furnVersion++ 触发场景重建）。 */
+function requestFurnModel(s: Scene3D, kind: string): void {
+  const file = FURN_GLB[kind];
+  if (file === undefined || s.furnModels.has(file) || s.furnRequested.has(file)) return;
+  s.furnRequested.add(file);
+  void loadObjModel(file).then((m) => {
+    s.furnModels.set(file, m !== null ? m.group : null);
+    s.furnVersion += 1;
+  });
+}
+
+/** 把家具 GLB 摆进格子：归一化（最高维度 → target 尺寸）、脚底落地、居中。 */
+function placeFurnModel(s: Scene3D, kind: string, cx: number, cz: number, targetH: number, rotY: number, parent: THREE.Group): boolean {
+  const file = FURN_GLB[kind];
+  if (file === undefined) return false;
+  const cached = s.furnModels.get(file);
+  if (cached === undefined || cached === null) return false;
+  const inst = cached;
+  // 包围盒
+  const bbox = new THREE.Box3().setFromObject(inst);
+  const size = bbox.getSize(new THREE.Vector3());
+  const h = Math.max(0.01, size.y);
+  const sScale = targetH / h;
+  const clone = inst;
+  const wrap = new THREE.Group();
+  const inner = new THREE.Group();
+  inner.add(clone);
+  inner.scale.setScalar(sScale);
+  const ccx = (bbox.min.x + bbox.max.x) / 2;
+  const ccz = (bbox.min.z + bbox.max.z) / 2;
+  inner.position.set(-ccx * sScale, -bbox.min.y * sScale, -ccz * sScale);
+  wrap.add(inner);
+  wrap.position.set(cx, 0, cz);
+  wrap.rotation.y = rotY;
+  wrap.traverse((node) => {
+    if (node instanceof THREE.Mesh) {
+      node.castShadow = true;
+      node.receiveShadow = true;
+    }
+  });
+  parent.add(wrap);
+  return true;
+}
 
 function buildDesk(f: Furniture, g: THREE.Group): void {
   const cx = f.x + 1, cz = f.y + 1; // 2×2 中心
@@ -282,7 +339,7 @@ function buildRoundTable(f: Furniture, g: THREE.Group): void {
 }
 
 /** 由家具列表构建静态场景组（地板/底座/周墙/家具/工位椅）。 */
-function buildScene(furniture: Furniture[], boardMats: THREE.MeshStandardMaterial[]): THREE.Group {
+function buildScene(s: Scene3D, furniture: Furniture[], boardMats: THREE.MeshStandardMaterial[]): THREE.Group {
   const g = new THREE.Group();
   // 白底座（地图外扩 0.8 的裙边）
   g.add(box(MAP_W + 1.6, 0.68, MAP_H + 1.6, mat(C_BASE, { rough: 0.8 }), MAP_W / 2, -0.36, MAP_H / 2, false));
@@ -320,21 +377,46 @@ function buildScene(furniture: Furniture[], boardMats: THREE.MeshStandardMateria
   for (const f of furniture) {
     if (f.kind === 'desk') {
       buildDesk(f, g);
-      // 工位椅（椅背在 +z，人坐椅上）
+      // 工位椅（椅背在 +z，人坐椅上）：Chair.glb 优先，回退几何椅
       const chx = f.x + 0.5, chz = f.y + 1.5;
-      g.add(box(0.46, 0.07, 0.46, mat('#dfe4ea', { rough: 0.7 }), chx, 0.42, chz + 0.12));
-      g.add(box(0.46, 0.52, 0.06, mat('#dfe4ea', { rough: 0.7 }), chx, 0.72, chz + 0.36));
-      g.add(box(0.06, 0.4, 0.06, mat('#c3c9d0'), chx, 0.2, chz + 0.12));
+      if (!placeFurnModel(s, 'chair', chx, chz + 0.1, 0.62, Math.PI, g)) {
+        g.add(box(0.46, 0.07, 0.46, mat('#dfe4ea', { rough: 0.7 }), chx, 0.42, chz + 0.12));
+        g.add(box(0.46, 0.52, 0.06, mat('#dfe4ea', { rough: 0.7 }), chx, 0.72, chz + 0.36));
+        g.add(box(0.06, 0.4, 0.06, mat('#c3c9d0'), chx, 0.2, chz + 0.12));
+      }
       continue;
     }
     if (f.kind === 'whiteboard') { buildWhiteboard(f, g, boardMats); continue; }
-    if (f.kind === 'plant') { buildPlant(f, g); continue; }
+    if (f.kind === 'plant') {
+      if (!placeFurnModel(s, 'plant', f.x + 0.5, f.y + 0.5, 1.15, 0, g)) buildPlant(f, g);
+      continue;
+    }
     if (f.kind === 'coffee') { buildCoffee(f, g); continue; }
-    if (f.kind === 'microwave') { buildMicrowave(f, g); continue; }
-    if (f.kind === 'fridge') { buildFridge(f, g); continue; }
+    if (f.kind === 'microwave') {
+      if (!placeFurnModel(s, 'microwave', f.x + 0.5, f.y + 0.5, 0.55, 0, g)) buildMicrowave(f, g);
+      continue;
+    }
+    if (f.kind === 'fridge') {
+      if (!placeFurnModel(s, 'fridge', f.x + 0.5, f.y + 0.5, 1.55, 0, g)) buildFridge(f, g);
+      continue;
+    }
     if (f.kind === 'cabinet') { buildCabinet(f, g); continue; }
     if (f.kind === 'carpet') { buildCarpet(f, g); continue; }
-    if (f.kind === 'roundtable') { buildRoundTable(f, g); continue; }
+    if (f.kind === 'roundtable') {
+      // Table.glb 是矩形桌（0.5 maxDim → 拉到 1.9 宽），只替换桌面几何仍配四凳
+      if (placeFurnModel(s, 'roundtable', f.x + 1, f.y + 1, 0.82, Math.PI / 4, g)) {
+        // GLB 桌 + 原凳（保留圆凳）
+        for (const dz of [-1.05, 1.05]) {
+          const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.16, 0.42, 10), mat(C_WHITE2));
+          stool.position.set(f.x + 1 + 0.6 * Math.sign(dz) * 0.2, 0.21, f.y + 1 + dz);
+          stool.castShadow = true;
+          g.add(stool);
+        }
+      } else {
+        buildRoundTable(f, g);
+      }
+      continue;
+    }
     // wall 已在 wallSet 循环里建过
   }
   return g;
@@ -684,13 +766,20 @@ export function renderScene3d(
   if (canvas.width !== pxW || canvas.height !== pxH) s.renderer.setSize(cssW, cssH, false);
   s.renderer.setPixelRatio(dpr);
 
-  // 静态场景：家具内容指纹变了才重建
-  const key = JSON.stringify(furniture);
+  // 家具 GLB：先把用到的都请求起来（就绪数变化 → 重建场景以替换几何体）
+  for (const f of furniture) {
+    if (f.kind === 'desk' || f.kind === 'roundtable' || f.kind === 'plant' || f.kind === 'microwave' || f.kind === 'fridge') {
+      requestFurnModel(s, f.kind === 'desk' ? 'chair' : f.kind);
+    }
+  }
+
+  // 静态场景：家具内容指纹（含模型就绪版本）变了才重建
+  const key = `${JSON.stringify(furniture)}@${s.furnVersion}`;
   if (key !== s.sceneKey || s.sceneGroup === null) {
     s.sceneKey = key;
     if (s.sceneGroup !== null) s.pivot.remove(s.sceneGroup);
     s.boardMats.length = 0;
-    s.sceneGroup = buildScene(furniture, s.boardMats);
+    s.sceneGroup = buildScene(s, furniture, s.boardMats);
     s.pivot.add(s.sceneGroup);
     // 工位索引（坐姿吸附用）
     const desks = new Map<string, Furniture>();
