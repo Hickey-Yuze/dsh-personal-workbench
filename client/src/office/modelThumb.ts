@@ -45,8 +45,8 @@ function ensure(size: number): typeof ctx {
 }
 
 /** 渲染模型缩略图；失败返回 null。同一 file+mode+size 只渲一次（进程内缓存）。 */
-export async function modelThumb(file: string, mode: ThumbMode = 'bust', size = 128): Promise<string | null> {
-  const key = `${mode}:${size}:${file}`;
+export async function modelThumb(file: string, mode: ThumbMode = 'bust', size = 128, charName = ''): Promise<string | null> {
+  const key = `${mode}:${size}:${file}:${charName}`;
   const hit = cache.get(key);
   if (hit !== undefined) return hit;
   const c = ensure(size);
@@ -54,7 +54,8 @@ export async function modelThumb(file: string, mode: ThumbMode = 'bust', size = 
     cache.set(key, null);
     return null;
   }
-  const model = await loadCharModel(file);
+  // 传 charName 时按员工色染衣，头像与场景里看到的长相一致
+  const model = await loadCharModel(file, charName === '' ? undefined : charName);
   if (model === null) {
     cache.set(key, null);
     return null;

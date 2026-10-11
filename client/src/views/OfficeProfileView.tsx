@@ -150,15 +150,15 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved }: 
     [builtin],
   );
 
-  /* 员工头像：用模型渲半身图（失败保持文字头像回退） */
+  /* 员工头像：用模型渲半身图（失败保持文字头像回退）；键为角色 id */
   useEffect(() => {
     let alive = true;
-    const files = new Set<string>();
-    for (const c of chars) files.add(modelOf(c.id, c.name));
-    void Promise.all([...files].map(async (f) => [f, await modelThumb(f, 'bust', 96)] as const)).then((pairs) => {
+    void Promise.all(
+      chars.map(async (c) => [c.id, await modelThumb(modelOf(c.id, c.name), 'bust', 96, c.name)] as const),
+    ).then((pairs) => {
       if (!alive) return;
       const next: Record<string, string> = {};
-      for (const [f, url] of pairs) if (url !== null) next[f] = url;
+      for (const [id, url] of pairs) if (url !== null) next[id] = url;
       setThumbs(next);
     });
     return () => {
@@ -176,13 +176,13 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved }: 
         alive = false;
       };
     }
-    void modelThumb(previewFile, 'full', 160).then((url) => {
+    void modelThumb(previewFile, 'full', 160, sel?.name ?? '').then((url) => {
       if (alive) setPreview(url ?? '');
     });
     return () => {
       alive = false;
     };
-  }, [previewFile]);
+  }, [previewFile, sel?.name]);
 
   const refreshMemory = useCallback(async (id: string): Promise<void> => {
     try {
@@ -250,8 +250,8 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved }: 
           const active = c.id === sel.id;
           return (
             <button key={c.id} type="button" className={`dsh-pwb-office-prof-item${active ? ' dsh-pwb-office-prof-item-active' : ''}`} onClick={() => setSelId(c.id)}>
-              {thumbs[modelOf(c.id, c.name)] !== undefined ? (
-                <img className="dsh-pwb-office-prof-avatar dsh-pwb-office-prof-avatar-img" src={thumbs[modelOf(c.id, c.name)]} alt="" />
+              {thumbs[c.id] !== undefined ? (
+                <img className="dsh-pwb-office-prof-avatar dsh-pwb-office-prof-avatar-img" src={thumbs[c.id]} alt="" />
               ) : (
                 <span className="dsh-pwb-office-prof-avatar" style={{ background: avatarColor(c.id) }}>
                   {c.name.slice(0, 1)}
@@ -276,10 +276,10 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved }: 
 
       <section className="dsh-pwb-office-prof-card">
         <div className="dsh-pwb-office-prof-head">
-          {thumbs[modelOf(sel.id, sel.name)] !== undefined ? (
+          {thumbs[sel.id] !== undefined ? (
             <img
               className="dsh-pwb-office-prof-avatar dsh-pwb-office-prof-avatar-img"
-              src={thumbs[modelOf(sel.id, sel.name)]}
+              src={thumbs[sel.id]}
               alt=""
               style={{ width: 44, height: 44, borderRadius: 14 }}
             />
