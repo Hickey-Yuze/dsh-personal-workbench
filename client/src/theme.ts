@@ -1977,6 +1977,11 @@ html { color-scheme: light !important; }
   font-size: 13px;
   flex-shrink: 0;
 }
+.dsh-pwb-office-prof-avatar-img { object-fit: cover; background: rgba(20, 20, 30, 0.05); }
+.dsh-pwb-office-prof-mpreview { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.dsh-pwb-office-prof-mpreview-img { width: 104px; height: 104px; border-radius: 14px; object-fit: contain; background: rgba(20, 20, 30, 0.04); }
+.dsh-pwb-office-prof-mpreview-empty { width: 104px; height: 104px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; opacity: 0.5; background: rgba(20, 20, 30, 0.04); }
+.dsh-pwb-office-prof-mpreview-name { font-size: 12px; opacity: 0.6; }
 .dsh-pwb-office-prof-item-name { font-size: 13px; font-weight: 650; color: var(--pwb-text); }
 .dsh-pwb-office-prof-item-role { font-size: 11px; color: var(--pwb-dim); }
 .dsh-pwb-office-prof-item-state { margin-left: auto; display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--pwb-dim); flex-shrink: 0; }

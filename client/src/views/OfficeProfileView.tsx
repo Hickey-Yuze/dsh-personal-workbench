@@ -8,6 +8,8 @@ import type { ReactElement } from 'react';
 import { addMemoryNote, clearMemory, fetchMemory, listAssetFiles, removeMemoryNote, saveBuiltin } from '../office/agentClient.js';
 import type { BuiltinOverride, MemoryNote, RosterEntry } from '../office/agentClient.js';
 import { BUILTIN_STAFF } from '../office/engine.js';
+import { modelForChar } from '../office/objModels.js';
+import { modelThumb } from '../office/modelThumb.js';
 import type { MemberStat } from '../office/types.js';
 
 /** 能力维度（与宿主 OFFICE_SKILL_DIMS 顺序一致）。 */
@@ -65,6 +67,10 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved }: 
   const [draft, setDraft] = useState<Draft>({ persona: '', links: [], skills: {}, avatar: '' });
   /** 可选 3D 人物模型（assets/models 下的 .gltf/.glb）。 */
   const [models, setModels] = useState<string[]>([]);
+  /** 模型头像（文件名 → dataURL）：员工列表/档案头与选型预览共用。 */
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
+  /** 当前选中模型的全身预览图。 */
+  const [preview, setPreview] = useState('');
   const [linkInput, setLinkInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState(''); // '' | '已保存 ✓' | 错误文案
@@ -135,6 +141,49 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved }: 
     };
   }, []);
 
+  /** 员工实际会用的模型文件：档案指定 > 名字自动分配。 */
+  const modelOf = useCallback(
+    (id: string, name: string): string => {
+      const av = builtin[id]?.avatar;
+      return typeof av === 'string' && av !== '' ? av : modelForChar(name);
+    },
+    [builtin],
+  );
+
+  /* 员工头像：用模型渲半身图（失败保持文字头像回退） */
+  useEffect(() => {
+    let alive = true;
+    const files = new Set<string>();
+    for (const c of chars) files.add(modelOf(c.id, c.name));
+    void Promise.all([...files].map(async (f) => [f, await modelThumb(f, 'bust', 96)] as const)).then((pairs) => {
+      if (!alive) return;
+      const next: Record<string, string> = {};
+      for (const [f, url] of pairs) if (url !== null) next[f] = url;
+      setThumbs(next);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [chars, modelOf]);
+
+  /* 选型预览：跟随下拉（未指定时预览该员工自动分配的模型） */
+  const previewFile = draft.avatar !== '' ? draft.avatar : sel !== undefined ? modelForChar(sel.name) : '';
+  useEffect(() => {
+    let alive = true;
+    if (previewFile === '') {
+      setPreview('');
+      return () => {
+        alive = false;
+      };
+    }
+    void modelThumb(previewFile, 'full', 160).then((url) => {
+      if (alive) setPreview(url ?? '');
+    });
+    return () => {
+      alive = false;
+    };
+  }, [previewFile]);
+
   const refreshMemory = useCallback(async (id: string): Promise<void> => {
     try {
       setNotes(await fetchMemory(id));
@@ -201,9 +250,13 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved }: 
           const active = c.id === sel.id;
           return (
             <button key={c.id} type="button" className={`dsh-pwb-office-prof-item${active ? ' dsh-pwb-office-prof-item-active' : ''}`} onClick={() => setSelId(c.id)}>
-              <span className="dsh-pwb-office-prof-avatar" style={{ background: avatarColor(c.id) }}>
-                {c.name.slice(0, 1)}
-              </span>
+              {thumbs[modelOf(c.id, c.name)] !== undefined ? (
+                <img className="dsh-pwb-office-prof-avatar dsh-pwb-office-prof-avatar-img" src={thumbs[modelOf(c.id, c.name)]} alt="" />
+              ) : (
+                <span className="dsh-pwb-office-prof-avatar" style={{ background: avatarColor(c.id) }}>
+                  {c.name.slice(0, 1)}
+                </span>
+              )}
               <span style={{ minWidth: 0 }}>
                 <span className="dsh-pwb-office-prof-item-name" style={{ display: 'block' }}>
                   {c.name}
@@ -223,9 +276,18 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved }: 
 
       <section className="dsh-pwb-office-prof-card">
         <div className="dsh-pwb-office-prof-head">
-          <span className="dsh-pwb-office-prof-avatar" style={{ background: avatarColor(sel.id), width: 44, height: 44, borderRadius: 14, fontSize: 18 }}>
-            {sel.name.slice(0, 1)}
-          </span>
+          {thumbs[modelOf(sel.id, sel.name)] !== undefined ? (
+            <img
+              className="dsh-pwb-office-prof-avatar dsh-pwb-office-prof-avatar-img"
+              src={thumbs[modelOf(sel.id, sel.name)]}
+              alt=""
+              style={{ width: 44, height: 44, borderRadius: 14 }}
+            />
+          ) : (
+            <span className="dsh-pwb-office-prof-avatar" style={{ background: avatarColor(sel.id), width: 44, height: 44, borderRadius: 14, fontSize: 18 }}>
+              {sel.name.slice(0, 1)}
+            </span>
+          )}
           <span>
             <div className="dsh-pwb-office-prof-head-name">{sel.name}</div>
             <div className="dsh-pwb-office-prof-head-role">
@@ -266,6 +328,17 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved }: 
               </option>
             ))}
           </select>
+          <div className="dsh-pwb-office-prof-mpreview">
+            {preview !== '' ? (
+              <img className="dsh-pwb-office-prof-mpreview-img" src={preview} alt="" />
+            ) : (
+              <span className="dsh-pwb-office-prof-mpreview-empty">预览加载中…</span>
+            )}
+            <span className="dsh-pwb-office-prof-mpreview-name">
+              {previewFile === '' ? '' : previewFile.replace(/\.(gltf|glb)$/, '')}
+              {draft.avatar === '' && previewFile !== '' ? '（自动分配）' : ''}
+            </span>
+          </div>
         </div>
 
         <div className="dsh-pwb-office-prof-section">
