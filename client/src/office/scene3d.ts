@@ -396,7 +396,11 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
             idle = mixer.clipAction(idleClip);
             if (walk === undefined) idle.play();
           }
-          if (sitClip !== undefined) sit = mixer.clipAction(sitClip);
+          if (sitClip !== undefined) {
+            sit = mixer.clipAction(sitClip);
+            sit.loop = THREE.LoopOnce;
+            sit.clampWhenFinished = true; // 播完保持坐姿，不循环反复坐下
+          }
           clipName = model.animations.map((a) => a.name).join(',');
         }
         s.charGroup.add(clone);
@@ -407,14 +411,16 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
     let gx = c.rx + 0.5;
     let gy = c.ry + 0.5;
     const sitting = c.state === 'working' || c.state === 'coffee';
+    let seatLift = 0;
     if (sitting && c.deskId !== null && c.deskId !== '') {
       const desk = (s.charGroup.userData.desks as Map<string, Furniture> | undefined)?.get(c.deskId);
       if (desk !== undefined) {
         gx = desk.x + 0.5;
         gy = desk.y + 1.5;
+        seatLift = 0.16; // 坐姿重心上移：SitDown 结束帧臀部略低于椅面，抬起贴合
       }
     }
-    inst.obj.position.set(gx, 0, gy);
+    inst.obj.position.set(gx, seatLift, gy);
     // glTF 人物库（Blender 导出）原生面朝 +z（Walk 摆腿绕 X 轴=沿 Z 前进）。
     // 相机从 +x+z 方向看：face=1（朝南/+z，面向相机）= rot 0；face=-1 背对相机 = rot π。
     // 斜向分量 0.6 rad 让人物不完全正对/背对镜头，观感更自然。
