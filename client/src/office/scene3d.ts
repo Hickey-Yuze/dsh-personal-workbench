@@ -17,9 +17,9 @@ import type { AnimationAction } from 'three';
 import type { Character, Furniture } from './types.js';
 
 /* ───────────── 调色板（对齐参考稿：白底座/木地板/白家具/黑框玻璃） ───────────── */
-const C_BG = '#f6f7f8';
-const C_BASE = '#f4f4f5';
-const C_FLOOR = '#dcbd8b';
+const C_BG = '#e9ebee';
+const C_BASE = '#eceef0';
+const C_FLOOR = '#d4b177';
 const C_FLOOR_LINE = '#d0af7c';
 const C_WALL = '#f0f2f4';
 const C_WHITE = '#fdfdfd';
@@ -72,9 +72,9 @@ function ensureScene(canvas: HTMLCanvasElement): Scene3D | null {
     // 环境贴图：PBR 材质（冰箱/微波炉金属面）无环境反射会渲染成黑块
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    scene.environmentIntensity = 0.55;
-    scene.add(new THREE.AmbientLight(0xfff6ea, 1.25));
-    const sun = new THREE.DirectionalLight(0xfff2dd, 1.6);
+    scene.environmentIntensity = 0.22;
+    scene.add(new THREE.AmbientLight(0xfff1e0, 0.42));  // 原 1.25 过曝：整体泛白的主因
+    const sun = new THREE.DirectionalLight(0xffeecb, 1.42);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.camera.left = -45;
@@ -357,7 +357,7 @@ function buildScene(s: Scene3D, furniture: Furniture[], boardMats: THREE.MeshSta
   // 室外浅色台面（延伸走位区连续）：参考图里房间之外是干净浅色，不是木地板
   const ground = new THREE.Mesh(
     new THREE.BoxGeometry(200, 0.06, 200),
-    mat('#f3f1ee', { rough: 0.95 }),
+    mat('#e6e2d8', { rough: 0.95 }),
   );
   ground.position.set(MAP_W / 2, -0.03, MAP_H / 2);
   ground.receiveShadow = true;
@@ -480,7 +480,7 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
           clone.traverse((node) => {
             if (node instanceof THREE.Mesh) {
               const m = node.material as THREE.MeshStandardMaterial;
-              if (m !== null && (m.name === 'Shirt' || m.name === 'Body')) {
+              if (m !== null && /shirt|body|torso|cloth/i.test(m.name)) {
                 node.material = new THREE.MeshStandardMaterial({ color: c.color, roughness: 0.8, metalness: 0.04, name: m.name });
               }
             }
@@ -490,8 +490,8 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
         clone.traverse((node) => {
           if (node instanceof THREE.Mesh) {
             const m = node.material as THREE.MeshStandardMaterial;
-            if (m !== null && (m.name === 'Skin' || m.name === 'Face')) {
-              m.color.setHex(m.name === 'Skin' ? 0xf2c79f : 0xf6d7b8);
+            if (m !== null && /skin|face|head/i.test(m.name)) {
+              m.color.setHex(/face|head/i.test(m.name) ? 0xf6d7b8 : 0xf2c79f);
             }
           }
         });
