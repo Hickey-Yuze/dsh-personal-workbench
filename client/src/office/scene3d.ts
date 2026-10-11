@@ -42,7 +42,7 @@ type Scene3D = {
   boardMats: THREE.MeshStandardMaterial[]; // 白板板面（会议呼吸高亮）
   sceneKey: string; // 家具内容指纹（本实例当前场景组对应的）
   sceneGroup: THREE.Group | null;
-  instances: Map<string, { obj: THREE.Group; state: string; mixer?: THREE.AnimationMixer; walk?: THREE.AnimationAction; idle?: THREE.AnimationAction; sit?: THREE.AnimationAction; clipName?: string; lastGx?: number; lastGy?: number; faceRotSm?: number }>;
+  instances: Map<string, { obj: THREE.Group; state: string; mixer?: THREE.AnimationMixer; walk?: THREE.AnimationAction; idle?: THREE.AnimationAction; sit?: THREE.AnimationAction; clipName?: string; lastGx?: number; lastGy?: number; faceRotSm?: number; anchorX?: number; anchorZ?: number; anchorY?: number }>;
   loaded: Map<string, boolean>;
   requested: Set<string>;
   meeting: boolean;
@@ -214,15 +214,18 @@ function buildDeskShell(f: Furniture, g: THREE.Group): void {
   g.add(box(0.55, 0.55, 1.1, mat(C_WHITE2), cx + 0.55, 0.28, cz - 0.15));
 }
 
-/** 桌面陈设：显示器（屏面朝 +z，坐姿在桌前 z+ 侧）+ 键盘。GLB 桌面同样叠加。 */
-function buildDeskProps(f: Furniture, g: THREE.Group): void {
+/** 桌面陈设：显示器（屏面朝 +z，坐姿在桌前 z+ 侧）+ 键盘。按桌面实际尺寸摆放（GLB 桌与几何桌尺寸不同）。 */
+function buildDeskProps(f: Furniture, g: THREE.Group, deskW: number, deskD: number, topY: number): void {
   const cx = f.x + 1, cz = f.y + 1;
-  const topY = 0.0; // 桌面高度差（几何桌 0.75 / Table.glb 0.78 近似，取 0 通用）
-  g.add(box(0.3, 0.05, 0.2, mat(C_WHITE2), cx - 0.3, 0.83 + topY, cz - 0.35));
-  g.add(box(0.06, 0.22, 0.06, mat(C_WHITE2), cx - 0.3, 0.95 + topY, cz - 0.35));
-  g.add(box(0.74, 0.48, 0.05, mat('#e8eaed'), cx - 0.3, 1.28 + topY, cz - 0.42));
-  g.add(box(0.64, 0.38, 0.03, mat('#2f3438', { rough: 0.35 }), cx - 0.3, 1.28 + topY, cz - 0.39));
-  g.add(box(0.44, 0.03, 0.15, mat('#eceff2'), cx - 0.3, 0.82 + topY, cz + 0.15));
+  const monW = Math.min(0.72, deskW * 0.62);
+  const monX = cx;
+  const monZ = cz - deskD * 0.5 + 0.16; // 靠桌面后缘
+  g.add(box(0.3, 0.05, 0.2, mat(C_WHITE2), monX, topY + 0.03, monZ)); // 底座
+  g.add(box(0.06, 0.2, 0.06, mat(C_WHITE2), monX, topY + 0.15, monZ)); // 立杆
+  g.add(box(monW, 0.46, 0.05, mat('#e8eaed'), monX, topY + 0.48, monZ)); // 白色机身
+  g.add(box(monW - 0.1, 0.36, 0.03, mat('#2f3438', { rough: 0.35 }), monX, topY + 0.48, monZ + 0.03)); // 屏幕
+  // 键盘：靠坐姿一侧
+  g.add(box(Math.min(0.44, deskW * 0.36), 0.03, 0.15, mat('#eceff2'), cx, topY + 0.03, cz + deskD * 0.22));
 }
 
 function buildGlassCell(f: Furniture, g: THREE.Group, wallSet: Set<string>): void {
@@ -388,14 +391,17 @@ function buildScene(s: Scene3D, furniture: Furniture[], boardMats: THREE.MeshSta
   for (const f of furniture) {
     if (f.kind === 'desk') {
       // 办公桌：Table.glb（棕木桌）优先；就绪前用几何桌。桌面陈设（显示器/键盘）两种情况下都叠加
-      if (!placeFurnModel(s, 'desk', f.x + 1, f.y + 1, 0.78, 0, g)) buildDeskShell(f, g);
-      buildDeskProps(f, g);
+      const glbDesk = placeFurnModel(s, 'desk', f.x + 1, f.y + 1, 0.78, 0, g);
+      if (!glbDesk) buildDeskShell(f, g);
+      // 桌体尺寸：Table.glb 归一化后 1.44×0.61（顶面 0.78）；几何桌 2×1.3（顶面 0.75）
+      if (glbDesk) buildDeskProps(f, g, 1.44, 0.61, 0.78);
+      else buildDeskProps(f, g, 2.0, 1.3, 0.75);
       // 工位椅（椅背在 +z，人坐椅上）：Chair.glb 优先，回退几何椅
-      const chx = f.x + 0.5, chz = f.y + 1.5;
-      if (!placeFurnModel(s, 'chair', chx, chz + 0.1, 0.62, Math.PI, g)) {
-        g.add(box(0.46, 0.07, 0.46, mat('#dfe4ea', { rough: 0.7 }), chx, 0.42, chz + 0.12));
-        g.add(box(0.46, 0.52, 0.06, mat('#dfe4ea', { rough: 0.7 }), chx, 0.72, chz + 0.36));
-        g.add(box(0.06, 0.4, 0.06, mat('#c3c9d0'), chx, 0.2, chz + 0.12));
+      const chx = f.x + 0.5, chz = f.y + 1.55;
+      if (!placeFurnModel(s, 'chair', chx, chz, 0.62, Math.PI, g)) {
+        g.add(box(0.46, 0.07, 0.46, mat('#dfe4ea', { rough: 0.7 }), chx, 0.42, chz));
+        g.add(box(0.46, 0.52, 0.06, mat('#dfe4ea', { rough: 0.7 }), chx, 0.72, chz + 0.24));
+        g.add(box(0.06, 0.4, 0.06, mat('#c3c9d0'), chx, 0.2, chz));
       }
       continue;
     }
@@ -526,8 +532,8 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
       const desk = (s.charGroup.userData.desks as Map<string, Furniture> | undefined)?.get(c.deskId);
       if (desk !== undefined) {
         gx = desk.x + 0.5;
-        gy = desk.y + 1.5;
-        seatLift = 0.16; // 坐姿重心上移：SitDown 结束帧臀部略低于椅面，抬起贴合
+        gy = desk.y + 1.55;
+        seatLift = 0.1; // 坐姿抬升：让臀部落在 Chair.glb 座面（约 0.37）上
       }
     }
     inst.obj.position.set(gx, seatLift, gy);
@@ -552,6 +558,10 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
     }
     inst.lastGx = gx;
     inst.lastGy = gy;
+    // 渲染锚点：名字/气泡按真实渲染位置（坐姿被吸附到工位）与身高偏移定位
+    inst.anchorX = gx;
+    inst.anchorZ = gy;
+    inst.anchorY = (sitting ? 1.08 : 1.48) + inst.obj.position.y;
     inst.obj.rotation.y += (faceRot - inst.obj.rotation.y) * 0.25;
     // 动画切换：走路播 Walk、工作/咖啡播 SitDown、其余 Idle（互斥权重）
     if (inst.mixer !== undefined) {
@@ -616,7 +626,8 @@ function drawBubbles(
   ctx.textBaseline = 'middle';
   for (const c of chars) {
     if (bubbles.get(c.id) !== undefined) continue;
-    v.set(c.rx + 0.5, 1.62 * CHAR_SCALE, c.ry + 0.5).project(s.camera);
+    const inst = s.instances.get(c.id);
+    v.set(inst?.anchorX ?? c.rx + 0.5, inst?.anchorY ?? 1.48, inst?.anchorZ ?? c.ry + 0.5).project(s.camera);
     const px = ((v.x + 1) / 2) * cssW;
     const py = ((1 - v.y) / 2) * cssH;
     if (px < -40 || px > cssW + 40 || py < -20 || py > cssH + 20) continue;
@@ -641,7 +652,8 @@ function drawBubbles(
     const remaining = b.until - time;
     const alpha = Math.max(0, Math.min(1, remaining / 0.4));
     if (alpha <= 0) continue;
-    v.set(c.rx + 0.5, 1.55 * CHAR_SCALE, c.ry + 0.5).project(s.camera);
+    const instB = s.instances.get(c.id);
+    v.set(instB?.anchorX ?? c.rx + 0.5, (instB?.anchorY ?? 1.48) + 0.12, instB?.anchorZ ?? c.ry + 0.5).project(s.camera);
     const px = ((v.x + 1) / 2) * cssW;
     const py = ((1 - v.y) / 2) * cssH;
     const fs = 11;
