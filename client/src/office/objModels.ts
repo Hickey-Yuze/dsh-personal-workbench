@@ -234,11 +234,29 @@ export async function loadCharModel(modelName: string, charName?: string): Promi
 const SEMANTIC_SHIRT = '7f95b5';
 const SEMANTIC_BODY = SEMANTIC_SHIRT;
 
-/** 名字 → 模型名稳定映射。当前全池统一 RobotExpressive.glb（骨骼+走路/待机动画剪辑）。 */
-const FIXED: Record<string, string> = {};
-const POOL = ['RobotExpressive.glb'];
+/** 名字 → 模型名稳定映射（同一名字永远同一模型；内置职员硬编码覆盖）。 */
+const FIXED: Record<string, string> = {
+  'Yuze': 'Suit_Male',
+  '小周': 'Casual_Male',
+  '阿琳': 'Casual_Female',
+  '老王': 'OldClassy_Male',
+  '大鹏': 'Casual2_Male',
+  '小陈': 'Casual3_Female',
+  '阿福': 'Casual3_Male',
+  '小黄': 'Casual2_Female',
+  '小郑': 'Worker_Female',
+};
+
+const POOL = [
+  'Casual_Male', 'Casual_Female', 'Casual2_Male', 'Casual2_Female', 'Casual3_Male', 'Casual3_Female',
+  'Suit_Male', 'Suit_Female', 'Worker_Male', 'Worker_Female', 'Doctor_Male_Young', 'Doctor_Female_Young',
+  'OldClassy_Male', 'OldClassy_Female',
+];
 
 export function modelForChar(name: string): string {
-  void name;
-  return POOL[0] ?? 'RobotExpressive.glb';
+  const fixed = FIXED[name];
+  if (fixed !== undefined) return fixed;
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return POOL[h % POOL.length] ?? 'Casual_Male';
 }
