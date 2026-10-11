@@ -801,9 +801,12 @@ export function renderScene3d(
   chars: Character[],
   time: number,
   opts: Scene3DOpts & { dt?: number },
-): void {
+): boolean {
   const s = ensureScene(canvas);
-  if (s === null) return;
+  if (s === null) return false;
+  // WebGL 上下文丢失（切标签/显存回收）：直接判失败 → 调用方回退 2D，避免留下一块永久空白的画布
+  const glCtx = s.renderer.getContext();
+  if ((glCtx as WebGLRenderingContext).isContextLost?.() === true) return false;
   if (opts.dt !== undefined && Number.isFinite(opts.dt)) s.lastDt = opts.dt;
   const cssW = canvas.clientWidth || 800;
   const cssH = canvas.clientHeight || 600;
@@ -873,4 +876,5 @@ export function renderScene3d(
   syncChars(s, chars, time, Math.min(0.05, s.lastDt));
   s.renderer.render(s.scene, s.camera);
   drawBubbles(bubbleCanvas, s, chars, opts.bubbles, time, cssW, cssH);
+  return true;
 }
