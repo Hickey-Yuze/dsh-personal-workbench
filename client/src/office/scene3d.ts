@@ -397,7 +397,9 @@ function buildScene(s: Scene3D, furniture: Furniture[], boardMats: THREE.MeshSta
       if (glbDesk) buildDeskProps(f, g, 1.44, 0.61, 0.78);
       else buildDeskProps(f, g, 2.0, 1.3, 0.75);
       // 工位椅（椅背在 +z，人坐椅上）：Chair.glb 优先，回退几何椅
-      const chx = f.x + 1, chz = f.y + 1.55; // 对齐桌子中心线：人在桌子正前方坐正（原来偏左半格 → 斜坐 42°）
+      // 椅位 = 引擎的 deskChairCell(desk) = (f.x, f.y + h - 1) → 格中心 (f.x+0.5, f.y+1.5)。
+      // 必须与引擎椅位、坐姿吸附点三者一致，否则人坐在椅子旁边半格（用户报「人和椅子错开」）。
+      const chx = f.x + 0.5, chz = f.y + 1.5;
       if (!placeFurnModel(s, 'chair', chx, chz, 0.62, Math.PI, g)) {
         g.add(box(0.46, 0.07, 0.46, mat('#dfe4ea', { rough: 0.7 }), chx, 0.42, chz));
         g.add(box(0.46, 0.52, 0.06, mat('#dfe4ea', { rough: 0.7 }), chx, 0.72, chz + 0.24));
@@ -526,25 +528,32 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
     }
     let gx = c.rx + 0.5;
     let gy = c.ry + 0.5;
-    // 只有「工作中」才坐工位（coffee 在咖啡机旁站着喝，不能瞬移回工位）
+    const walking = c.state === 'walking';
     const working = c.state === 'working';
     let seatLift = 0;
     let sitFace: number | null = null;
-    if (working && c.deskId !== null && c.deskId !== '') {
+    let seated = false;
+    // 坐姿判定：① 工作中；② 非走路且已站在自己工位椅位附近（摸鱼/待命也坐下，避免「站着杵在椅子旁」）。
+    // 落点必须等于引擎椅位 deskChairCell(desk) 的格中心 (f.x+0.5, f.y+h-1+0.5)，与 Chair.glb 摆放点一致。
+    if (c.deskId !== null && c.deskId !== '') {
       const desk = (s.charGroup.userData.desks as Map<string, Furniture> | undefined)?.get(c.deskId);
       if (desk !== undefined) {
-        gx = desk.x + 1;
-        gy = desk.y + 1.55;
-        seatLift = 0.1; // 坐姿抬升：让臀部落在 Chair.glb 座面（约 0.37）上
-        // 面朝显示器（比朝桌心更准）：显示器在桌面后缘 monZ = (desk.y+1) - deskD*0.5 + 0.16
-        const deskD = 0.61; // Table.glb 归一化后的深度
-        const monX = desk.x + 1;
-        const monZ = desk.y + 1 - deskD * 0.5 + 0.16;
-        sitFace = Math.atan2(monX - gx, monZ - gy);
+        const sx = desk.x + 0.5;
+        const sz = desk.y + 1.5;
+        const near = Math.hypot(c.rx + 0.5 - sx, c.ry + 0.5 - sz) < 0.6;
+        if (working || (!walking && near)) {
+          seated = true;
+          gx = sx;
+          gy = sz;
+          seatLift = 0.1; // 坐姿抬升：让臀部落在 Chair.glb 座面（约 0.37）上
+          // 面朝显示器（显示器在桌面后缘：monZ = (desk.y+1) - deskD*0.5 + 0.16；Table.glb 深度 0.61）
+          const monX = desk.x + 1;
+          const monZ = desk.y + 1 - 0.61 * 0.5 + 0.16;
+          sitFace = Math.atan2(monX - gx, monZ - gy);
+        }
       }
     }
     inst.obj.position.set(gx, seatLift, gy);
-    const walking = c.state === 'walking';
     if (walking) inst.obj.position.y = Math.abs(Math.sin(time * 9 + c.phase)) * 0.05;
     else inst.obj.position.y = 0;
     // 朝向：走路按移动方向转身（glTF 原生面朝 +z，rotation.y = atan2(dx, dz) 恰好对齐该约定）；
@@ -572,11 +581,11 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
     // 渲染锚点：名字/气泡按真实渲染位置（坐姿被吸附到工位）与身高偏移定位
     inst.anchorX = gx;
     inst.anchorZ = gy;
-    inst.anchorY = (working ? 1.08 : 1.48) + inst.obj.position.y;
+    inst.anchorY = (seated ? 1.08 : 1.48) + inst.obj.position.y;
     inst.obj.rotation.y += (faceRot - inst.obj.rotation.y) * 0.25;
     // 动画切换：走路播 Walk、工作/咖啡播 SitDown、其余 Idle（互斥权重）
     if (inst.mixer !== undefined) {
-      const want: 'walk' | 'sit' | 'idle' = walking ? 'walk' : working ? 'sit' : 'idle';
+      const want: 'walk' | 'sit' | 'idle' = walking ? 'walk' : seated ? 'sit' : 'idle';
       if (inst.walk !== undefined) setWeight(inst.walk, want === 'walk' ? 1 : 0);
       if (inst.sit !== undefined) setWeight(inst.sit, want === 'sit' ? 1 : 0);
       if (inst.idle !== undefined) setWeight(inst.idle, want === 'idle' ? 1 : 0);
