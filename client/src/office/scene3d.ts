@@ -898,6 +898,9 @@ export function renderScene3d(
 
   syncChars(s, chars, time, Math.min(0.05, s.lastDt));
   s.renderer.render(s.scene, s.camera);
+  // 内容守卫：渲染出 0 个三角面 = 场景为空 / 被完全剔除 / GL 静默失效
+  // （用户截图里出现过「整片空白画布」——渲染器在跑、clear 色正常，但什么都没画出来）
+  if (s.renderer.info.render.triangles === 0) return false;
   drawBubbles(bubbleCanvas, s, chars, opts.bubbles, time, cssW, cssH);
   return true;
 }
