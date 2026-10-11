@@ -1518,7 +1518,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         try {
           const dir = path.join(pluginRoot, "assets", "models");
           const entries = await fs.promises.readdir(dir);
-          send(res, 200, { ok: true, files: entries.filter((f) => f.endsWith('.obj') || f.endsWith('.mtl') || f.endsWith('.glb')).sort() });
+          send(res, 200, { ok: true, files: entries.filter((f) => f.endsWith('.obj') || f.endsWith('.mtl') || f.endsWith(".glb") || f.endsWith(".gltf")).sort() });
         } catch {
           send(res, 200, { ok: true, files: [] });
         }
@@ -1528,13 +1528,13 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
       if (officeEndpoint === 'office/asset/get' && officeMethod === 'GET') {
         const q = new URL(req.url ?? '/', 'http://x').searchParams;
         const name = String(q.get('name') ?? '');
-        if (!/^[\w.-]+\.(obj|mtl|glb)$/.test(name)) {
+        if (!/^[\w.-]+\.(obj|mtl|glb|gltf)$/.test(name)) {
           send(res, 400, { ok: false, error: { code: 'bad-name', message: '非法模型文件名' } });
           return;
         }
         try {
           const dir = path.join(pluginRoot, "assets", "models");
-          if (name.endsWith('.glb')) {
+          if (name.endsWith('.glb') || name.endsWith('.gltf')) {
             const buf = await fs.promises.readFile(path.join(dir, name));
             send(res, 200, { ok: true, base64: buf.toString('base64') });
           } else {

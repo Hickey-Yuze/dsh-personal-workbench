@@ -162,7 +162,7 @@ export async function loadObjModel(name: string): Promise<ObjModel | null> {
   if (hit !== undefined) return hit;
   const busy = inflight.get(name);
   if (busy !== undefined) return busy;
-  if (name.endsWith('.glb')) {
+  if (name.endsWith('.glb') || name.endsWith('.gltf')) {
     const p = loadGlbModel(name)
       .then((m) => {
         modelCache.set(name, m);
@@ -236,21 +236,21 @@ const SEMANTIC_BODY = SEMANTIC_SHIRT;
 
 /** 名字 → 模型名稳定映射（同一名字永远同一模型；内置职员硬编码覆盖）。 */
 const FIXED: Record<string, string> = {
-  'Yuze': 'Suit_Male',
-  '小周': 'Casual_Male',
-  '阿琳': 'Casual_Female',
-  '老王': 'OldClassy_Male',
-  '大鹏': 'Casual2_Male',
-  '小陈': 'Casual3_Female',
-  '阿福': 'Casual3_Male',
-  '小黄': 'Casual2_Female',
-  '小郑': 'Worker_Female',
+  'Yuze': 'Suit_Male.gltf',
+  '小周': 'Casual_Male.gltf',
+  '阿琳': 'Casual_Female.gltf',
+  '老王': 'OldClassy_Male.gltf',
+  '大鹏': 'Casual2_Male.gltf',
+  '小陈': 'Casual3_Female.gltf',
+  '阿福': 'Casual3_Male.gltf',
+  '小黄': 'Casual2_Female.gltf',
+  '小郑': 'Worker_Female.gltf',
 };
 
 const POOL = [
-  'Casual_Male', 'Casual_Female', 'Casual2_Male', 'Casual2_Female', 'Casual3_Male', 'Casual3_Female',
-  'Suit_Male', 'Suit_Female', 'Worker_Male', 'Worker_Female', 'Doctor_Male_Young', 'Doctor_Female_Young',
-  'OldClassy_Male', 'OldClassy_Female',
+  'Casual_Male.gltf', 'Casual_Female.gltf', 'Casual2_Male.gltf', 'Casual2_Female.gltf', 'Casual3_Male.gltf', 'Casual3_Female.gltf',
+  'Suit_Male.gltf', 'Suit_Female.gltf', 'Worker_Male.gltf', 'Worker_Female.gltf', 'Doctor_Male_Young.gltf', 'Doctor_Female_Young.gltf',
+  'OldClassy_Male.gltf', 'OldClassy_Female.gltf',
 ];
 
 export function modelForChar(name: string): string {
@@ -258,5 +258,5 @@ export function modelForChar(name: string): string {
   if (fixed !== undefined) return fixed;
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  return POOL[h % POOL.length] ?? 'Casual_Male';
+  return POOL[h % POOL.length] ?? 'Casual_Male.gltf';
 }

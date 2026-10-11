@@ -41,7 +41,7 @@ type Scene3D = {
   boardMats: THREE.MeshStandardMaterial[]; // 白板板面（会议呼吸高亮）
   sceneKey: string; // 家具内容指纹（本实例当前场景组对应的）
   sceneGroup: THREE.Group | null;
-  instances: Map<string, { obj: THREE.Group; state: string; mixer?: THREE.AnimationMixer; walk?: THREE.AnimationAction; idle?: THREE.AnimationAction; clipName?: string }>;
+  instances: Map<string, { obj: THREE.Group; state: string; mixer?: THREE.AnimationMixer; walk?: THREE.AnimationAction; idle?: THREE.AnimationAction; sit?: THREE.AnimationAction; clipName?: string }>;
   loaded: Map<string, boolean>;
   requested: Set<string>;
   meeting: boolean;
@@ -381,11 +381,13 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
         let mixer: THREE.AnimationMixer | undefined;
         let walk: THREE.AnimationAction | undefined;
         let idle: THREE.AnimationAction | undefined;
+        let sit: THREE.AnimationAction | undefined;
         let clipName: string | undefined;
         if (model.animations !== undefined && model.animations.length > 0) {
           mixer = new THREE.AnimationMixer(clone);
           const walkClip = pickClip(model.animations, 'Walking', 'Walk', 'Run');
           const idleClip = pickClip(model.animations, 'Idle', 'Standing');
+          const sitClip = pickClip(model.animations, 'SitDown', 'Sitting');
           if (walkClip !== undefined) {
             walk = mixer.clipAction(walkClip);
             walk.play();
@@ -394,10 +396,11 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
             idle = mixer.clipAction(idleClip);
             if (walk === undefined) idle.play();
           }
+          if (sitClip !== undefined) sit = mixer.clipAction(sitClip);
           clipName = model.animations.map((a) => a.name).join(',');
         }
         s.charGroup.add(clone);
-        s.instances.set(c.id, { obj: clone as THREE.Group, state: instKey, mixer, walk, idle, clipName });
+        s.instances.set(c.id, { obj: clone as THREE.Group, state: instKey, mixer, walk, idle, sit, clipName });
       });
       continue;
     }
@@ -418,11 +421,12 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
     const walking = c.state === 'walking';
     if (walking) inst.obj.position.y = Math.abs(Math.sin(time * 9 + c.phase)) * 0.05;
     else inst.obj.position.y = 0;
-    // 动画切换：走路播 Walk，其余淡入 Idle；SkinnedMesh 直接平移网格即可（骨骼根动画会叠加位移，关掉根位移轨道交给引擎）
+    // 动画切换：走路播 Walk、工作/咖啡播 SitDown、其余 Idle（互斥权重）
     if (inst.mixer !== undefined) {
-      const wantWalk = walking;
-      if (inst.walk !== undefined) setWeight(inst.walk, wantWalk ? 1 : 0);
-      if (inst.idle !== undefined) setWeight(inst.idle, wantWalk ? 0 : 1);
+      const want: 'walk' | 'sit' | 'idle' = walking ? 'walk' : sitting ? 'sit' : 'idle';
+      if (inst.walk !== undefined) setWeight(inst.walk, want === 'walk' ? 1 : 0);
+      if (inst.sit !== undefined) setWeight(inst.sit, want === 'sit' ? 1 : 0);
+      if (inst.idle !== undefined) setWeight(inst.idle, want === 'idle' ? 1 : 0);
       inst.mixer.update(dt);
     }
   }
