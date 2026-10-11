@@ -526,6 +526,22 @@ export class OfficeEngine {
       this.advance(c, dt);
       return;
     }
+    // 兜底：非走路状态却站在房间外（延伸走位区）→ 直接归位到自己工位并坐下。
+    // 目的：历史遗留/极端寻路把人留在屋外沙地上游荡（用户截图里名牌飘在屋外）。
+    if (c.cx < 0 || c.cy < 0 || c.cx >= MAP_W || c.cy >= MAP_H) {
+      const backDesk = this.desks.find((f) => f.id === c.deskId);
+      const backChair = backDesk !== undefined ? deskChairCell(backDesk) : undefined;
+      if (backChair !== undefined) {
+        c.cx = backChair.x;
+        c.cy = backChair.y;
+        c.rx = backChair.x + 0.5;
+        c.ry = backChair.y + 0.5;
+        c.path = [];
+        c.state = 'working';
+        c.stateUntil = this.time + rand(24, 50);
+        return;
+      }
+    }
     if (this.time < c.stateUntil) return;
     this.decide(c);
   }

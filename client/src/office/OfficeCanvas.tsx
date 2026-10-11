@@ -130,16 +130,21 @@ export function OfficeCanvas({
           const bc = bubbleRef.current;
           if (oc !== null && bc !== null) {
             const v = viewRef.current ?? {};
-            renderScene3d(oc, bc, engine.map.furniture, engine.chars, engine.time, {
-              zoom: v.zoom !== undefined && Number.isFinite(v.zoom) && v.zoom > 0 ? v.zoom : 1,
-              panX: v.panX !== undefined && Number.isFinite(v.panX) ? v.panX : 0,
-              panY: v.panY !== undefined && Number.isFinite(v.panY) ? v.panY : 0,
-              rot: v.rot !== undefined && Number.isFinite(v.rot) ? v.rot : 0,
-              rotDeg: v.rotDeg !== undefined && Number.isFinite(v.rotDeg) ? v.rotDeg : 0,
-              meeting: engine.meetingActive,
-              bubbles: engine.bubbles,
-              dt,
-            });
+            try {
+              renderScene3d(oc, bc, engine.map.furniture, engine.chars, engine.time, {
+                zoom: v.zoom !== undefined && Number.isFinite(v.zoom) && v.zoom > 0 ? v.zoom : 1,
+                panX: v.panX !== undefined && Number.isFinite(v.panX) ? v.panX : 0,
+                panY: v.panY !== undefined && Number.isFinite(v.panY) ? v.panY : 0,
+                rot: v.rot !== undefined && Number.isFinite(v.rot) ? v.rot : 0,
+                rotDeg: v.rotDeg !== undefined && Number.isFinite(v.rotDeg) ? v.rotDeg : 0,
+                meeting: engine.meetingActive,
+                bubbles: engine.bubbles,
+                dt,
+              });
+            } catch {
+              // 3D 渲染抛异常（WebGL 上下文丢失/几何异常）→ 永久回退 2D，而不是让 rAF 循环整体中断（表现为场景白屏卡死）
+              setOverlayFailed(true);
+            }
           }
         } else {
           const canvas = canvasRef.current;

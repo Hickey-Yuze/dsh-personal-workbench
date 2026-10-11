@@ -428,13 +428,17 @@ function drawFridge(ctx: CanvasRenderingContext2D, f: Furniture, s: number, ox: 
 function drawCarpet(ctx: CanvasRenderingContext2D, f: Furniture, s: number, ox: number, oy: number): void {
   const X = ox + f.x * s;
   const Y = oy + f.y * s;
-  ctx.fillStyle = 'rgba(120,104,80,0.10)';
-  rr(ctx, X - s * 0.05, Y - s * 0.05, f.w * s + s * 0.1, f.h * s + s * 0.1, s * 0.22);
+  ctx.fillStyle = 'rgba(120,104,80,0.16)';
+  rr(ctx, X - s * 0.06, Y - s * 0.06, f.w * s + s * 0.12, f.h * s + s * 0.12, s * 0.22);
   ctx.fill();
-  ctx.fillStyle = '#efe7da';
+  ctx.fillStyle = '#e8dcc4';
   rr(ctx, X, Y, f.w * s, f.h * s, s * 0.2);
   ctx.fill();
-  ctx.fillStyle = '#eae1d2';
+  ctx.strokeStyle = 'rgba(150,130,100,0.45)';
+  ctx.lineWidth = Math.max(1, s * 0.04);
+  rr(ctx, X, Y, f.w * s, f.h * s, s * 0.2);
+  ctx.stroke();
+  ctx.fillStyle = '#e2d4b8';
   rr(ctx, X + s * 0.16, Y + s * 0.16, f.w * s - s * 0.32, f.h * s - s * 0.32, s * 0.16);
   ctx.fill();
 }
@@ -458,6 +462,9 @@ function drawRoundTable(ctx: CanvasRenderingContext2D, f: Furniture, s: number, 
   ctx.beginPath();
   ctx.ellipse(cx, cy, s * 0.86, s * 0.86, 0, 0, Math.PI * 2);
   ctx.fill();
+  ctx.strokeStyle = 'rgba(120,130,145,0.4)';
+  ctx.lineWidth = Math.max(1, s * 0.035);
+  ctx.stroke();
 }
 
 /** 抽屉柜（2D 俯视）：白色柜体 + 三层抽屉缝 + 拉手。 */
