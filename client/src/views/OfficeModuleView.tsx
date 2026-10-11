@@ -839,7 +839,7 @@ export function OfficeModuleView(): ReactElement {
                   <button title="缩小" onClick={() => zoomStep(-0.2)}>
                     －
                   </button>
-                  <button title="恢复参考图默认布局" onClick={handleResetMap}>
+                  <button className="dsh-pwb-office-zoom-wide" title="恢复参考图默认布局" onClick={handleResetMap}>
                     ⟲布局
                   </button>
                   <button title="复位视角" onClick={() => setOfficeView({})}>

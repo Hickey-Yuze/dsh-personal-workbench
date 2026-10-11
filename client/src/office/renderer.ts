@@ -101,10 +101,12 @@ export function clampViewPan(panX: number, panY: number, zoom: number, cssW: num
   const k = Math.min(cssW / (w + h), (cssH * 2) / (w + h)) * zoom;
   const mapW = k * (w + h);
   const mapH = (k * (w + h)) / 2;
-  const slackX = (mapW - cssW) / 2;
-  const slackY = (mapH - cssH) / 2;
-  const cx = mapW > cssW ? Math.min(Math.max(panX, -slackX), slackX) : 0;
-  const cy = mapH > cssH ? Math.min(Math.max(panY, -slackY), slackY) : 0;
+  // 地图比视口小时原来 slack 直接取 0（跟随居中、完全不能拖），用户无法把画布往上下拖去看清边缘
+  // （反馈「右上角的红框无法拖动了，看不到上面的」）。这里给每个方向保底 30% 视口的自由平移量。
+  const slackX = Math.max((mapW - cssW) / 2, cssW * 0.3);
+  const slackY = Math.max((mapH - cssH) / 2, cssH * 0.3);
+  const cx = Math.min(Math.max(panX, -slackX), slackX);
+  const cy = Math.min(Math.max(panY, -slackY), slackY);
   return { panX: cx, panY: cy };
 }
 

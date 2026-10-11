@@ -1373,6 +1373,14 @@ html { color-scheme: light !important; }
   box-shadow: 0 1px 4px rgba(40, 35, 25, 0.12);
 }
 .dsh-pwb-office-zoom button:hover { border-color: var(--pwb-accent); color: var(--pwb-accent); }
+/* 「⟲布局」是三字按钮：固定 30px 宽放不下 → 文字挤成一列（用户报「布局按钮的字错乱」） */
+.dsh-pwb-office-zoom button.dsh-pwb-office-zoom-wide {
+  width: auto;
+  min-width: 30px;
+  padding: 0 8px;
+  white-space: nowrap;
+  font-size: 12px;
+}
 /* 员工入职（布置办公室标签页底部卡片）：写宿主花名册 → 引擎生成场景角色 */
 .dsh-pwb-office-hire {
   display: flex;
