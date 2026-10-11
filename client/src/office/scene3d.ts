@@ -148,6 +148,26 @@ function floorTexture(): THREE.CanvasTexture {
 }
 let floorTex: THREE.CanvasTexture | null = null;
 
+/** 室外地面贴图：径向渐变（中心 #ece9df → 边缘 #d6d1c4），避免大面积平铺纯色造成的「泛白」。 */
+function groundTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 256;
+  const ctx = c.getContext('2d');
+  if (ctx !== null) {
+    const g = ctx.createRadialGradient(128, 128, 40, 128, 128, 128);
+    g.addColorStop(0, '#ece9df');
+    g.addColorStop(0.55, '#e4e0d5');
+    g.addColorStop(1, '#d3cec1');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 256, 256);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+let groundTex: THREE.CanvasTexture | null = null;
+
 /* ───────────── 家具构建 ───────────── */
 
 /** 家具 GLB：kind → 文件名（assets/models）。 */
@@ -355,9 +375,10 @@ function buildRoundTable(f: Furniture, g: THREE.Group): void {
 function buildScene(s: Scene3D, furniture: Furniture[], boardMats: THREE.MeshStandardMaterial[]): THREE.Group {
   const g = new THREE.Group();
   // 室外浅色台面（延伸走位区连续）：参考图里房间之外是干净浅色，不是木地板
+  if (groundTex === null) groundTex = groundTexture();
   const ground = new THREE.Mesh(
     new THREE.BoxGeometry(200, 0.06, 200),
-    mat('#e6e2d8', { rough: 0.95 }),
+    new THREE.MeshStandardMaterial({ map: groundTex, roughness: 0.95, metalness: 0 }),
   );
   ground.position.set(MAP_W / 2, -0.03, MAP_H / 2);
   ground.receiveShadow = true;
