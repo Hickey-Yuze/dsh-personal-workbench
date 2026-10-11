@@ -9,6 +9,7 @@
  * 气泡：单独 2D canvas 覆盖层，头顶世界坐标 project 到屏幕像素绘制。
  */
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { MAP_H, MAP_W } from './map.js';
 import { loadCharModel, loadObjModel, modelForChar } from './objModels.js';
@@ -68,6 +69,10 @@ function ensureScene(canvas: HTMLCanvasElement): Scene3D | null {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     const scene = new THREE.Scene();
     const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 300);
+    // 环境贴图：PBR 材质（冰箱/微波炉金属面）无环境反射会渲染成黑块
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environmentIntensity = 0.55;
     scene.add(new THREE.AmbientLight(0xfff6ea, 1.25));
     const sun = new THREE.DirectionalLight(0xfff2dd, 1.6);
     sun.castShadow = true;
@@ -148,7 +153,7 @@ let floorTex: THREE.CanvasTexture | null = null;
 /** 家具 GLB：kind → 文件名（assets/models）。 */
 const FURN_GLB: Partial<Record<string, string>> = {
   chair: 'Chair.glb',
-  roundtable: 'Table.glb',
+  desk: 'Table.glb', // 棕色木桌（带抽屉）= 办公桌
   plant: 'Plant.glb',
   microwave: 'Microwave.glb',
   fridge: 'Fridge.glb',
@@ -377,7 +382,8 @@ function buildScene(s: Scene3D, furniture: Furniture[], boardMats: THREE.MeshSta
   const wallSet = new Set(furniture.filter((f) => f.kind === 'wall').map((f) => `${f.x},${f.y}`));
   for (const f of furniture) {
     if (f.kind === 'desk') {
-      buildDesk(f, g);
+      // 办公桌：Table.glb（棕木桌）优先；就绪前用几何桌
+      if (!placeFurnModel(s, 'desk', f.x + 1, f.y + 1, 0.78, 0, g)) buildDesk(f, g);
       // 工位椅（椅背在 +z，人坐椅上）：Chair.glb 优先，回退几何椅
       const chx = f.x + 0.5, chz = f.y + 1.5;
       if (!placeFurnModel(s, 'chair', chx, chz + 0.1, 0.62, Math.PI, g)) {
@@ -403,21 +409,7 @@ function buildScene(s: Scene3D, furniture: Furniture[], boardMats: THREE.MeshSta
     }
     if (f.kind === 'cabinet') { buildCabinet(f, g); continue; }
     if (f.kind === 'carpet') { buildCarpet(f, g); continue; }
-    if (f.kind === 'roundtable') {
-      // Table.glb 是矩形桌（0.5 maxDim → 拉到 1.9 宽），只替换桌面几何仍配四凳
-      if (placeFurnModel(s, 'roundtable', f.x + 1, f.y + 1, 0.82, Math.PI / 4, g)) {
-        // GLB 桌 + 原凳（保留圆凳）
-        for (const dz of [-1.05, 1.05]) {
-          const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.16, 0.42, 10), mat(C_WHITE2));
-          stool.position.set(f.x + 1 + 0.6 * Math.sign(dz) * 0.2, 0.21, f.y + 1 + dz);
-          stool.castShadow = true;
-          g.add(stool);
-        }
-      } else {
-        buildRoundTable(f, g);
-      }
-      continue;
-    }
+    if (f.kind === 'roundtable') { buildRoundTable(f, g); continue; }
     // wall 已在 wallSet 循环里建过
   }
   return g;
@@ -462,17 +454,26 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
         if (model === null) return;
         // 骨骼蒙皮模型必须用 SkeletonUtils.clone（普通 clone 丢骨骼绑定 → 人物不可见）
         const clone = cloneSkeleton(model.group);
-        // 按员工染衣：gltf 内 shirt 色（#7f95b5 语义蓝）的材质替换为员工色
+        // 按员工染衣：材质名 Shirt/Body 才替换为员工色（Skin/Hair/Pants/Face 保持原样）
         if (c.color !== '') {
           clone.traverse((node) => {
             if (node instanceof THREE.Mesh) {
               const m = node.material as THREE.MeshStandardMaterial;
-              if (m !== null && typeof m.color?.getHexString === 'function' && m.color.getHexString() === '7f95b5') {
-                node.material = new THREE.MeshStandardMaterial({ color: c.color, roughness: 0.8, metalness: 0.04 });
+              if (m !== null && (m.name === 'Shirt' || m.name === 'Body')) {
+                node.material = new THREE.MeshStandardMaterial({ color: c.color, roughness: 0.8, metalness: 0.04, name: m.name });
               }
             }
           });
         }
+        // 修黑剪影：gltf 的 Skin/Face 是线性暗值，统一提亮肤色
+        clone.traverse((node) => {
+          if (node instanceof THREE.Mesh) {
+            const m = node.material as THREE.MeshStandardMaterial;
+            if (m !== null && (m.name === 'Skin' || m.name === 'Face')) {
+              m.color.setHex(m.name === 'Skin' ? 0xf2c79f : 0xf6d7b8);
+            }
+          }
+        });
         clone.scale.setScalar(CHAR_SCALE);
         clone.traverse((node) => {
           if (node instanceof THREE.Mesh) {
@@ -769,8 +770,8 @@ export function renderScene3d(
 
   // 家具 GLB：先把用到的都请求起来（就绪数变化 → 重建场景以替换几何体）
   for (const f of furniture) {
-    if (f.kind === 'desk' || f.kind === 'roundtable' || f.kind === 'plant' || f.kind === 'microwave' || f.kind === 'fridge') {
-      requestFurnModel(s, f.kind === 'desk' ? 'chair' : f.kind);
+    if (f.kind === 'desk' || f.kind === 'plant' || f.kind === 'microwave' || f.kind === 'fridge') {
+      requestFurnModel(s, f.kind);
     }
   }
 
