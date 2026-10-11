@@ -253,7 +253,8 @@ function buildGlassCell(f: Furniture, g: THREE.Group, wallSet: Set<string>): voi
   const hasX = wallSet.has(`${f.x - 1},${f.y}`) || wallSet.has(`${f.x + 1},${f.y}`);
   const frame = mat(C_METAL, { rough: 0.5 });
   const glass = new THREE.MeshStandardMaterial({
-    color: C_GLASS, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.3, depthWrite: false,
+    // 透明度 0.3 太透：整段玻璃在浅色背景上几乎看不见（用户反馈「有墙隔断，没有显示」）
+    color: C_GLASS, roughness: 0.12, metalness: 0.05, transparent: true, opacity: 0.52, depthWrite: false,
   });
   const mk = (geo: THREE.BufferGeometry, x: number, y: number, z: number): THREE.Mesh => {
     const mesh = new THREE.Mesh(geo, frame);
@@ -262,22 +263,25 @@ function buildGlassCell(f: Furniture, g: THREE.Group, wallSet: Set<string>): voi
     return mesh;
   };
   // 竖梃只在「整段玻璃的起止端」加：原来每格两端都加柱子，13 格连起来像黑栅栏而不是玻璃墙
+  // 竖梃密度：整段两端各一根 + 中段每 3 格一根。
+  // 原来每格两根（13 格 26 根）像黑栅栏；改成只在两端后玻璃太透，整面墙「显示不出来」。
+  const midPost = (i: number): boolean => (i + 1) % 3 === 0;
   if (hasX) {
     const gm = new THREE.Mesh(new THREE.BoxGeometry(1, 2.1, 0.035), glass);
     gm.position.set(cx, 1.05, cz);
     g.add(gm);
-    g.add(mk(new THREE.BoxGeometry(1, 0.06, 0.05), cx, 2.12, cz));
-    g.add(mk(new THREE.BoxGeometry(1, 0.06, 0.05), cx, 0.02, cz));
-    if (!wallSet.has(`${f.x - 1},${f.y}`)) g.add(mk(new THREE.BoxGeometry(0.06, 2.14, 0.06), f.x, 1.07, cz));
-    if (!wallSet.has(`${f.x + 1},${f.y}`)) g.add(mk(new THREE.BoxGeometry(0.06, 2.14, 0.06), f.x + 1, 1.07, cz));
+    g.add(mk(new THREE.BoxGeometry(1, 0.09, 0.06), cx, 2.12, cz));
+    g.add(mk(new THREE.BoxGeometry(1, 0.09, 0.06), cx, 0.02, cz));
+    if (!wallSet.has(`${f.x - 1},${f.y}`)) g.add(mk(new THREE.BoxGeometry(0.07, 2.14, 0.07), f.x, 1.07, cz));
+    if (!wallSet.has(`${f.x + 1},${f.y}`) || midPost(f.x)) g.add(mk(new THREE.BoxGeometry(0.07, 2.14, 0.07), f.x + 1, 1.07, cz));
   } else {
     const gm = new THREE.Mesh(new THREE.BoxGeometry(0.035, 2.1, 1), glass);
     gm.position.set(cx, 1.05, cz);
     g.add(gm);
-    g.add(mk(new THREE.BoxGeometry(0.05, 0.06, 1), cx, 2.12, cz));
-    g.add(mk(new THREE.BoxGeometry(0.05, 0.06, 1), cx, 0.02, cz));
-    if (!wallSet.has(`${f.x},${f.y - 1}`)) g.add(mk(new THREE.BoxGeometry(0.06, 2.14, 0.06), cx, 1.07, f.y));
-    if (!wallSet.has(`${f.x},${f.y + 1}`)) g.add(mk(new THREE.BoxGeometry(0.06, 2.14, 0.06), cx, 1.07, f.y + 1));
+    g.add(mk(new THREE.BoxGeometry(0.06, 0.09, 1), cx, 2.12, cz));
+    g.add(mk(new THREE.BoxGeometry(0.06, 0.09, 1), cx, 0.02, cz));
+    if (!wallSet.has(`${f.x},${f.y - 1}`)) g.add(mk(new THREE.BoxGeometry(0.07, 2.14, 0.07), cx, 1.07, f.y));
+    if (!wallSet.has(`${f.x},${f.y + 1}`) || midPost(f.y)) g.add(mk(new THREE.BoxGeometry(0.07, 2.14, 0.07), cx, 1.07, f.y + 1));
   }
 }
 
@@ -416,6 +420,11 @@ function buildScene(s: Scene3D, furniture: Furniture[], boardMats: THREE.MeshSta
     g.add(box(2.5, 0.06, 0.07, mat('#dfe3e7'), wx + 1.2, 0.56, 0.0));
   }
   const wallSet = new Set(furniture.filter((f) => f.kind === 'wall').map((f) => `${f.x},${f.y}`));
+  // 隔断墙：原来只在 wallSet 里建了集合，家具循环里没有任何分支调用 buildWall，
+  // 于是「布置办公室画布里放了隔断墙，3D 场景一片都看不到」——这里补上渲染调用。
+  for (const f of furniture) {
+    if (f.kind === 'wall') buildWall(f, g, wallSet);
+  }
   for (const f of furniture) {
     if (f.kind === 'desk') {
       // 办公桌：Table.glb（棕木桌）优先；就绪前用几何桌。桌面陈设（显示器/键盘）两种情况下都叠加
