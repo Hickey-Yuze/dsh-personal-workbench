@@ -415,8 +415,10 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
       }
     }
     inst.obj.position.set(gx, 0, gy);
-    // RobotExpressive 原生面朝 -z（走路动画面向-Z）；face=1 = 朝南(+z) 要转 180°
-    const faceRot = c.face === 1 ? Math.PI + 0.6 : -0.6;
+    // glTF 人物库（Blender 导出）原生面朝 +z（Walk 摆腿绕 X 轴=沿 Z 前进）。
+    // 相机从 +x+z 方向看：face=1（朝南/+z，面向相机）= rot 0；face=-1 背对相机 = rot π。
+    // 斜向分量 0.6 rad 让人物不完全正对/背对镜头，观感更自然。
+    const faceRot = c.face === 1 ? 0.6 : Math.PI + 0.6;
     inst.obj.rotation.y += (faceRot - inst.obj.rotation.y) * 0.25;
     const walking = c.state === 'walking';
     if (walking) inst.obj.position.y = Math.abs(Math.sin(time * 9 + c.phase)) * 0.05;
