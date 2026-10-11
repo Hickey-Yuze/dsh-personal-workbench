@@ -7,9 +7,8 @@ import type { PointerEvent as ReactPointerEvent, ReactElement } from 'react';
 import { ImagePlus } from 'lucide-react';
 import { OfficeEngine, BUILTIN_STAFF } from '../office/engine.js';
 import { setAvatarOverrides } from '../office/objModels.js';
-import { defaultMap } from '../office/map.js';
 import { OfficeCanvas } from '../office/OfficeCanvas.js';
-import { clearOfficeMap, loadOfficeMap } from '../office/store.js';
+import { loadOfficeMap } from '../office/store.js';
 import { deskChairCell } from '../office/map.js';
 import type { OfficeMap } from '../office/types.js';
 import type { MemberStat } from '../office/types.js';
@@ -726,12 +725,6 @@ export function OfficeModuleView(): ReactElement {
     };
   }, [engine, members]);
 
-  /** 恢复参考图默认布局：清本地存档 + 重建引擎（场景与编辑器同时对齐）。 */
-  const handleResetMap = useCallback((): void => {
-    if (!window.confirm('恢复参考图默认布局？当前自定义摆放会被清除。')) return;
-    clearOfficeMap();
-    setEngine(new OfficeEngine(defaultMap()));
-  }, []);
 
   const handleSaveMap = useCallback((m: OfficeMap): void => {
     setEngine(new OfficeEngine(m)); // 换图即换引擎：OfficeCanvas 的 rAF effect 依赖 engine 会自动重挂
@@ -839,25 +832,8 @@ export function OfficeModuleView(): ReactElement {
                   <button title="缩小" onClick={() => zoomStep(-0.2)}>
                     －
                   </button>
-                  <button className="dsh-pwb-office-zoom-wide" title="恢复参考图默认布局" onClick={handleResetMap}>
-                    ⟲布局
-                  </button>
                   <button title="复位视角" onClick={() => setOfficeView({})}>
                     ⭯
-                  </button>
-                  {/* 显式平移按钮：用户多轮反馈「放到最大看不到左上角」「拖不动」。
-                      拖拽若在触控板/指针事件上失效，这四个按钮是保底手段——每下移 90px 视口。 */}
-                  <button title="视角左移" onClick={() => setOfficeView((v) => ({ ...v, panX: (v.panX ?? 0) - 90 }))}>
-                    ◀
-                  </button>
-                  <button title="视角右移" onClick={() => setOfficeView((v) => ({ ...v, panX: (v.panX ?? 0) + 90 }))}>
-                    ▶
-                  </button>
-                  <button title="视角上移" onClick={() => setOfficeView((v) => ({ ...v, panY: (v.panY ?? 0) - 90 }))}>
-                    ▲
-                  </button>
-                  <button title="视角下移" onClick={() => setOfficeView((v) => ({ ...v, panY: (v.panY ?? 0) + 90 }))}>
-                    ▼
                   </button>
                 </div>
               </div>

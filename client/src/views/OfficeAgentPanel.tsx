@@ -312,15 +312,6 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved }: OfficeAgentPane
                 >
                   移交
                 </button>
-                <button
-                  className={`dsh-pwb-office-emp-act${expanded ? ' active' : ''}`}
-                  onClick={() => {
-                    if (expanded) setExpandedId(null);
-                    else openEditor(emp);
-                  }}
-                >
-                  {expanded ? '收起' : '编辑'}
-                </button>
               </div>
               {expanded && (
                 <div className="dsh-pwb-office-emp-edit">
