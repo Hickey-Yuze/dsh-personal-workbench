@@ -316,8 +316,15 @@ export class OfficeEngine {
    * 不落盘——用户保存的地图不被改动，刷新后由花名册重新推导出相同位置。
    */
   private addAutoDesk(deskId: string): Furniture | undefined {
+    // 自动补工位要避开地毯等地面铺层：否则第 9 个员工会把桌子摆到会议区地毯上
+    // （用户截图里出现过「地毯中央多出一张木桌」）。地毯在 buildBlocked 里是可通行的，
+    // 只靠 this.free() 判不出「这里已经有陈设」。
+    const carpets = this.map.furniture.filter((f) => f.kind === 'carpet');
+    const onCarpet = (x: number, y: number): boolean =>
+      carpets.some((c) => x >= c.x && x < c.x + c.w && y >= c.y && y < c.y + c.h);
     for (let y = 2; y <= MAP_H - 4; y++) {
       for (let x = 1; x <= MAP_W - 4; x++) {
+        if (onCarpet(x, y) || onCarpet(x + 1, y) || onCarpet(x, y + 1) || onCarpet(x + 1, y + 1)) continue;
         if (!this.free(x, y)) continue;
         if (!this.free(x + 1, y)) continue;
         if (!this.free(x, y + 1)) continue;
