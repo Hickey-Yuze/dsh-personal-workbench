@@ -526,14 +526,18 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
     }
     let gx = c.rx + 0.5;
     let gy = c.ry + 0.5;
-    const sitting = c.state === 'working' || c.state === 'coffee';
+    // 只有「工作中」才坐工位（coffee 在咖啡机旁站着喝，不能瞬移回工位）
+    const working = c.state === 'working';
     let seatLift = 0;
-    if (sitting && c.deskId !== null && c.deskId !== '') {
+    let sitFace: number | null = null;
+    if (working && c.deskId !== null && c.deskId !== '') {
       const desk = (s.charGroup.userData.desks as Map<string, Furniture> | undefined)?.get(c.deskId);
       if (desk !== undefined) {
         gx = desk.x + 0.5;
         gy = desk.y + 1.55;
         seatLift = 0.1; // 坐姿抬升：让臀部落在 Chair.glb 座面（约 0.37）上
+        // 面朝桌子中心：模型原生面朝 +z，rotation.y = atan2(dx, dz) 使 +z 指向桌心
+        sitFace = Math.atan2(desk.x + 1 - gx, desk.y + 1 - gy);
       }
     }
     inst.obj.position.set(gx, seatLift, gy);
@@ -543,7 +547,11 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
     // 朝向：走路按移动方向转身（glTF 原生面朝 +z，rotation.y = atan2(dx, dz) 恰好对齐该约定）；
     // 非走路回到 face 二值朝向（面向/背对镜头斜 0.6）
     let faceRot: number;
-    if (walking && inst.lastGx !== undefined && inst.lastGy !== undefined) {
+    if (sitFace !== null) {
+      // 坐姿：永远面朝桌子（不再用引擎 face 的左右二值，那会侧坐/背对桌）
+      faceRot = sitFace;
+      inst.faceRotSm = faceRot;
+    } else if (walking && inst.lastGx !== undefined && inst.lastGy !== undefined) {
       const mdx = gx - inst.lastGx;
       const mdz = gy - inst.lastGy;
       if (Math.abs(mdx) > 0.001 || Math.abs(mdz) > 0.001) {
@@ -561,11 +569,11 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
     // 渲染锚点：名字/气泡按真实渲染位置（坐姿被吸附到工位）与身高偏移定位
     inst.anchorX = gx;
     inst.anchorZ = gy;
-    inst.anchorY = (sitting ? 1.08 : 1.48) + inst.obj.position.y;
+    inst.anchorY = (working ? 1.08 : 1.48) + inst.obj.position.y;
     inst.obj.rotation.y += (faceRot - inst.obj.rotation.y) * 0.25;
     // 动画切换：走路播 Walk、工作/咖啡播 SitDown、其余 Idle（互斥权重）
     if (inst.mixer !== undefined) {
-      const want: 'walk' | 'sit' | 'idle' = walking ? 'walk' : sitting ? 'sit' : 'idle';
+      const want: 'walk' | 'sit' | 'idle' = walking ? 'walk' : working ? 'sit' : 'idle';
       if (inst.walk !== undefined) setWeight(inst.walk, want === 'walk' ? 1 : 0);
       if (inst.sit !== undefined) setWeight(inst.sit, want === 'sit' ? 1 : 0);
       if (inst.idle !== undefined) setWeight(inst.idle, want === 'idle' ? 1 : 0);
