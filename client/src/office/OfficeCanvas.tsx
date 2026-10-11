@@ -114,11 +114,13 @@ export function OfficeCanvas({
       if (scale > 0) {
         const ox = (cw - scale * MAP_W) / 2 + panX;
         const oy = (ch - scale * MAP_H) / 2 + panY;
+        // 延伸走位区上限 2 格：画布放大/铺满时原来会扩到 24 格，人物会跑到房间外很远的沙地上
+        // （用户截图里一整排名字标签飘在空地）。留 2 格是让边缘走位不贴死墙。
         engine.setArena(
-          Math.ceil(oy / scale),
-          Math.ceil((ch - (oy + scale * MAP_H)) / scale),
-          Math.ceil(ox / scale),
-          Math.ceil((cw - (ox + scale * MAP_W)) / scale),
+          Math.min(2, Math.ceil(oy / scale)),
+          Math.min(2, Math.ceil((ch - (oy + scale * MAP_H)) / scale)),
+          Math.min(2, Math.ceil(ox / scale)),
+          Math.min(2, Math.ceil((cw - (ox + scale * MAP_W)) / scale)),
         );
       }
       engine.tick(dt);
