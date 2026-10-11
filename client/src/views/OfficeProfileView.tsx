@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { addMemoryNote, clearMemory, fetchMemory, removeMemoryNote, saveBuiltin } from '../office/agentClient.js';
+import { addMemoryNote, clearMemory, fetchMemory, listAssetFiles, removeMemoryNote, saveBuiltin } from '../office/agentClient.js';
 import type { BuiltinOverride, MemoryNote, RosterEntry } from '../office/agentClient.js';
 import { BUILTIN_STAFF } from '../office/engine.js';
 import type { MemberStat } from '../office/types.js';
@@ -54,7 +54,7 @@ type Props = {
   onBuiltinSaved: (builtin: Record<string, BuiltinOverride>) => void;
 };
 
-type Draft = { persona: string; links: string[]; skills: Record<string, number> };
+type Draft = { persona: string; links: string[]; skills: Record<string, number>; avatar: string };
 
 export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved }: Props): ReactElement {
   const chars = useMemo(() => [...BUILTIN_STAFF, ...roster], [roster]);
@@ -62,7 +62,9 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved }: 
   const sel = chars.find((c) => c.id === selId) ?? chars[0];
   const ov: BuiltinOverride = builtin[sel?.id ?? ''] ?? {};
 
-  const [draft, setDraft] = useState<Draft>({ persona: '', links: [], skills: {} });
+  const [draft, setDraft] = useState<Draft>({ persona: '', links: [], skills: {}, avatar: '' });
+  /** 可选 3D 人物模型（assets/models 下的 .gltf/.glb）。 */
+  const [models, setModels] = useState<string[]>([]);
   const [linkInput, setLinkInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState(''); // '' | '已保存 ✓' | 错误文案
@@ -81,6 +83,7 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved }: 
       persona: typeof cur.persona === 'string' ? cur.persona : '',
       links: Array.isArray(cur.links) ? [...cur.links] : [],
       skills: cur.skills !== undefined && typeof cur.skills === 'object' ? { ...cur.skills } : {},
+      avatar: typeof cur.avatar === 'string' ? cur.avatar : '',
     });
     setLinkInput('');
     setSaveMsg('');
@@ -102,6 +105,7 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved }: 
     if (draft.persona !== (typeof cur.persona === 'string' ? cur.persona : '')) return true;
     if (JSON.stringify(draft.links) !== JSON.stringify(Array.isArray(cur.links) ? cur.links : [])) return true;
     if (JSON.stringify(draft.skills) !== JSON.stringify(curSkills)) return true;
+    if (draft.avatar !== (typeof cur.avatar === 'string' ? cur.avatar : '')) return true;
     return false;
   }, [builtin, draft, sel?.id]);
 
@@ -110,7 +114,7 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved }: 
     setSaving(true);
     setSaveMsg('');
     try {
-      const table = await saveBuiltin(sel.id, { persona: draft.persona, links: draft.links, skills: draft.skills });
+      const table = await saveBuiltin(sel.id, { persona: draft.persona, links: draft.links, skills: draft.skills, avatar: draft.avatar });
       onBuiltinSaved(table);
       setSaveMsg('已保存 ✓');
     } catch (err) {
@@ -119,6 +123,17 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved }: 
       setSaving(false);
     }
   }, [draft, onBuiltinSaved, saving, sel]);
+
+  /* 3D 模型清单：挂载时拉一次（失败静默，下拉只剩「自动分配」） */
+  useEffect(() => {
+    let alive = true;
+    void listAssetFiles().then((files) => {
+      if (alive) setModels(files.filter((f) => f.endsWith('.gltf') || f.endsWith('.glb')));
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const refreshMemory = useCallback(async (id: string): Promise<void> => {
     try {
@@ -233,6 +248,24 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved }: 
             placeholder="如：雷厉风行，说话直接，喜欢用数据说话；对新手耐心"
             onChange={(e) => setDraft((d) => ({ ...d, persona: e.target.value }))}
           />
+        </div>
+
+        <div className="dsh-pwb-office-prof-section">
+          <div className="dsh-pwb-office-prof-sec-title">
+            3D 人物模型<i>场景里该员工的长相；自动分配 = 按名字固定挑一个</i>
+          </div>
+          <select
+            className="dsh-pwb-office-prof-input"
+            value={draft.avatar}
+            onChange={(e) => setDraft((d) => ({ ...d, avatar: e.target.value }))}
+          >
+            <option value="">自动分配</option>
+            {models.map((m) => (
+              <option key={m} value={m}>
+                {m.replace(/\.(gltf|glb)$/, '')}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="dsh-pwb-office-prof-section">

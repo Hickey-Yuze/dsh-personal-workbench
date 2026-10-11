@@ -1861,6 +1861,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
             provider: officeBody.provider,
             model: officeBody.model,
             skills: officeBody.skills,
+            avatar: officeBody.avatar,
           });
           send(res, 200, { ok: true, builtin });
         } catch (err) {

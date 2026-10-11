@@ -35,6 +35,8 @@ export type OfficeBuiltinOverride = {
   model?: string;
   /** 能力评估：固定维度（OFFICE_SKILL_DIMS）→ 0-100 分。员工档案编辑，注入派活/私聊提示词做角色定位。 */
   skills?: Record<string, number>;
+  /** 3D 人物模型文件名（assets/models 下的 .gltf/.glb，如 Casual_Male.gltf）；空/缺省 = 按名字自动分配。 */
+  avatar?: string;
 };
 
 /** 能力评估固定维度（员工档案编辑与 personaPromptSuffix 注入共用同一顺序）。 */
@@ -98,6 +100,7 @@ export function loadOfficeRosterExt(): OfficeRosterExt {
         if (typeof o.deskId === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(o.deskId.trim())) clean.deskId = o.deskId.trim();
         if (typeof o.provider === 'string' && o.provider.trim() !== '') clean.provider = o.provider.trim().slice(0, 64);
         if (typeof o.model === 'string' && o.model.trim() !== '') clean.model = o.model.trim().slice(0, 64);
+        if (typeof o.avatar === 'string' && /^[\w-]{1,56}\.(gltf|glb)$/.test(o.avatar.trim())) clean.avatar = o.avatar.trim();
         if (o.skills !== null && typeof o.skills === 'object' && !Array.isArray(o.skills)) {
           const skills: Record<string, number> = {};
           for (const dim of OFFICE_SKILL_DIMS) {
@@ -139,7 +142,7 @@ function clampField(v: unknown, max: number): string | undefined {
  */
 export function upsertBuiltinOverride(
   id: string,
-  patch: { name?: unknown; role?: unknown; persona?: unknown; links?: unknown; deskId?: unknown; provider?: unknown; model?: unknown; skills?: unknown },
+  patch: { name?: unknown; role?: unknown; persona?: unknown; links?: unknown; deskId?: unknown; provider?: unknown; model?: unknown; skills?: unknown; avatar?: unknown },
 ): Record<string, OfficeBuiltinOverride> {
   if (!isValidCharId(id)) throw new Error('id 必须为合法员工 id');
   const ext = loadOfficeRosterExt();
@@ -185,6 +188,13 @@ export function upsertBuiltinOverride(
   if (model !== undefined) {
     if (model === '') delete cur.model;
     else cur.model = model;
+  }
+  if (patch.avatar !== undefined) {
+    if (typeof patch.avatar !== 'string') throw new Error('avatar 必须为字符串');
+    const av = patch.avatar.trim();
+    if (av === '') delete cur.avatar;
+    else if (!/^[\w-]{1,56}\.(gltf|glb)$/.test(av)) throw new Error('avatar 必须为 assets/models 下的 .gltf/.glb 文件名');
+    else cur.avatar = av;
   }
   if (patch.skills !== undefined) {
     if (patch.skills === null || typeof patch.skills !== 'object' || Array.isArray(patch.skills)) {

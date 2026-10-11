@@ -234,6 +234,17 @@ export async function loadCharModel(modelName: string, charName?: string): Promi
 const SEMANTIC_SHIRT = '7f95b5';
 const SEMANTIC_BODY = SEMANTIC_SHIRT;
 
+/** 员工档案指定的 3D 模型覆盖：角色名 → 模型文件名（由 OfficeModuleView 注入）。 */
+const avatarByName = new Map<string, string>();
+
+/** 注入/更新 3D 人物模型覆盖（空表 = 全部回退自动分配）。 */
+export function setAvatarOverrides(map: Record<string, string>): void {
+  avatarByName.clear();
+  for (const [name, file] of Object.entries(map)) {
+    if (typeof file === 'string' && file !== '') avatarByName.set(name, file);
+  }
+}
+
 /** 名字 → 模型名稳定映射（同一名字永远同一模型；内置职员硬编码覆盖）。 */
 const FIXED: Record<string, string> = {
   'Yuze': 'Suit_Male.gltf',
@@ -254,6 +265,8 @@ const POOL = [
 ];
 
 export function modelForChar(name: string): string {
+  const custom = avatarByName.get(name); // 员工档案里手工指定的模型优先
+  if (custom !== undefined) return custom;
   const fixed = FIXED[name];
   if (fixed !== undefined) return fixed;
   let h = 0;

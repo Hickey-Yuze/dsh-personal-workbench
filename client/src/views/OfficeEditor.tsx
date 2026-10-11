@@ -17,6 +17,8 @@ export interface OfficeEditorProps {
   onSave: (m: OfficeMap) => void;
   /** 点击「取消」时回调。 */
   onCancel: () => void;
+  /** 场景引擎当前使用的地图（唯一真相源）：编辑器以它初始化，避免两边各读各的存档而分叉。 */
+  map?: OfficeMap;
 }
 
 type EditAction =
@@ -122,9 +124,14 @@ function hitFurniture(list: Furniture[], gx: number, gy: number): Furniture | un
   return undefined;
 }
 
-export function OfficeEditor({ onSave, onCancel }: OfficeEditorProps): ReactElement {
+export function OfficeEditor({ onSave, onCancel, map }: OfficeEditorProps): ReactElement {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [furniture, setFurniture] = useState<Furniture[]>(() => {
+    // 优先用场景引擎正在用的地图（保证「布置办公室」与场景 tab 永远一致）；
+    // 没传时才回退本地存档 / 默认图。
+    if (map !== undefined && Array.isArray(map.furniture) && map.furniture.length > 0) {
+      return map.furniture.map((f) => ({ ...f }));
+    }
     const saved = loadOfficeMap();
     return saved !== null ? saved.furniture : defaultMap().furniture;
   });

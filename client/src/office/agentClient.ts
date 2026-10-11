@@ -26,6 +26,8 @@ export type BuiltinOverride = {
   model?: string;
   /** 能力评估：固定维度 → 0-100 分（员工档案编辑；注入派活/私聊提示词）。 */
   skills?: Record<string, number>;
+  /** 3D 人物模型文件名（assets/models 下的 .gltf/.glb）；空 = 按名字自动分配。 */
+  avatar?: string;
 };
 
 export type RosterResult = { roster: RosterEntry[]; builtin?: Record<string, BuiltinOverride> };
@@ -72,6 +74,16 @@ async function postJson<T>(path: string, body: Record<string, unknown>): Promise
   });
   if (!res.ok) throw new Error(await errMessage(res, `请求失败（${res.status}）`));
   return (await res.json()) as T;
+}
+
+/** 拉取 assets/models 的模型文件清单（员工档案的 3D 模型下拉用）。 */
+export async function listAssetFiles(): Promise<string[]> {
+  try {
+    const data = await getJson<{ files?: string[] }>('asset/list');
+    return Array.isArray(data.files) ? data.files : [];
+  } catch {
+    return [];
+  }
 }
 
 /** 读取花名册（自定义员工 + 各员工属性覆盖 builtin；旧宿主无 builtin 字段 → undefined，调用方降级）。 */

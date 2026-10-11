@@ -5,7 +5,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent, ReactElement } from 'react';
 import { ImagePlus } from 'lucide-react';
-import { OfficeEngine } from '../office/engine.js';
+import { OfficeEngine, BUILTIN_STAFF } from '../office/engine.js';
+import { setAvatarOverrides } from '../office/objModels.js';
 import { defaultMap } from '../office/map.js';
 import { OfficeCanvas } from '../office/OfficeCanvas.js';
 import { clearOfficeMap, loadOfficeMap } from '../office/store.js';
@@ -399,6 +400,20 @@ export function OfficeModuleView(): ReactElement {
       dead = true;
     };
   }, [engine]);
+
+  /* 员工档案指定的 3D 人物模型 → 注入渲染层（roster/builtin 变化时刷新） */
+  useEffect(() => {
+    const map: Record<string, string> = {};
+    for (const c of BUILTIN_STAFF) {
+      const av = builtinOverrides[c.id]?.avatar;
+      if (typeof av === 'string' && av !== '') map[c.name] = av;
+    }
+    for (const r of roster) {
+      const av = builtinOverrides[r.id]?.avatar;
+      if (typeof av === 'string' && av !== '') map[r.name] = av;
+    }
+    setAvatarOverrides(map);
+  }, [roster, builtinOverrides]);
 
   /* 模型清单懒加载一次（失败静默：入职下拉只剩「跟随默认」） */
   useEffect(() => {
@@ -839,7 +854,7 @@ export function OfficeModuleView(): ReactElement {
 
           {tab === 'edit' && (
             <>
-              <OfficeEditor onSave={handleSaveMap} onCancel={() => setTab('scene')} />
+              <OfficeEditor map={engine.map} onSave={handleSaveMap} onCancel={() => setTab('scene')} />
               <div className="dsh-pwb-office-hire">
                 <b>员工入职</b>
                 <input
