@@ -76,11 +76,11 @@ export function defaultMap(): OfficeMap {
     mk('plant', 1, 1),
     mk('plant', 1, 10),
     mk('plant', 9, 10),
-    mk('plant', 39, 10),
+    mk('plant', 38, 10),
     // 咖啡机（外间右上角）
     mk('coffee', 26, 9),
     // 冰箱（右后角）
-    mk('fridge', 39, 1),
+    mk('fridge', 38, 1),
     // 自己的中央外间工位（必须是最后一张桌：spawn 约定 desks 最后一座是自己）
     mk('desk', 21, 8),
     mk('cabinet', 23, 9),

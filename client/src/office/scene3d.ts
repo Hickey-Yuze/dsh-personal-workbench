@@ -397,7 +397,7 @@ function buildScene(s: Scene3D, furniture: Furniture[], boardMats: THREE.MeshSta
       if (glbDesk) buildDeskProps(f, g, 1.44, 0.61, 0.78);
       else buildDeskProps(f, g, 2.0, 1.3, 0.75);
       // 工位椅（椅背在 +z，人坐椅上）：Chair.glb 优先，回退几何椅
-      const chx = f.x + 0.5, chz = f.y + 1.55;
+      const chx = f.x + 1, chz = f.y + 1.55; // 对齐桌子中心线：人在桌子正前方坐正（原来偏左半格 → 斜坐 42°）
       if (!placeFurnModel(s, 'chair', chx, chz, 0.62, Math.PI, g)) {
         g.add(box(0.46, 0.07, 0.46, mat('#dfe4ea', { rough: 0.7 }), chx, 0.42, chz));
         g.add(box(0.46, 0.52, 0.06, mat('#dfe4ea', { rough: 0.7 }), chx, 0.72, chz + 0.24));
@@ -533,7 +533,7 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
     if (working && c.deskId !== null && c.deskId !== '') {
       const desk = (s.charGroup.userData.desks as Map<string, Furniture> | undefined)?.get(c.deskId);
       if (desk !== undefined) {
-        gx = desk.x + 0.5;
+        gx = desk.x + 1;
         gy = desk.y + 1.55;
         seatLift = 0.1; // 坐姿抬升：让臀部落在 Chair.glb 座面（约 0.37）上
         // 面朝显示器（比朝桌心更准）：显示器在桌面后缘 monZ = (desk.y+1) - deskD*0.5 + 0.16

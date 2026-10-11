@@ -9,7 +9,9 @@ import type { Furniture, FurnitureKind, OfficeMap } from './types.js';
 
 const STORAGE_KEY = 'dsh-pwb:office_map_v1';
 
-const KINDS: readonly FurnitureKind[] = ['desk', 'whiteboard', 'plant', 'coffee'];
+// 合法家具 kind 全集：直接取 FURN_SIZE 的键（曾因手工白名单漏 wall/roundtable 等 6 种，
+// 导致含玻璃隔断/圆桌的存档整包校验失败、读不回来）
+const KINDS: readonly FurnitureKind[] = Object.keys(FURN_SIZE) as FurnitureKind[];
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -46,7 +48,9 @@ export function furnitureFits(
 ): boolean {
   const s = FURN_SIZE[kind];
   if (!inWalls(x, y, s.w, s.h)) return false;
-  return !furniture.some((f) => f.id !== ignoreId && rectsOverlap(f, x, y, s.w, s.h));
+  // 地毯是地面铺层（引擎 buildBlocked 也可通行）：可与其他家具叠放（参考图圆桌就摆在地毯上）
+  if (kind === 'carpet') return true;
+  return !furniture.some((f) => f.id !== ignoreId && f.kind !== 'carpet' && rectsOverlap(f, x, y, s.w, s.h));
 }
 
 function parseFurniture(v: unknown): Furniture | null {
@@ -72,7 +76,8 @@ function parseOfficeMap(v: unknown): OfficeMap | null {
     if (f === null) return null;
     if (seenIds.has(f.id)) return null;
     seenIds.add(f.id);
-    if (furniture.some((g) => rectsOverlap(g, f.x, f.y, f.w, f.h))) return null;
+    // 地毯不参与重叠校验（地面铺层可叠放；曾因圆桌压地毯导致整包地图读不回来）
+    if (f.kind !== 'carpet' && furniture.some((g) => g.kind !== 'carpet' && rectsOverlap(g, f.x, f.y, f.w, f.h))) return null;
     furniture.push(f);
   }
   return { w: MAP_W, h: MAP_H, furniture };
@@ -86,6 +91,15 @@ export function loadOfficeMap(): OfficeMap | null {
     return parseOfficeMap(JSON.parse(raw) as unknown);
   } catch {
     return null;
+  }
+}
+
+/** 清除本地保存的地图（用于「恢复参考图默认布局」）。 */
+export function clearOfficeMap(): void {
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // 存储不可用时静默
   }
 }
 

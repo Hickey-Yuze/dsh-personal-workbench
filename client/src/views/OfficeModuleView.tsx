@@ -6,8 +6,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent, ReactElement } from 'react';
 import { ImagePlus } from 'lucide-react';
 import { OfficeEngine } from '../office/engine.js';
+import { defaultMap } from '../office/map.js';
 import { OfficeCanvas } from '../office/OfficeCanvas.js';
-import { loadOfficeMap } from '../office/store.js';
+import { clearOfficeMap, loadOfficeMap } from '../office/store.js';
 import { deskChairCell } from '../office/map.js';
 import type { OfficeMap } from '../office/types.js';
 import type { MemberStat } from '../office/types.js';
@@ -710,6 +711,13 @@ export function OfficeModuleView(): ReactElement {
     };
   }, [engine, members]);
 
+  /** 恢复参考图默认布局：清本地存档 + 重建引擎（场景与编辑器同时对齐）。 */
+  const handleResetMap = useCallback((): void => {
+    if (!window.confirm('恢复参考图默认布局？当前自定义摆放会被清除。')) return;
+    clearOfficeMap();
+    setEngine(new OfficeEngine(defaultMap()));
+  }, []);
+
   const handleSaveMap = useCallback((m: OfficeMap): void => {
     setEngine(new OfficeEngine(m)); // 换图即换引擎：OfficeCanvas 的 rAF effect 依赖 engine 会自动重挂
     setTab('scene');
@@ -816,7 +824,10 @@ export function OfficeModuleView(): ReactElement {
                   <button title="缩小" onClick={() => zoomStep(-0.2)}>
                     －
                   </button>
-                  <button title="复位" onClick={() => setOfficeView({})}>
+                  <button title="恢复参考图默认布局" onClick={handleResetMap}>
+                    ⟲布局
+                  </button>
+                  <button title="复位视角" onClick={() => setOfficeView({})}>
                     ⭯
                   </button>
                 </div>
