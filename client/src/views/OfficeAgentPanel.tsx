@@ -17,6 +17,7 @@ import {
   setAutopilot,
 } from '../office/agentClient.js';
 import type { AgentRow, BuiltinOverride, OfficeModelOption, RosterEntry } from '../office/agentClient.js';
+import { openSessionInShell } from '../sessionNav.js';
 
 export type OfficeAgentPanelProps = {
   /** 派活入口：让老板切到该员工的聊天里派活（id 即 npcId，自定义员工为 custom-<序号>）。 */
@@ -102,6 +103,8 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved }: OfficeAgentPane
   const [saving, setSaving] = useState(false);
   const [savedHint, setSavedHint] = useState('');
   const agentsDeadRef = useRef(false);
+  /** 「点到侧栏会话」失败提示（宿主 uiWorkspace 缺失/旧宿主时才会出现）。 */
+  const [navErr, setNavErr] = useState('');
 
   const refreshRoster = useCallback((): void => {
     loadRoster()
@@ -278,6 +281,7 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved }: OfficeAgentPane
       <div className="dsh-pwb-office-emp-list">
         {employees.map((emp) => {
           const row = agentRows[emp.id];
+          const hasSession = row?.sessionId !== undefined && row.sessionId !== '';
           const dot = statusDot(row);
           const isFrom = fromId === emp.id;
           const auto = builtin?.[emp.id]?.autopilot === true;
@@ -285,11 +289,26 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved }: OfficeAgentPane
           return (
             <div key={emp.id} className="dsh-pwb-office-emp-item">
               <div className="dsh-pwb-office-emp-line">
-                <span className="dsh-pwb-office-emp-dot" style={{ background: dot.color }} title={dot.label} />
-                <b className="dsh-pwb-office-emp-name">{emp.name}</b>
-                <span className="dsh-pwb-office-emp-role">{emp.role}</span>
-                {auto && <span className="dsh-pwb-office-emp-autotag">自觉中</span>}
-                <span className="dsh-pwb-office-emp-status">{dot.label}</span>
+                <span
+                  className="dsh-pwb-office-emp-open"
+                  data-session={hasSession ? '1' : '0'}
+                  title={hasSession ? '点击在侧栏打开 TA 的真实会话' : 'TA 还没有进行中的会话：点「派活」让 TA 真干活'}
+                  onClick={
+                    hasSession
+                      ? () => {
+                          if (openSessionInShell(row?.sessionId ?? '')) setNavErr('');
+                          else setNavErr('没找到宿主侧栏接口：⌘Q 重启宿主后再试（或点「派活」重开会话）');
+                        }
+                      : undefined
+                  }
+                >
+                  <span className="dsh-pwb-office-emp-dot" style={{ background: dot.color }} title={dot.label} />
+                  <b className="dsh-pwb-office-emp-name">{emp.name}</b>
+                  <span className="dsh-pwb-office-emp-role">{emp.role}</span>
+                  {auto && <span className="dsh-pwb-office-emp-autotag">自觉中</span>}
+                  <span className="dsh-pwb-office-emp-status">{dot.label}</span>
+                  {hasSession && <span className="dsh-pwb-office-emp-goto" title="有真实会话">↗</span>}
+                </span>
                 <span className="dsh-pwb-office-emp-spacer" />
                 <button
                   className={`dsh-pwb-office-emp-switch${auto ? ' on' : ''}`}
@@ -397,7 +416,8 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved }: OfficeAgentPane
           {handoffErr !== '' && <p style={errText}>⚠️ {handoffErr}</p>}
         </div>
       )}
-      <p style={hintText}>点「派活」在聊天里给 TA 布置真实任务；绿点 = 会话中，橙点 = 空闲，灰点 = 未派活。自觉开关开着时 TA 会自己找活干。</p>
+      {navErr !== '' && <p style={errText}>{navErr}</p>}
+      <p style={hintText}>点名字那一簇可在侧栏打开 TA 的真实会话；点「派活」在聊天里给 TA 布置真实任务；绿点 = 会话中，橙点 = 空闲，灰点 = 未派活。自觉开关开着时 TA 会自己找活干。</p>
     </div>
   );
 }

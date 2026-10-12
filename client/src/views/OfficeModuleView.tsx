@@ -2,7 +2,7 @@
  * 模块：像素办公室 —— P1 场景 + P2 互动 + P3 编辑器 + P4 对话 + P5 员工档案/动作网关
  * + P4.5 同事 agent 联动：点谁跟谁聊（私聊）、全员群聊互聊、会议讨论；NPC 回复冒泡到头上。
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent, ReactElement } from 'react';
 import { ImagePlus } from 'lucide-react';
 import { OfficeEngine, BUILTIN_STAFF } from '../office/engine.js';
@@ -18,6 +18,7 @@ import type { BuiltinOverride, OfficeModelOption, RosterEntry } from '../office/
 import { OfficeEditor } from './OfficeEditor.js';
 import { OfficeProfileView } from './OfficeProfileView.js';
 import { OfficeAgentPanel } from './OfficeAgentPanel.js';
+import { openSessionInShell } from '../sessionNav.js';
 
 const STATE_TEXT: Record<MemberStat['state'], string> = {
   idle: '摸鱼中',
@@ -88,7 +89,7 @@ const ACTIONS_URL = '/api/personal-workbench/office/actions';
 const AGENTS_URL = '/api/personal-workbench/office/agents';
 
 /** 真工位会话快照（office/agents 轮询返回的NPC 条目）。 */
-type AgentRow = { npcId: string; name?: string; status: string; lastText: string; task?: string; report?: string; reportAt?: number };
+type AgentRow = { npcId: string; name?: string; status: string; lastText: string; task?: string; report?: string; reportAt?: number; sessionId?: string; startedAt?: number; updatedAt?: number };
 
 /* ── 左右分栏：左列宽度比例（0.3~0.8），存 localStorage 进视图恢复，拖拽分隔条实时调整 ── */
 const SPLIT_KEY = 'dsh-pwb:office_split_v1';
@@ -720,22 +721,8 @@ export function OfficeModuleView(): ReactElement {
       chatAbortRef.current = ctrl;
       if (chatTarget.kind === 'ai') await sendAi(q, imgs, ctrl);
       else if (chatTarget.kind === 'npc') {
-        const row = agentRows[chatTarget.id];
-        if (row !== undefined && row.status !== 'stopped') {
-          // 干活中的同事：发送即递话进其真实会话（回复经 office/agents 轮询以气泡+进度条呈现）
-          if (q === '') {
-            setImgErr('同事正在干活时只能发文字（附图未发送）');
-            setChatBusy(false);
-            chatAbortRef.current = null;
-            return;
-          }
-          if (imgs.length > 0) setWorkErr('真实会话暂不支持附图，已只发送文字');
-          setChatMsgs((prev) => [...prev, { role: 'user', content: q }]);
-          setChatBusy(false);
-          chatAbortRef.current = null;
-          workSend(q);
-          return;
-        }
+        // 「发送」= 只问一句：走 npc/chat 轻量问答（本地聊天记忆），不写进 TA 的真实会话、不计入工作记录；
+        // 真实任务/递话走「派活」按钮（office/agent/start|say）。
         await sendNpc(q, imgs, ctrl);
       } else await runGroupRound(q, imgs, ctrl);
       setChatMsgs((prev) =>
@@ -744,7 +731,7 @@ export function OfficeModuleView(): ReactElement {
       setChatBusy(false);
       chatAbortRef.current = null;
     },
-    [agentRows, chatBusy, chatImages, chatTarget, runGroupRound, sendAi, sendNpc, workSend],
+    [chatBusy, chatImages, chatTarget, runGroupRound, sendAi, sendNpc],
   );
 
   /* 「让他们聊」：不输入话题，空转一轮互聊 */
@@ -880,6 +867,27 @@ export function OfficeModuleView(): ReactElement {
         : '先说一句抛话题，或点「让他们聊」看同事们互聊';
   const npcWorkRow = chatTarget.kind === 'npc' ? agentRows[chatTarget.id] : undefined;
   const npcWorkActive = npcWorkRow !== undefined && npcWorkRow.status !== 'stopped';
+  /* 「跳到侧栏会话」目标：优先当前聊的同事，否则取最近有进展的员工会话（宿主 office/agents 的 sessionId）。 */
+  const jumpSession = useMemo((): { id: string; name: string } | null => {
+    const of = (npcId: string): { id: string; name: string } | null => {
+      const row = agentRows[npcId];
+      const sid = row?.sessionId ?? '';
+      if (sid === '') return null;
+      return { id: sid, name: builtinOverrides[npcId]?.name ?? row?.name ?? npcId };
+    };
+    if (chatTarget.kind === 'npc') {
+      const own = of(chatTarget.id);
+      if (own !== null) return own;
+    }
+    let best: { id: string; name: string; at: number } | null = null;
+    for (const npcId of Object.keys(agentRows)) {
+      const cand = of(npcId);
+      if (cand === null) continue;
+      const at = agentRows[npcId]?.updatedAt ?? agentRows[npcId]?.startedAt ?? 0;
+      if (best === null || at > best.at) best = { id: cand.id, name: cand.name, at };
+    }
+    return best === null ? null : { id: best.id, name: best.name };
+  }, [agentRows, builtinOverrides, chatTarget]);
 
   return (
     <div className="dsh-pwb-view">
@@ -897,8 +905,25 @@ export function OfficeModuleView(): ReactElement {
             </button>
             <span className="dsh-pwb-office-tab-spacer" />
             <button className="dsh-pwb-office-tab" onClick={() => setChatOpen((v) => !v)}>
-              {chatOpen ? '收起 AI' : 'AI 助手'}
+              {chatOpen ? '收起' : 'AI 助手'}
             </button>
+            {!chatOpen && (
+              <button
+                className="dsh-pwb-office-tab"
+                disabled={jumpSession === null}
+                title={
+                  jumpSession === null
+                    ? '还没有进行中的员工会话：先给谁点「派活」'
+                    : `在宿主侧栏打开「${jumpSession.name}」的真实会话`
+                }
+                onClick={() => {
+                  if (jumpSession === null) return;
+                  if (!openSessionInShell(jumpSession.id)) setWorkErr('宿主侧栏接口不可用：⌘Q 重启宿主后再试');
+                }}
+              >
+                {jumpSession === null ? '会话' : `${jumpSession.name} 的会话 ↗`}
+              </button>
+            )}
           </div>
 
           {tab === 'scene' && (
@@ -1173,8 +1198,8 @@ export function OfficeModuleView(): ReactElement {
                     placeholder={
                       chatTarget.kind === 'npc'
                         ? npcWorkActive
-                          ? 'TA 正在干活，消息会递进 TA 的真实会话…'
-                          : '找 TA 聊天，或输入任务点「派活」让 TA 真干活…'
+                          ? '「发送」= 只问一句（不进 TA 的会话）；要递话/派活点「派活」…'
+                          : '「发送」= 简单问答（不进会话）；点「派活」让 TA 真干活…'
                         : chatImages.length > 0
                           ? '补充说明（可选），点「发送」带上图片…'
                           : '输入消息…'
@@ -1190,11 +1215,11 @@ export function OfficeModuleView(): ReactElement {
                       if (e.key === 'Enter') void sendChat(chatInput);
                     }}
                   />
-                  {chatTarget.kind === 'npc' && !chatBusy && !npcWorkActive && (
+                  {chatTarget.kind === 'npc' && !chatBusy && (
                     <button
                       className="dsh-pwb-office-chat-work"
                       disabled={chatInput.trim() === ''}
-                      title="附图不随「派活」发送"
+                      title="派活：真实任务走 TA 的独立会话（有会话则递话进去），侧栏可打开该会话；附图不随「派活」发送"
                       onClick={() => workSend(chatInput.trim())}
                     >
                       派活

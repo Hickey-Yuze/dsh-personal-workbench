@@ -11,10 +11,11 @@
  *   window.__ModuleLoader__.load({ id, factory })，
  *   factory(require) 返回 { apply, inject }（wrapper 由构建脚本生成）。
  */
-import type { WorkbenchClientCtx } from './env.js';
+import { ctxGet, type WorkbenchClientCtx } from './env.js';
 import { initI18n, t } from './i18n.js';
 import { PANEL_ID, WorkbenchPanel } from './panel.js';
 import { makeRpc } from './rpc.js';
+import { setSessionOpener } from './sessionNav.js';
 import { ensureThemeStyle } from './theme.js';
 
 export const inject = ['slots', 'layout', 'locale'];
@@ -184,6 +185,19 @@ export function apply(ctx: WorkbenchClientCtx): void {
   const rpc = makeRpc();
   initI18n(ctx.locale);
   ensureThemeStyle();
+
+  /* 「跳到侧栏会话」桥：宿主 uiWorkspace.openSession(id) 在主区打开会话并在侧栏展开分组+定位高亮。
+     服务是软取（每次调用时再取，可能在 apply 之后才挂载）；缺失/旧宿主 → 返回 false，调用方降级。 */
+  setSessionOpener((sessionId: string): boolean => {
+    const uiWorkspace = ctxGet(ctx, 'uiWorkspace') as { openSession?: (target: unknown) => void } | undefined;
+    if (uiWorkspace === undefined || typeof uiWorkspace.openSession !== 'function') return false;
+    try {
+      uiWorkspace.openSession(sessionId);
+      return true;
+    } catch {
+      return false;
+    }
+  });
 
   // 侧栏入口（DOM 注入；样式与「新会话」「定时任务」按钮同款）
   const disposeSidebar = injectSidebarEntry(ctx);

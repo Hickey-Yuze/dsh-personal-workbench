@@ -45,6 +45,8 @@ export type AgentRow = {
   lastText: string;
   report?: string;
   reportAt?: number;
+  /** 本次派活拉起的真实会话 id（宿主 entry.sessionId）；侧栏跳转用，无会话 = undefined */
+  sessionId?: string;
   startedAt?: number;
   updatedAt?: number;
 };

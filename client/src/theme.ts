@@ -1434,6 +1434,11 @@ html { color-scheme: light !important; }
   line-height: 1.4;
 }
 .dsh-pwb-office-emp-spacer { flex: 1; }
+/* 点这一簇（状态点+名字+职务+状态）= 在宿主侧栏打开该员工的真实会话 */
+.dsh-pwb-office-emp-open { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.dsh-pwb-office-emp-open[data-session='1'] { cursor: pointer; }
+.dsh-pwb-office-emp-open[data-session='1']:hover .dsh-pwb-office-emp-name { text-decoration: underline; text-underline-offset: 2px; }
+.dsh-pwb-office-emp-goto { color: var(--pwb-accent, #00c853); font-size: 11px; }
 /* 自觉工作开关：小滑块（关=灰，开=绿；旋钮显式 corner-shape:round 防 superellipse） */
 .dsh-pwb-office-emp-switch {
   position: relative;
