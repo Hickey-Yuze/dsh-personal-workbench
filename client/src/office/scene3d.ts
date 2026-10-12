@@ -249,13 +249,22 @@ function buildDeskProps(f: Furniture, g: THREE.Group, deskW: number, deskD: numb
 }
 
 
+
 function buildGlassCell(f: Furniture, g: THREE.Group, wallSet: Set<string>): void {
-  // 砖墙（代码手绘几何体）：暖灰砖柱 + 横向砖缝线 + 顶部浅色压顶
+  // 砖墙（代码手绘几何体）。转角处理：一格可能同时属于 x 向段和 z 向段（L 转角），
+  // 这里按邻居判断分别补两段；段长按邻居端点收/放半格厚度，保证转角处端面贴合不缺口。
+  const hasXN = wallSet.has(`${f.x - 1},${f.y}`);
+  const hasXP = wallSet.has(`${f.x + 1},${f.y}`);
+  const hasZN = wallSet.has(`${f.x},${f.y - 1}`);
+  const hasZP = wallSet.has(`${f.x},${f.y + 1}`);
+  const isX = hasXN || hasXP; // 沿 x 的横段
+  const isZ = hasZN || hasZP; // 沿 z 的竖段
+  const THICK = 0.24;         // 墙厚
+  const H = 1.6;              // 砖墙高度
   const cx = f.x + 0.5, cz = f.y + 0.5;
-  const hasX = wallSet.has(`${f.x - 1},${f.y}`) || wallSet.has(`${f.x + 1},${f.y}`);
   const brickMat = new THREE.MeshStandardMaterial({ color: '#b8b0a4', roughness: 0.85, metalness: 0.02 });
   const capMat = new THREE.MeshStandardMaterial({ color: '#d5cfc4', roughness: 0.7, metalness: 0.02 });
-  const H = 1.6; // 砖墙高度：齐人半高
+  const seamMat = new THREE.MeshStandardMaterial({ color: '#5a544c' });
   const mk = (geo: THREE.BufferGeometry, x: number, y: number, z: number, m: THREE.MeshStandardMaterial): THREE.Mesh => {
     const mesh = new THREE.Mesh(geo, m);
     mesh.position.set(x, y, z);
@@ -263,26 +272,41 @@ function buildGlassCell(f: Furniture, g: THREE.Group, wallSet: Set<string>): voi
     mesh.receiveShadow = true;
     return mesh;
   };
-  if (hasX) {
-    // 沿 x 方向的墙段（1 格宽）
-    g.add(mk(new THREE.BoxGeometry(1, H, 0.16), cx, H / 2, cz, brickMat));
-    // 横向砖缝线（2 条）
+  /** 一段沿 x 的砖墙：从格中心向 ±x 各延伸 len（半格或半格+半厚），端点由邻居决定 */
+  const xSeg = (len: number, extNeg: boolean, extPos: boolean): void => {
+    // 总长 = len*2 + 端点延伸（每端 +THICK/2 才能与垂直段的端面平齐）
+    const total = len * 2 + (extNeg ? THICK / 2 : 0) + (extPos ? THICK / 2 : 0);
+    const centerOffset = (extPos ? THICK / 2 : 0) - (extNeg ? THICK / 2 : 0);
+    g.add(mk(new THREE.BoxGeometry(total, H, THICK), cx + centerOffset, H / 2, cz, brickMat));
     for (let r = 1; r <= 2; r++) {
-      const y = (H * r) / 3;
-      g.add(mk(new THREE.BoxGeometry(0.96, 0.018, 0.176), cx, y, cz, new THREE.MeshStandardMaterial({ color: '#5a544c' })));
+      g.add(mk(new THREE.BoxGeometry(total - 0.04, 0.018, THICK + 0.016), cx + centerOffset, (H * r) / 3, cz, seamMat));
     }
-    // 顶部浅色压顶
-    g.add(mk(new THREE.BoxGeometry(1.04, 0.09, 0.22), cx, H + 0.045, cz, capMat));
-  } else {
-    // 沿 z 方向的墙段
-    g.add(mk(new THREE.BoxGeometry(0.16, H, 1), cx, H / 2, cz, brickMat));
+    g.add(mk(new THREE.BoxGeometry(total + 0.08, 0.09, THICK + 0.08), cx + centerOffset, H + 0.045, cz, capMat));
+  };
+  /** 一段沿 z 的砖墙 */
+  const zSeg = (len: number, extNeg: boolean, extPos: boolean): void => {
+    const total = len * 2 + (extNeg ? THICK / 2 : 0) + (extPos ? THICK / 2 : 0);
+    const centerOffset = (extPos ? THICK / 2 : 0) - (extNeg ? THICK / 2 : 0);
+    g.add(mk(new THREE.BoxGeometry(THICK, H, total), cx, H / 2, cz + centerOffset, brickMat));
     for (let r = 1; r <= 2; r++) {
-      const y = (H * r) / 3;
-      g.add(mk(new THREE.BoxGeometry(0.176, 0.018, 0.96), cx, y, cz, new THREE.MeshStandardMaterial({ color: '#5a544c' })));
+      g.add(mk(new THREE.BoxGeometry(THICK + 0.016, 0.018, total - 0.04), cx, (H * r) / 3, cz + centerOffset, seamMat));
     }
-    g.add(mk(new THREE.BoxGeometry(0.22, 0.09, 1.04), cx, H + 0.045, cz, capMat));
+    g.add(mk(new THREE.BoxGeometry(THICK + 0.08, 0.09, total + 0.08), cx, H + 0.045, cz + centerOffset, capMat));
+  };
+  if (isX) {
+    // 端点延伸：邻格是墙 → 延半厚填缝（转角/直线闭合）；否则也延半厚封端
+    xSeg(0.5, hasXN || isZ, hasXP || isZ);
+  }
+  if (isZ) {
+    zSeg(0.5, hasZN || isX, hasZP || isX);
+  }
+  if (!isX && !isZ) {
+    // 孤立墙格：画一个小方柱
+    g.add(mk(new THREE.BoxGeometry(0.8, H, 0.8), cx, H / 2, cz, brickMat));
+    g.add(mk(new THREE.BoxGeometry(0.9, 0.09, 0.9), cx, H + 0.045, cz, capMat));
   }
 }
+
 
 
 function buildWall(f: Furniture, g: THREE.Group, wallSet: Set<string>): void {

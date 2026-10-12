@@ -1530,39 +1530,53 @@ function isoDrawCoffee(ctx: CanvasRenderingContext2D, f: Furniture, ox: number, 
 }
 
 /** 玻璃隔断（wall 家具）：深灰框 + 半透明玻璃 + 竖梃。 */
-function isoDrawWallSeg(ctx: CanvasRenderingContext2D, f: Furniture, ox: number, oy: number, k: number): void {
-  const base = isoCorner(ox, oy, k, f.x + 0.5, f.y + 0.5);
-  isoSoftShadow(ctx, base.x, base.y, k * 0.4, 0.13);
-  const GLASS_H = k * 2.1; // 参考稿：齐人半高的黑框玻璃墙
-  const a = isoCorner(ox, oy, k, f.x + 0.02, f.y + 0.5);
-  const b = isoCorner(ox, oy, k, f.x + 0.98, f.y + 0.5);
-  const aT = { x: a.x, y: a.y - GLASS_H };
-  const bT = { x: b.x, y: b.y - GLASS_H };
-  // 玻璃（淡绿灰透感）
-  ctx.fillStyle = 'rgba(198,216,222,0.42)';
+function isoDrawWallSeg(ctx: CanvasRenderingContext2D, f: Furniture, ox: number, oy: number, k: number, wallSet: Set<string>): void {
+  // 砖墙（2D 等距）：暖灰砖面 + 砖缝 + 顶面压顶；端点沿邻居方向延伸半格，转折处闭合。
+  isoSoftShadow(ctx, isoCorner(ox, oy, k, f.x + 0.5, f.y + 0.5).x, isoCorner(ox, oy, k, f.x + 0.5, f.y + 0.5).y, k * 0.45, 0.16);
+  const H = k * 1.6;
+  const hasXN = wallSet.has(`${f.x - 1},${f.y}`);
+  const hasXP = wallSet.has(`${f.x + 1},${f.y}`);
+  const xa = hasXN ? f.x - 0.5 : f.x + 0.02;
+  const xb = hasXP ? f.x + 1.5 : f.x + 0.98;
+  const a = isoCorner(ox, oy, k, xa, f.y + 0.5);
+  const b = isoCorner(ox, oy, k, xb, f.y + 0.5);
+  const aT = { x: a.x, y: a.y - H };
+  const bT = { x: b.x, y: b.y - H };
+  // 砖面
+  ctx.fillStyle = '#b8b0a4';
   isoPoly(ctx, [a, b, bT, aT]);
   ctx.fill();
-  // 玻璃斜向反光条（两条）
-  ctx.fillStyle = 'rgba(255,255,255,0.32)';
-  isoPoly(ctx, [
-    { x: a.x + k * 0.14, y: a.y - k * 0.06 },
-    { x: a.x + k * 0.3, y: a.y - k * 0.02 },
-    { x: a.x + k * 0.1, y: a.y - GLASS_H + k * 0.16 },
-    { x: a.x - k * 0.06, y: a.y - GLASS_H + k * 0.12 },
-  ]);
-  ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.2)';
-  isoPoly(ctx, [
-    { x: a.x + k * 0.46, y: a.y + k * 0.08 },
-    { x: a.x + k * 0.56, y: a.y + k * 0.11 },
-    { x: a.x + k * 0.4, y: a.y - GLASS_H + k * 0.14 },
-    { x: a.x + k * 0.3, y: a.y - GLASS_H + k * 0.11 },
-  ]);
-  ctx.fill();
-  // 黑框：四周描边（加粗、圆头）
-  ctx.strokeStyle = '#3a4046';
-  ctx.lineWidth = Math.max(2.5, k * 0.1);
+  // 砖缝：2 条横缝 + 竖向交错
+  ctx.strokeStyle = 'rgba(90,84,76,0.4)';
+  ctx.lineWidth = Math.max(1, k * 0.04);
   ctx.lineCap = 'round';
+  for (let r = 1; r <= 2; r++) {
+    const y = a.y - (H * r) / 3;
+    ctx.beginPath();
+    ctx.moveTo(a.x, y);
+    ctx.lineTo(b.x, y);
+    ctx.stroke();
+  }
+  const rowH = H / 3;
+  for (let r = 0; r < 3; r++) {
+    const y = a.y - rowH * r;
+    const t = r % 2 === 0 ? 0.3 : 0.62;
+    const xx = a.x + (b.x - a.x) * t;
+    ctx.beginPath();
+    ctx.moveTo(xx, y);
+    ctx.lineTo(xx, y - rowH);
+    ctx.stroke();
+  }
+  // 顶面压顶（浅色粗线）
+  ctx.strokeStyle = '#d5cfc4';
+  ctx.lineWidth = Math.max(1.5, k * 0.09);
+  ctx.beginPath();
+  ctx.moveTo(aT.x, aT.y);
+  ctx.lineTo(bT.x, bT.y);
+  ctx.stroke();
+  // 侧面描边
+  ctx.strokeStyle = 'rgba(70,64,56,0.5)';
+  ctx.lineWidth = Math.max(1.2, k * 0.05);
   ctx.beginPath();
   ctx.moveTo(a.x, a.y);
   ctx.lineTo(b.x, b.y);
@@ -1572,16 +1586,6 @@ function isoDrawWallSeg(ctx: CanvasRenderingContext2D, f: Furniture, ox: number,
   ctx.lineTo(aT.x, aT.y);
   ctx.moveTo(b.x, b.y);
   ctx.lineTo(bT.x, bT.y);
-  ctx.stroke();
-  // 竖梃（把玻璃面分成三扇）
-  ctx.lineWidth = Math.max(2, k * 0.07);
-  const m1 = isoCorner(ox, oy, k, f.x + 0.34, f.y + 0.5);
-  const m2 = isoCorner(ox, oy, k, f.x + 0.66, f.y + 0.5);
-  ctx.beginPath();
-  ctx.moveTo(m1.x, m1.y);
-  ctx.lineTo(m1.x, m1.y - GLASS_H);
-  ctx.moveTo(m2.x, m2.y);
-  ctx.lineTo(m2.x, m2.y - GLASS_H);
   ctx.stroke();
 }
 
@@ -2056,6 +2060,7 @@ function renderIso(
     const b = bubbles?.get(c.id);
     return b !== undefined && b.until > time;
   };
+  const wallSet2 = new Set(items.filter((it) => it.kind === 'furn' && it.f?.kind === 'wall').map((it) => `${it.f!.x},${it.f!.y}`));
   const anchors = new Map<string, { headX: number; headY: number }>();
   for (const it of items) {
     if (it.kind === 'furn' && it.f !== undefined) {
@@ -2074,7 +2079,7 @@ function renderIso(
           isoDrawCoffee(ctx, f, ox, oy, k, time);
           break;
         case 'wall':
-          isoDrawWallSeg(ctx, f, ox, oy, k);
+          isoDrawWallSeg(ctx, f, ox, oy, k, wallSet2);
           break;
         case 'microwave':
           isoDrawMicrowave(ctx, f, ox, oy, k);
