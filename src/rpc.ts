@@ -153,10 +153,21 @@ let officeActionSeq = 0;
 /* ── 办公室真工位：NPC 绑定宿主真实 agent 会话（ctx.agents.create 拉起、followup 派活、流事件抓进度）── */
 interface OfficeAgentHandle {
   agent: {
-    followup(msg: { content: Array<{ type: 'text'; text: string }>; source: { kind: string } }): unknown;
+    /** 注入的用户消息必须自带 id/role：宿主 user/message 的 data 就是消息本体，
+     *  缺 id 会在侧栏打开会话时抛「session event at seq N lacks an identified message」。 */
+    followup(msg: {
+      id: string;
+      role: 'user';
+      content: Array<{ type: 'text'; text: string }>;
+      source: { kind: string };
+    }): unknown;
     whenIdle?(): Promise<void>;
   };
   dispose(): unknown;
+}
+/** 生成一条注入消息的稳定 id（宿主校验要求非空字符串；同目录另有 replace(messageId) 依赖它）。 */
+function officeMsgId(): string {
+  return `office-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 interface OfficeAgentCtx {
   on?(event: string, fn: (payload: unknown) => void): unknown;
@@ -300,7 +311,7 @@ function handleOfficeTurnClose(npcId: string, slot: { entry: OfficeAgentEntry; h
     const parent = officeAgents.get(slot.entry.parentId);
     if (parent?.handle) {
       try {
-        parent.handle.agent.followup({
+        parent.handle.agent.followup({ id: officeMsgId(), role: 'user',
           content: [
             {
               type: 'text',
@@ -340,7 +351,7 @@ async function dispatchToColleague(parentId: string, parentName: string, colleag
   if (colSlot?.handle) {
     // 忙/已有会话：递话排队进 TA 的现有会话（不挂 parentId——TA 正在干别人的活，验收链不抢）
     try {
-      colSlot.handle.agent.followup({
+      colSlot.handle.agent.followup({ id: officeMsgId(), role: 'user',
         content: [{ type: 'text', text: `【协助请求】同事 ${parentName} 请你完成子任务：${task}。直接动手，完成后详细汇报产出（改了哪些文件/结论）。` }],
         source: { kind: 'user' },
       });
@@ -524,7 +535,7 @@ async function officeSpawnAgent(
     },
     turnText: '',
   });
-  handle.agent.followup({
+  handle.agent.followup({ id: officeMsgId(), role: 'user',
     // 员工人设覆盖：builtin 有 persona/links 时追加「你的性格/团队协作」段；
     // level 0 额外注入协作协议（花名册 + 派活/验收格式），level 1 是被同事派来协助的。
     content: [
@@ -1811,7 +1822,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
           return;
         }
         try {
-          slot.handle.agent.followup({ content: [{ type: 'text', text }], source: { kind: 'user' } });
+          slot.handle.agent.followup({ id: officeMsgId(), role: 'user', content: [{ type: 'text', text }], source: { kind: 'user' } });
           slot.entry.status = 'working';
           slot.entry.updatedAt = Date.now();
           send(res, 200, { ok: true });
@@ -1924,7 +1935,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
           return;
         }
         try {
-          toSlot.handle.agent.followup({
+          toSlot.handle.agent.followup({ id: officeMsgId(), role: 'user',
             content: [
               {
                 type: 'text',
@@ -1942,7 +1953,7 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         }
         // 移交方也要知道：真实递话写进其会话（互相监督 v1：双方会话里都有这条 note）；失败仅记日志不影响移交成立
         try {
-          fromSlot.handle.agent.followup({
+          fromSlot.handle.agent.followup({ id: officeMsgId(), role: 'user',
             content: [
               {
                 type: 'text',
