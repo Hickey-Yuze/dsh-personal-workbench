@@ -13,7 +13,7 @@ import { deskChairCell } from '../office/map.js';
 import type { OfficeMap } from '../office/types.js';
 import type { MemberStat } from '../office/types.js';
 import type { OfficeView } from '../office/renderer.js';
-import { addRosterEntry, isEndpointMissing, loadRoster, officeListModels } from '../office/agentClient.js';
+import { addRosterEntry, attachWorkspace, isEndpointMissing, loadRoster, officeListModels } from '../office/agentClient.js';
 import type { BuiltinOverride, OfficeModelOption, RosterEntry } from '../office/agentClient.js';
 import { OfficeEditor } from './OfficeEditor.js';
 import { OfficeProfileView } from './OfficeProfileView.js';
@@ -237,6 +237,18 @@ export function OfficeModuleView(): ReactElement {
     } catch {
       /* 持久化失败不影响功能 */
     }
+  }, [workCwd]);
+  /** 工作区落定后把已经在跑的员工会话挂进该项目（宿主侧 attachSession；新派活的会话在派活时就已归位）。
+   *  防抖 800ms：输入框逐字改 path 时不打宿主。宿主只接受「用同一 cwd 创建」的会话，其余跳过。 */
+  useEffect(() => {
+    const cwd = workCwd.trim();
+    if (cwd === '') return;
+    const timer = window.setTimeout(() => {
+      void attachWorkspace(cwd).catch(() => {
+        /* 挂载失败静默：派活时宿主还会再挂一次 */
+      });
+    }, 800);
+    return () => window.clearTimeout(timer);
   }, [workCwd]);
   /** 工作区选择：弹 macOS 原生「选择文件夹」对话框（与文件归档同款 osascript choose folder）。
    *  取消静默；失败写 workErr；成功回填并持久化（已有 effect 落 dsh-pwb:office_cwd_v1）。 */

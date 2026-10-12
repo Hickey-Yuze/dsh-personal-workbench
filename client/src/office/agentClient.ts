@@ -176,6 +176,12 @@ export async function sayToAgent(npcId: string, text: string): Promise<void> {
   await postJson('agent/say', { npcId, text });
 }
 
+/** 把员工的真实会话挂进 cwd 对应的工作区（宿主侧 attachSession → 侧栏按项目分组）。
+ *  宿主不变式：只接受「用该 cwd 创建」的会话，换目录不会迁移旧会话。 */
+export async function attachWorkspace(cwd: string, npcId?: string): Promise<void> {
+  await postJson('workspace/attach', { cwd, ...(npcId !== undefined ? { npcId } : {}) });
+}
+
 /** 拆掉 NPC 的真实会话。 */
 export async function stopAgent(npcId: string): Promise<void> {
   await postJson('agent/stop', { npcId });

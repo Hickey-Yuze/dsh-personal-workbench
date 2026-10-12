@@ -191,6 +191,8 @@ type OfficeAgentEntry = {
   acceptanceAt?: number;
   /** 会话工作目录（写进 session header 的 meta.cwd）；子任务派活与 autopilot 沿用同目录，宿主会话列表按项目归组 */
   cwd?: string;
+  /** 本次派活拉起的真实会话 id（office-<npcId>-<时间戳>）；用于把该会话挂进工作区 */
+  sessionId?: string;
   startedAt: number;
   updatedAt: number;
 };
@@ -379,6 +381,54 @@ function officeWorkerSystem(name: string, role: string, opts?: { level?: 0 | 1; 
   ].join('\n');
 }
 
+/** 宿主 workspaceRegistry（ctx.workspaceRegistry）的结构性最小编译期接口：宿主不给插件导出类型。 */
+interface OfficeWorkspaceEntity {
+  path?: string;
+  attachSession(sessionId: string): Promise<void>;
+}
+interface OfficeWorkspaceRegistry {
+  resolveByPath?(path: string): Promise<OfficeWorkspaceEntity | undefined>;
+  create?(path: string, title?: string): Promise<OfficeWorkspaceEntity>;
+}
+
+/** 把派活拉起的真实会话挂到 cwd 对应的工作区（侧栏即按项目分组）；没有该工作区就按目录名建一个。
+ *  宿主不变式：attachSession 会拿会话 header 里的 cwd 与工作区路径做 realpath 校验，两者必须一致，
+ *  所以只能挂在「创建该会话时用的那个 cwd」下，换目录不会迁移既有会话。 */
+async function officeAttachWorkspace(ctx: Context, sessionId: string, cwd: string): Promise<void> {
+  const reg = ctx.get('workspaceRegistry') as OfficeWorkspaceRegistry | undefined;
+  if (reg === undefined) return;
+  let ws = typeof reg.resolveByPath === 'function' ? await reg.resolveByPath(cwd) : undefined;
+  if (ws === undefined && typeof reg.create === 'function') ws = await reg.create(cwd);
+  if (ws !== undefined) await ws.attachSession(sessionId);
+}
+
+/** 会话归位：标题钉成员工名 + 挂进工作区。
+ *  在首条任务消息之前调用：宿主 sessionTitle.rename 写的是显式标题，会压掉「按任务名自动起标题」。 */
+async function officeAdoptSession(
+  ctx: Context,
+  log: { warn(m: string): void },
+  sessionId: string,
+  name: string,
+  cwd: string,
+  liveSession?: unknown,
+): Promise<void> {
+  const sessions = ctx.get('sessions') as { get?(id: string): unknown } | undefined;
+  const session = liveSession ?? sessions?.get?.(sessionId);
+  if (session !== undefined && name !== '') {
+    const titles = ctx.get('sessionTitle') as { rename?(session: unknown, title: string): unknown } | undefined;
+    try {
+      titles?.rename?.(session, name);
+    } catch (err) {
+      log.warn(`[personal-workbench] 会话改名失败: ${err instanceof Error ? err.message : '未知错误'}`);
+    }
+  }
+  try {
+    await officeAttachWorkspace(ctx, sessionId, cwd);
+  } catch (err) {
+    log.warn(`[personal-workbench] 会话挂工作区失败: ${err instanceof Error ? err.message : '未知错误'}`);
+  }
+}
+
 /** 给员工拉起宿主真实 agent 会话并派首单任务（office/agent/start 端点与 autopilot 派活共用路径）。失败抛 Error。 */
 async function officeSpawnAgent(
   ctx: Context,
@@ -428,10 +478,11 @@ async function officeSpawnAgent(
   // 用 npcId 做 slug（npc-1 / custom-2 本身就是安全字符），员工姓名不进 id。
   const sidSlug = npcId.replace(/[^A-Za-z0-9_-]/g, '') || 'npc';
   const sidStamp = Date.now();
+  const sessionId = `office-${sidSlug}-${sidStamp}`;
   const handle = await agents.create({
     // sessionId 必传：agent.id 必须与 session.id 一致（AgentRegistry.enter 不变式），
     // 缺省时 agent id 为 undefined 而创建即抛错。时间戳后缀保证改名/重复派活时 id 唯一。
-    sessionId: `office-${sidSlug}-${sidStamp}`,
+    sessionId,
     // cwd 必须随 meta 写进 session header：system-prompt 组装 deployment:persona-suffix
     // 需要 {{cwd}} 变量（variable("cwd", ctx => ctx.agent?.session.header.cwd)），
     // 缺省会让 agent 第 1 步就报 "prompt variable \"{{cwd}}\" has no value" 而挂。
@@ -453,6 +504,9 @@ async function officeSpawnAgent(
       }
     },
   });
+  // 会话归位：标题钉成员工名 + 挂进 cwd 对应的工作区（侧栏按项目分组）。
+  // 必须在首条任务消息之前：显式标题会压掉「按首条消息自动起标题」，否则侧栏显示任务名。
+  await officeAdoptSession(ctx, log, sessionId, name, agentCwd, (handle.agent as { session?: unknown }).session);
   officeAgents.set(npcId, {
     handle,
     entry: {
@@ -462,6 +516,7 @@ async function officeSpawnAgent(
       status: 'working',
       lastText: '',
       cwd: agentCwd,
+      sessionId,
       startedAt: Date.now(),
       updatedAt: Date.now(),
       level: opts?.level ?? 0,
@@ -1776,6 +1831,42 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
           } catch { /* dispose 失败忽略 */ }
         }
         send(res, 200, { ok: true });
+        return;
+      }
+      // office/workspace/attach：把员工的会话挂进 cwd 对应的工作区（侧栏按项目分组）。
+      // 宿主不变式：attachSession 用会话 header 里的 cwd 校验，只有「用该 cwd 创建」的会话能挂成功；
+      // 换目录不会迁移既有会话 —— 要换项目就重开一个会话（停工后再派活）。
+      if (officeEndpoint === 'office/workspace/attach') {
+        const cwdRaw = typeof officeBody.cwd === 'string' ? officeBody.cwd.trim() : '';
+        const only = typeof officeBody.npcId === 'string' ? officeBody.npcId : '';
+        if (cwdRaw === '') {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: 'cwd 必填' } });
+          return;
+        }
+        const cwdAbs = path.resolve(cwdRaw);
+        try {
+          if (!(await fs.promises.stat(cwdAbs)).isDirectory()) throw new Error('not-a-dir');
+        } catch {
+          send(res, 400, { ok: false, error: { code: 'bad-cwd', message: `工作区不存在: ${cwdAbs}` } });
+          return;
+        }
+        let attached = 0;
+        let skipped = 0;
+        for (const [id, slot] of officeAgents) {
+          if (only !== '' && id !== only) continue;
+          const sid = slot.entry.sessionId;
+          if (typeof sid !== 'string' || sid === '') {
+            skipped += 1;
+            continue;
+          }
+          try {
+            await officeAttachWorkspace(ctx, sid, cwdAbs);
+            attached += 1;
+          } catch {
+            skipped += 1; /* 会话 cwd 与目标工作区不一致（旧会话）：只能重开会话换项目 */
+          }
+        }
+        send(res, 200, { ok: true, attached, skipped });
         return;
       }
       // office/roster POST：新增自定义员工（id 生成 custom-<序号>，序号取现有最大值 +1 防删后复用）
