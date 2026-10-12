@@ -65,7 +65,21 @@ type Props = {
 type Draft = { name: string; persona: string; links: string[]; skills: Record<string, number>; avatar: string; desk: string; llm: string };
 
 export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, desks, onDeskAssigned, onRenamed }: Props): ReactElement {
-  const chars = useMemo(() => [...BUILTIN_STAFF, ...roster], [roster]);
+  // 左栏列表必须套用档案里保存的 name/role 覆盖：BUILTIN_STAFF 是静态数组，
+  // 改名保存后不套用的话列表永远显示旧名（用户报「左边的员工名字没有修改到」）。
+  const chars = useMemo(
+    () =>
+      [...BUILTIN_STAFF, ...roster].map((c) => {
+        const ov = builtin[c.id];
+        if (ov === undefined) return c;
+        return {
+          ...c,
+          name: typeof ov.name === 'string' && ov.name !== '' ? ov.name : c.name,
+          role: typeof ov.role === 'string' && ov.role !== '' ? ov.role : c.role,
+        };
+      }),
+    [roster, builtin],
+  );
   const [selId, setSelId] = useState('');
   const sel = chars.find((c) => c.id === selId) ?? chars[0];
   const ov: BuiltinOverride = builtin[sel?.id ?? ''] ?? {};
