@@ -28,6 +28,8 @@ export interface WorkbenchClientCtx {
   layout: {
     selectPanel(panelId: string | null): void;
   };
+  /** cordis 懒绑定：依赖就绪才回调（不阻塞插件挂载）。缺省时降级。 */
+  inject?(deps: string[], callback: (scope: unknown) => void): unknown;
   locale?: {
     getLocale?(): unknown;
     getSnapshot?(): unknown;
@@ -37,7 +39,14 @@ export interface WorkbenchClientCtx {
   };
 }
 
-/** client 侧 ctx.get（inject 声明过的服务可经此读取；缺省时降级）。 */
+/**
+ * client 侧 ctx.get：只对 inject 声明过的服务有效。未声明时 cordis 会抛
+ * `cannot get property "x" without inject`，这里统一降级为 undefined（调用方自己兜底）。
+ */
 export function ctxGet(ctx: WorkbenchClientCtx, key: string): unknown {
-  return (ctx as unknown as { get?(k: string): unknown }).get?.(key);
+  try {
+    return (ctx as unknown as { get?(k: string): unknown }).get?.(key);
+  } catch {
+    return undefined;
+  }
 }

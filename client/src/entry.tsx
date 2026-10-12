@@ -20,16 +20,26 @@ import { ensureThemeStyle } from './theme.js';
 
 export const inject = ['slots', 'layout', 'locale'];
 
-/** uiWorkspace 的最小结构（宿主客户端服务，软取；仅用 openSession 与会话列表两个成员）。 */
+/** uiWorkspace 的最小结构（宿主客户端服务：openSession + 它持有的 sessions 控制器）。 */
 type OfficeUiWorkspace = {
   openSession?: (target: unknown) => void;
-  sessions?: { list?: { getSnapshot?: () => { ids?: unknown; byId?: Record<string, { title?: unknown }> } } };
+  sessions?: OfficeSessionsService;
 };
 
-/**
- * 「跳到会话」是否真的落地：办公面板被卸载（主区回到会话），或侧栏里那一行已被标成当前行。
- * 两个判据取或：任一个成立就算跳转成功，避免误报失败。
- */
+/** 宿主 Session Controller（客户端）：retain 标 mainView 决定主区显示哪个会话。 */
+type OfficeSessionsService = {
+  retain?: (target: string, options: { source: string }) => unknown;
+  list?: {
+    getSnapshot?: () => {
+      ids?: unknown;
+      byId?: Record<string, { title?: unknown; retainedBy?: { mainView?: number } }>;
+    };
+  };
+};
+
+/** 宿主 shortcuts 服务（客户端）：invoke 跑注册过的命令，用来展开左栏。 */
+type OfficeShortcutsService = { invoke?: (id: string, context: unknown) => unknown };
+
 async function jumpLanded(sessionId: string): Promise<boolean> {
   await new Promise((resolve) => setTimeout(resolve, 260));
   if (typeof document === 'undefined') return true;
@@ -233,41 +243,55 @@ export function apply(ctx: WorkbenchClientCtx): void {
 
   /* 「跳到会话」桥：宿主 uiWorkspace.openSession(id) 把主区切到该会话（侧栏随之把该行标为当前）。
      服务软取（每次调用时再取：workspace UI 插件可能晚于本插件挂载）：ctxGet → ctx.root.get → ctx 属性。 */
-  const resolveUiWorkspace = (): OfficeUiWorkspace | undefined => {
-    const asService = (v: unknown): OfficeUiWorkspace | undefined =>
-      typeof v === 'object' && v !== null ? (v as OfficeUiWorkspace) : undefined;
-    const root = (ctx as unknown as { root?: { get?(key: string): unknown } }).root;
-    const candidates: unknown[] = [
-      ctxGet(ctx, 'uiWorkspace'),
-      root?.get?.('uiWorkspace'),
-      (ctx as unknown as { uiWorkspace?: unknown }).uiWorkspace,
-    ];
-    for (const candidate of candidates) {
-      const service = asService(candidate);
-      if (service !== undefined && typeof service.openSession === 'function') return service;
+  /* 宿主客户端服务必须先 inject 才能访问——否则 cordis 直接抛
+     `cannot get property "uiWorkspace" without inject`（这正是之前跳转失败的根因）。
+     这里用 ctx.inject 做懒绑定：依赖就绪才回调，不阻塞本插件自身挂载，服务晚挂也能拿到。 */
+  let uiWorkspaceService: OfficeUiWorkspace | undefined;
+  let sessionsService: OfficeSessionsService | undefined;
+  let shortcutsService: OfficeShortcutsService | undefined;
+  const bind = (deps: string[], assign: (scope: Record<string, unknown>) => void): void => {
+    const inject = (ctx as unknown as { inject?(deps: string[], cb: (scope: unknown) => void): unknown }).inject;
+    if (typeof inject !== 'function') {
+      console.warn('[personal-workbench] ctx.inject 不可用，无法绑定', deps.join(','));
+      return;
     }
-    return undefined;
+    try {
+      inject.call(ctx, deps, (scope: unknown) => assign((scope ?? {}) as Record<string, unknown>));
+    } catch (err) {
+      console.warn('[personal-workbench] 服务绑定失败', deps.join(','), err);
+    }
+  };
+  bind(['uiWorkspace'], (scope) => {
+    uiWorkspaceService = scope['uiWorkspace'] as OfficeUiWorkspace | undefined;
+  });
+  bind(['sessions'], (scope) => {
+    sessionsService = scope['sessions'] as OfficeSessionsService | undefined;
+  });
+  bind(['shortcuts'], (scope) => {
+    shortcutsService = scope['shortcuts'] as OfficeShortcutsService | undefined;
+  });
+
+  const resolveUiWorkspace = (): OfficeUiWorkspace | undefined => {
+    if (uiWorkspaceService !== undefined && typeof uiWorkspaceService.openSession === 'function') return uiWorkspaceService;
+    const viaGet = ctxGet(ctx, 'uiWorkspace') as OfficeUiWorkspace | undefined;
+    return typeof viaGet?.openSession === 'function' ? viaGet : undefined;
   };
 
   setSessionOpener(async (sessionId: string): Promise<JumpReport> => {
     const notes: string[] = [];
     const reason = (err: unknown): string => (err instanceof Error ? err.message : String(err));
-    type SessionsService = {
-      retain?: (target: string, options: { source: string }) => unknown;
-      list?: { getSnapshot?: () => { byId?: Record<string, { retainedBy?: { mainView?: number } }> } };
-    };
-    const sessions = ctxGet(ctx, 'sessions') as SessionsService | undefined;
-    const catalogRow = sessions?.list?.getSnapshot?.()?.byId?.[sessionId];
-    if (catalogRow === undefined) notes.push('客户端会话目录里没有这个 id');
+
+    const sessions = sessionsService ?? resolveUiWorkspace()?.sessions;
+    if (sessions === undefined) notes.push('取不到 sessions 服务');
+    else if (sessions.list?.getSnapshot?.()?.byId?.[sessionId] === undefined) notes.push('客户端会话目录里没有这个 id');
 
     const expandSidebar = (): void => {
-      const shortcuts = ctxGet(ctx, 'shortcuts') as { invoke?: (id: string, context: unknown) => unknown } | undefined;
-      if (typeof shortcuts?.invoke !== 'function') {
+      if (typeof shortcutsService?.invoke !== 'function') {
         notes.push('也没有 shortcuts 服务可展开左栏');
         return;
       }
       try {
-        shortcuts.invoke('sidebar.left.toggle', { target: document.body, region: 'main', modal: null });
+        shortcutsService.invoke('sidebar.left.toggle', { target: document.body, region: 'main', modal: null });
         notes.push('已调 sidebar.left.toggle 展开左栏');
       } catch (err) {
         notes.push(`展开左栏命令抛错：${reason(err)}`);
@@ -290,7 +314,7 @@ export function apply(ctx: WorkbenchClientCtx): void {
 
     // ② 自己按官方语义切主区：retain 标 mainView（生效才关面板，避免白跑还关掉当前面板）
     if (typeof sessions?.retain !== 'function') {
-      notes.push('取不到 sessions 服务');
+      notes.push('sessions 上没 retain');
     } else {
       try {
         sessions.retain(sessionId, { source: 'mainView' });
@@ -343,7 +367,6 @@ export function apply(ctx: WorkbenchClientCtx): void {
     return best === null ? null : best.id;
   });
 
-  // 侧栏入口（DOM 注入；样式与「新会话」「定时任务」按钮同款）
   const disposeSidebar = injectSidebarEntry(ctx);
 
   // 中央看板（main keyed：同一 id 寻址；不遮蔽 conversation）
