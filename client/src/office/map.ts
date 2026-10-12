@@ -6,8 +6,8 @@
  */
 import type { Furniture, FurnitureKind, OfficeMap, Vec } from './types.js';
 
-export const MAP_W = 24;
-export const MAP_H = 15;
+export const MAP_W = 48;
+export const MAP_H = 30;
 
 /** 各家具固定尺寸（整数格协议）。 */
 export const FURN_SIZE: Record<FurnitureKind, { w: number; h: number }> = {
@@ -30,57 +30,67 @@ function mk(kind: FurnitureKind, x: number, y: number): Furniture {
   return { id: `${kind}-${furnSeq}`, kind, x, y, w: s.w, h: s.h };
 }
 
-/** 默认办公室（24×15，紧凑方厅，比例≈画布 1.6:1）：砖墙里间（上中双工位）、左侧白板、右侧沿墙工位、左下会议区、下排工位、中央自己。 */
+/** 默认办公室（48×30，布局两倍扩容）：砖墙里间（上左，4 工位）、右上沿墙工位排、左右下两排工位、左下会议区、中央自己。 */
 export function defaultMap(): OfficeMap {
   furnSeq = 0;
   const furniture: Furniture[] = [
-    // ── 砖墙里间（上中）：竖排 x=5（y=1..5）+ 横排 y=6（x=6..12）──
-    mk('wall', 5, 1),
-    mk('wall', 5, 2),
-    mk('wall', 5, 3),
-    mk('wall', 5, 4),
-    mk('wall', 5, 5),
-    mk('wall', 6, 6),
-    mk('wall', 7, 6),
-    mk('wall', 8, 6),
-    mk('wall', 9, 6),
-    mk('wall', 10, 6),
-    mk('wall', 11, 6),
-    mk('wall', 12, 6),
-    // 里间工位（2 桌）+ 绿植
-    mk('desk', 7, 2),
-    mk('desk', 11, 2),
-    mk('plant', 6, 1),
+    // ── 砖墙里间（上左）：竖排 x=9（y=1..11）+ 横排 y=12（x=10..26）──
+    ...Array.from({ length: 11 }, (_, i) => mk('wall', 9, 1 + i)),
+    ...Array.from({ length: 17 }, (_, i) => mk('wall', 10 + i, 12)),
+    // 里间工位（4 桌，双排）+ 绿植
+    mk('desk', 12, 3),
+    mk('desk', 17, 3),
+    mk('desk', 22, 3),
+    mk('desk', 12, 8),
+    mk('desk', 17, 8),
+    mk('plant', 10, 1),
+    mk('plant', 25, 1),
     // ── 左上：白板 + 绿植 ──
-    mk('whiteboard', 1, 2),
-    mk('plant', 1, 4),
-    // ── 右侧沿墙工位（上排 + 中排）+ 抽屉柜 ──
-    mk('desk', 16, 2),
-    mk('desk', 20, 2),
-    mk('cabinet', 15, 1),
-    mk('cabinet', 19, 1),
-    mk('desk', 16, 8),
-    mk('desk', 20, 8),
-    mk('cabinet', 15, 7),
-    mk('cabinet', 19, 7),
-    // ── 会议区（左下：地毯 + 圆桌）──
-    mk('carpet', 2, 9),
-    mk('roundtable', 3, 10),
-    // ── 下排工位（3 桌）──
-    mk('desk', 2, 12),
-    mk('desk', 17, 12),
-    mk('desk', 20, 12),
+    mk('whiteboard', 1, 4),
+    mk('plant', 1, 8),
+    // ── 右上沿墙工位排（4 桌）+ 抽屉柜 ──
+    mk('desk', 30, 2),
+    mk('desk', 35, 2),
+    mk('desk', 40, 2),
+    mk('desk', 45, 2),
+    mk('cabinet', 29, 1),
+    mk('cabinet', 34, 1),
+    mk('cabinet', 39, 1),
+    mk('cabinet', 44, 1),
+    // ── 右中排工位（4 桌）+ 抽屉柜 ──
+    mk('desk', 30, 17),
+    mk('desk', 35, 17),
+    mk('desk', 40, 17),
+    mk('desk', 45, 17),
+    mk('cabinet', 29, 16),
+    mk('cabinet', 34, 16),
+    mk('cabinet', 39, 16),
+    mk('cabinet', 44, 16),
+    // ── 会议区（左下：地毯 + 圆桌 + 白板）──
+    mk('carpet', 3, 21),
+    mk('roundtable', 5, 22),
+    mk('whiteboard', 1, 26),
+    // ── 下排工位（左 3 桌 + 右 3 桌）──
+    mk('desk', 2, 27),
+    mk('desk', 7, 27),
+    mk('desk', 12, 27),
+    mk('desk', 33, 27),
+    mk('desk', 38, 27),
+    mk('desk', 43, 27),
     // ── 自己的中央工位（必须是最后一张桌：spawn 约定 desks 最后一座是自己）──
-    mk('desk', 12, 11),
-    mk('cabinet', 14, 12),
+    mk('desk', 23, 23),
+    mk('cabinet', 26, 24),
     // ── 绿植点缀 ──
-    mk('plant', 1, 13),
-    mk('plant', 22, 13),
-    mk('plant', 10, 13),
-    mk('plant', 22, 6),
-    // ── 咖啡机 / 冰箱 ──
-    mk('coffee', 1, 9),
-    mk('fridge', 22, 12),
+    mk('plant', 2, 15),
+    mk('plant', 46, 15),
+    mk('plant', 20, 29),
+    mk('plant', 27, 29),
+    mk('plant', 46, 29),
+    mk('plant', 27, 12),
+    // ── 咖啡机 / 冰箱 / 微波炉（右下茶水角）──
+    mk('coffee', 1, 20),
+    mk('fridge', 2, 18),
+    mk('microwave', 1, 18),
   ];
   return { w: MAP_W, h: MAP_H, furniture };
 }
