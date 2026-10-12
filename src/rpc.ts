@@ -2105,6 +2105,12 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
               { role: 'system', content: [{ type: 'text', text: systemContent }] },
               ...admitted.map((m) => ({
                 role: m.role,
+                // assistant 历史必须带 source：pi-ai 适配器 toPiAssistant 直接读 message.source.replayState，
+                // 缺 source 会抛 TypeError（前端表现为「模型未返回正文 … reading 'replayState'」）。
+                // 不带 replayState → 走 pi-ai 的 provider 中立转换（foreignAssistant），只用 provider/model 两个标签。
+                ...(m.role === 'assistant'
+                  ? { source: { provider: officeProvider !== '' ? officeProvider : 'office-history', model: officeModel } }
+                  : {}),
                 content: m.content.map((p) => (p.type === 'text' ? { type: 'text' as const, text: p.text } : { type: 'image' as const, attachment: p.attachment })),
               })),
             ],

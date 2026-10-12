@@ -32,7 +32,7 @@ const STATE_TEXT: Record<MemberStat['state'], string> = {
 type Tab = 'scene' | 'data' | 'edit';
 
 type ChatImage = { mediaType: string; data: string; name?: string };
-type ChatMsg = { role: 'user' | 'assistant'; content: string; speaker?: string; streaming?: boolean; images?: ChatImage[] };
+type ChatMsg = { role: 'user' | 'assistant'; content: string; speaker?: string; streaming?: boolean; images?: ChatImage[]; err?: boolean };
 type ChatTarget = { kind: 'ai' } | { kind: 'npc'; id: string; name: string; role: string } | { kind: 'group' };
 /** 群聊/私聊共享记忆：speaker='me' 是老板说的话，否则是同事名。 */
 type MemEntry = { speaker: string; content: string; images?: ChatImage[] };
@@ -508,10 +508,10 @@ export function OfficeModuleView(): ReactElement {
   /* ── AI 助手（全局） ── */
   const sendAi = useCallback(
     async (text: string, imgs: ChatImage[], ctrl: AbortController): Promise<void> => {
-      const uiHistory = chatMsgs.filter((m) => !m.streaming);
+      const uiHistory = chatMsgs.filter((m) => !m.streaming && m.err !== true);
       const history: WireMsg[] = uiHistory.map((m) => ({ role: m.role, content: partsOf(m) }));
       const userMsg: ChatMsg = { role: 'user', content: text, ...(imgs.length > 0 ? { images: imgs } : {}) };
-      setChatMsgs([...uiHistory, userMsg, { role: 'assistant', content: '', streaming: true }]);
+      setChatMsgs([...chatMsgs.filter((m) => !m.streaming), userMsg, { role: 'assistant', content: '', streaming: true }]);
       try {
         const res = await fetch(CHAT_URL, {
           method: 'POST',
@@ -533,7 +533,7 @@ export function OfficeModuleView(): ReactElement {
             setChatMsgs((prev) => {
               const copy = [...prev];
               const last = copy[copy.length - 1];
-              if (last !== undefined && last.role === 'assistant') copy[copy.length - 1] = { ...last, content: `⚠️ ${e}` };
+              if (last !== undefined && last.role === 'assistant') copy[copy.length - 1] = { ...last, content: `⚠️ ${e}`, err: true };
               return copy;
             }),
         );
@@ -577,7 +577,7 @@ export function OfficeModuleView(): ReactElement {
             setChatMsgs((prev) => {
               const copy = [...prev];
               const last = copy[copy.length - 1];
-              if (last !== undefined && last.role === 'assistant') copy[copy.length - 1] = { ...last, content: `⚠️ ${e}` };
+              if (last !== undefined && last.role === 'assistant') copy[copy.length - 1] = { ...last, content: `⚠️ ${e}`, err: true };
               return copy;
             }),
         );
@@ -587,7 +587,7 @@ export function OfficeModuleView(): ReactElement {
           setChatMsgs((prev) => {
             const copy = [...prev];
             const last = copy[copy.length - 1];
-            if (last !== undefined && last.role === 'assistant' && last.content === '') copy[copy.length - 1] = { ...last, content: '连接中断' };
+            if (last !== undefined && last.role === 'assistant' && last.content === '') copy[copy.length - 1] = { ...last, content: '连接中断', err: true };
             return copy;
           });
       }
@@ -671,10 +671,13 @@ export function OfficeModuleView(): ReactElement {
       const key = `npc:${chatTarget.id}`;
       const mem = npcMemRef.current.get(key) ?? [];
       mem.push({ speaker: 'me', content: text, ...(imgs.length > 0 ? { images: imgs } : {}) });
-      const history: WireMsg[] = mem.map((e) => ({ role: e.speaker === 'me' ? ('user' as const) : ('assistant' as const), content: partsOf(e) }));
+      const history: WireMsg[] = mem
+        .filter((e) => e.content.trim() !== '' || (e.images?.length ?? 0) > 0)
+        .map((e) => ({ role: e.speaker === 'me' ? ('user' as const) : ('assistant' as const), content: partsOf(e) }));
       setChatMsgs((prev) => [...prev.filter((m) => !m.streaming), { role: 'user', content: text, ...(imgs.length > 0 ? { images: imgs } : {}) }]);
       const said = await npcUtterance({ id: chatTarget.id, name: chatTarget.name, role: chatTarget.role }, history, ctrl);
-      mem.push({ speaker: chatTarget.name, content: said });
+      // 失败时不把空回复写进记忆（否则下一轮会带一条空的 assistant 历史）
+      if (said.trim() !== '') mem.push({ speaker: chatTarget.name, content: said });
       npcMemRef.current.set(key, mem.slice(-40));
     },
     [chatTarget, npcUtterance],
@@ -692,7 +695,9 @@ export function OfficeModuleView(): ReactElement {
       }
       for (const c of npcList) {
         if (ctrl.signal.aborted) break;
-        const history: WireMsg[] = mem.map((e) =>
+        const history: WireMsg[] = mem
+          .filter((e) => e.content.trim() !== '' || (e.images?.length ?? 0) > 0)
+          .map((e) =>
           e.speaker === 'me'
             ? { role: 'user' as const, content: partsOf(e) }
             : e.speaker === c.name
