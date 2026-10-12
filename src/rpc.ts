@@ -36,6 +36,7 @@ import {
   type OfficeRosterEntry,
 } from './office-roster.js';
 import { installOfficeAutopilot } from './office-autopilot.js';
+import { addTodo, clearTodos, loadTodos, removeTodo, toggleTodo } from './office-todos.js';
 
 interface HttpRequestLike {
   url?: string;
@@ -415,13 +416,14 @@ async function officeAttachWorkspace(ctx: Context, sessionId: string, cwd: strin
   if (ws !== undefined) await ws.attachSession(sessionId);
 }
 
-/** 会话归位：标题钉成员工名 + 挂进工作区。
+/** 会话归位：标题钉成「员工姓名（职称）」+ 挂进工作区。
  *  在首条任务消息之前调用：宿主 sessionTitle.rename 写的是显式标题，会压掉「按任务名自动起标题」。 */
 async function officeAdoptSession(
   ctx: Context,
   log: { warn(m: string): void },
   sessionId: string,
   name: string,
+  role: string,
   cwd: string,
   liveSession?: unknown,
 ): Promise<void> {
@@ -430,7 +432,7 @@ async function officeAdoptSession(
   if (session !== undefined && name !== '') {
     const titles = ctx.get('sessionTitle') as { rename?(session: unknown, title: string): unknown } | undefined;
     try {
-      titles?.rename?.(session, name);
+      titles?.rename?.(session, role.trim() === '' ? name : `${name}（${role.trim()}）`);
     } catch (err) {
       log.warn(`[personal-workbench] 会话改名失败: ${err instanceof Error ? err.message : '未知错误'}`);
     }
@@ -517,9 +519,9 @@ async function officeSpawnAgent(
       }
     },
   });
-  // 会话归位：标题钉成员工名 + 挂进 cwd 对应的工作区（侧栏按项目分组）。
+  // 会话归位：标题钉成「员工姓名（职称）」+ 挂进 cwd 对应的工作区（侧栏按项目分组）。
   // 必须在首条任务消息之前：显式标题会压掉「按首条消息自动起标题」，否则侧栏显示任务名。
-  await officeAdoptSession(ctx, log, sessionId, name, agentCwd, (handle.agent as { session?: unknown }).session);
+  await officeAdoptSession(ctx, log, sessionId, name, role, agentCwd, (handle.agent as { session?: unknown }).session);
   officeAgents.set(npcId, {
     handle,
     entry: {
@@ -1690,6 +1692,16 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         send(res, 200, { ok: true, notes: loadMemoryNotes(memChar) });
         return;
       }
+      // office/todos GET ?char=<id>：员工档案里的「待办事项」（自觉工作的任务源，勾完即从队列消失）
+      if (officeEndpoint === 'office/todos' && officeMethod === 'GET') {
+        const todoChar = new URL(req.url ?? '/', 'http://localhost').searchParams.get('char') ?? '';
+        if (!isValidCharId(todoChar)) {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: 'char 必须为合法员工 id' } });
+          return;
+        }
+        send(res, 200, { ok: true, todos: loadTodos(todoChar) });
+        return;
+      }
       // office/workdir GET ?path=<绝对路径>：浏览目录树选派活工作区（只读、仅列子目录；缺省 = 主目录，路径不存在回退主目录）
       if (officeEndpoint === 'office/workdir' && officeMethod === 'GET') {
         const raw = new URL(req.url ?? '/', 'http://localhost').searchParams.get('path') ?? '';
@@ -2038,6 +2050,42 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
         const memTextPost = typeof officeBody.text === 'string' ? officeBody.text : '';
         appendMemoryNote(memCharPost, memTextPost);
         send(res, 200, { ok: true });
+        return;
+      }
+      // office/todos POST {char, text} 加一条 / {char, toggle: id} 勾选（取消勾选 = 允许再派）/ {char, remove: id} 删 / {char, clear: true} 清空
+      if (officeEndpoint === 'office/todos') {
+        const todoCharPost = typeof officeBody.char === 'string' ? officeBody.char.trim() : '';
+        if (!isValidCharId(todoCharPost)) {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: 'char 必须为合法员工 id' } });
+          return;
+        }
+        try {
+          if (officeBody.clear === true) {
+            clearTodos(todoCharPost);
+            send(res, 200, { ok: true, todos: [] });
+            return;
+          }
+          if (typeof officeBody.toggle === 'string' && officeBody.toggle !== '') {
+            send(res, 200, { ok: true, todos: toggleTodo(todoCharPost, officeBody.toggle) });
+            return;
+          }
+          if (typeof officeBody.remove === 'string' && officeBody.remove !== '') {
+            if (!removeTodo(todoCharPost, officeBody.remove)) {
+              send(res, 400, { ok: false, error: { code: 'bad-request', message: '没有这条待办' } });
+              return;
+            }
+            send(res, 200, { ok: true, todos: loadTodos(todoCharPost) });
+            return;
+          }
+          const todoText = typeof officeBody.text === 'string' ? officeBody.text : '';
+          if (todoText.trim() === '') {
+            send(res, 400, { ok: false, error: { code: 'bad-request', message: 'text 不能为空' } });
+            return;
+          }
+          send(res, 200, { ok: true, todos: addTodo(todoCharPost, todoText) });
+        } catch (err) {
+          send(res, 400, { ok: false, error: { code: 'bad-request', message: err instanceof Error ? err.message : '待办保存失败' } });
+        }
         return;
       }
       // SSE 流式回复公共骨架：llm 软探测 + 默认模型 + 断连中止 + data: delta/[DONE]

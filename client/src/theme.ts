@@ -2082,6 +2082,7 @@ html { color-scheme: light !important; }
 .dsh-pwb-office-prof-mem span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dsh-pwb-office-prof-mem button { margin-left: auto; border: none; background: none; cursor: pointer; color: var(--pwb-dim); font-size: 13px; line-height: 1; padding: 0; flex-shrink: 0; }
 .dsh-pwb-office-prof-mem button:hover { color: #dc2626; }
+.dsh-pwb-office-prof-mem input[type='checkbox'] { flex-shrink: 0; align-self: center; width: 13px; height: 13px; margin: 0; accent-color: var(--pwb-accent, #00c853); cursor: pointer; }
 .dsh-pwb-office-prof-savebar {
   position: sticky;
   bottom: -16px;

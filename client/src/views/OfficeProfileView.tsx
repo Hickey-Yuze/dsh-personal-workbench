@@ -5,8 +5,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { addMemoryNote, assessSkills, clearMemory, fetchMemory, listAssetFiles, officeListModels, removeMemoryNote, saveBuiltin, type AssessResult } from '../office/agentClient.js';
-import type { BuiltinOverride, MemoryNote, OfficeModelOption, RosterEntry } from '../office/agentClient.js';
+import { addMemoryNote, addTodoItem, assessSkills, clearMemory, clearTodoItems, fetchMemory, fetchTodos, listAssetFiles, officeListModels, removeMemoryNote, removeTodoItem, saveBuiltin, toggleTodoItem, type AssessResult } from '../office/agentClient.js';
+import type { BuiltinOverride, MemoryNote, OfficeModelOption, OfficeTodoRow, RosterEntry } from '../office/agentClient.js';
 import { BUILTIN_STAFF } from '../office/engine.js';
 import { modelForChar } from '../office/objModels.js';
 import { modelThumb } from '../office/modelThumb.js';
@@ -117,6 +117,10 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, de
   const [notes, setNotes] = useState<MemoryNote[]>([]);
   const [memInput, setMemInput] = useState('');
   const [memBusy, setMemBusy] = useState(false);
+  /** 待办事项（档案页手写；「自觉」开的员工会按顺序取第一条未完成的干）。 */
+  const [todos, setTodos] = useState<OfficeTodoRow[]>([]);
+  const [todoInput, setTodoInput] = useState('');
+  const [todoBusy, setTodoBusy] = useState(false);
   const selRef = useRef('');
 
   /* 切换员工 → 重载草稿 + 记忆 */
@@ -141,10 +145,14 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, de
     setLinkInput('');
     setSaveMsg('');
     setNotes([]);
+    setTodos([]);
     if (id !== '') {
       let alive = true;
       void fetchMemory(id).then((list) => {
         if (alive) setNotes(list);
+      });
+      void fetchTodos(id).then((list) => {
+        if (alive) setTodos(list);
       });
       return () => {
         alive = false;
@@ -311,6 +319,58 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, de
       setSaveMsg(err instanceof Error ? err.message : '清空失败');
     }
   }, [notes.length, sel]);
+
+  /* 待办事项：员工档案里手写，「自觉」开着时按顺序取第一条未完成的派给自己 */
+  const todoAdd = useCallback(async () => {
+    if (sel === undefined || todoBusy) return;
+    const text = todoInput.trim();
+    if (text === '') return;
+    setTodoBusy(true);
+    try {
+      setTodos(await addTodoItem(sel.id, text));
+      setTodoInput('');
+    } catch (err) {
+      setSaveMsg(err instanceof Error ? err.message : '待办写入失败');
+    } finally {
+      setTodoBusy(false);
+    }
+  }, [sel, todoBusy, todoInput]);
+
+  const todoToggle = useCallback(
+    async (id: string) => {
+      if (sel === undefined) return;
+      try {
+        setTodos(await toggleTodoItem(sel.id, id));
+      } catch (err) {
+        setSaveMsg(err instanceof Error ? err.message : '待办更新失败');
+      }
+    },
+    [sel],
+  );
+
+  const todoRemove = useCallback(
+    async (id: string) => {
+      if (sel === undefined) return;
+      try {
+        await removeTodoItem(sel.id, id);
+        setTodos(await fetchTodos(sel.id));
+      } catch (err) {
+        setSaveMsg(err instanceof Error ? err.message : '删除失败');
+      }
+    },
+    [sel],
+  );
+
+  const todoClear = useCallback(async () => {
+    if (sel === undefined || todos.length === 0) return;
+    if (!window.confirm(`清空 ${sel.name} 的全部 ${todos.length} 条待办？`)) return;
+    try {
+      await clearTodoItems(sel.id);
+      setTodos([]);
+    } catch (err) {
+      setSaveMsg(err instanceof Error ? err.message : '清空失败');
+    }
+  }, [sel, todos.length]);
 
   if (sel === undefined) return <div className="dsh-pwb-office-prof-empty">还没有员工</div>;
 
@@ -639,6 +699,52 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, de
               }}
             >
               添加
+            </button>
+          </div>
+        </div>
+
+        <div className="dsh-pwb-office-prof-section">
+          <div className="dsh-pwb-office-prof-sec-title">
+            待办<i>{todos.filter((t) => t.doneAt === undefined).length} 条未完成 · 「自觉」开着会按顺序自己取</i>
+            {todos.length > 0 && (
+              <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6 }}>
+                <button type="button" className="dsh-pwb-office-prof-ghost" style={{ padding: '3px 10px', fontSize: 11 }} onClick={() => void todoClear()}>
+                  清空
+                </button>
+              </span>
+            )}
+          </div>
+          <div className="dsh-pwb-office-prof-mems">
+            {todos.map((t) => (
+              <div key={t.id} className="dsh-pwb-office-prof-mem">
+                <input
+                  type="checkbox"
+                  checked={t.doneAt !== undefined}
+                  title={t.doneAt !== undefined ? '已完成（取消勾选 = 允许再派一次）' : '打勾 = 完成'}
+                  onChange={() => void todoToggle(t.id)}
+                />
+                <span style={t.doneAt !== undefined ? { textDecoration: 'line-through', opacity: 0.62 } : undefined}>{t.text}</span>
+                {t.dispatchedTo !== undefined && <time>自觉派给 {t.dispatchedTo}</time>}
+                <button type="button" title="删除这条" onClick={() => void todoRemove(t.id)}>
+                  ×
+                </button>
+              </div>
+            ))}
+            {todos.length === 0 && <span className="dsh-pwb-office-prof-item-role">还没有待办——加一条，「自觉」开着时 TA 会自己取</span>}
+          </div>
+          <div className="dsh-pwb-office-prof-linkadd">
+            <input
+              className="dsh-pwb-office-prof-input"
+              value={todoInput}
+              maxLength={200}
+              placeholder="加一条待办，如：复核黄金矿工验收报告"
+              onChange={(e) => setTodoInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void todoAdd();
+              }}
+            />
+            <button type="button" className="dsh-pwb-office-prof-ghost" disabled={todoBusy || todoInput.trim() === ''} onClick={() => void todoAdd()}>
+              加一条
             </button>
           </div>
         </div>

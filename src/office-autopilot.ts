@@ -2,8 +2,8 @@
  * 办公室「自觉工作」autopilot：每 30 分钟一轮，为开启 autopilot 且空闲的员工派活，
  * 走 office/agent/start 同代码路径 spawn 真实会话。单员工失败不影响其他，全程 try/catch 静默失败。
  *
- * 任务源优先级（② 接真实待办；默认**不再让模型凭空编活**）：
- *  ① 老板手写待办队列 `AI员工/待办.md`（src/office-backlog.ts，`- [ ] 任务 @姓名`，派过即在行尾打 <!-- 已派 … --> 认领标签）；
+ * 任务源优先级（默认**不再让模型凭空编活**）：
+ *  ① 该员工档案里的「待办事项」第一条未完成项（src/office-todos.ts，在员工档案页手写；派出去即自动打勾）；
  *  ② 「有汇报但没验收结论」的旧活收尾（deps.pendingClose，只认老板派出的活）；
  *  ③ 模型微任务 —— 仅在 DSH_PWB_INVENT=1 时启用（默认关：避免无止境自己给自己派活）。
  * 三源都空 → 本轮跳过（日志写明原因）。
@@ -16,8 +16,8 @@
  * 熔断状态落盘 ~/.dsh/personal-workbench/office_autopilot.json（读写静默失败 → 降级为无状态）。
  */
 import * as fs from 'node:fs';
-import { backlogFile, claimBacklogTask, readBacklog, type OfficeBacklogTask } from './office-backlog.js';
-import { builtinOverrideOf, findCharIdByName, listAutopilotChars, loadMemoryNotes, setAutopilotFlag } from './office-roster.js';
+import { builtinOverrideOf, listAutopilotChars, loadMemoryNotes, setAutopilotFlag } from './office-roster.js';
+import { markTodoDone, takeTodo } from './office-todos.js';
 
 /** cordis Context 的最小结构面（只做服务软探测）。 */
 interface AutopilotCtx {
@@ -170,15 +170,6 @@ async function runRound(deps: OfficeAutopilotDeps): Promise<void> {
   }
   const state = loadState();
   const today = todayKey();
-  const file = backlogFile();
-  let backlog: OfficeBacklogTask[] = [];
-  try {
-    backlog = readBacklog(file);
-  } catch {
-    backlog = [];
-  }
-  const taken = new Set<number>();
-  if (backlog.length > 0) deps.log.info(`[personal-workbench] office 待办队列读到 ${backlog.length} 条：${file}`);
   for (const c of chars) {
     try {
       const cur = state[c.id];
@@ -208,17 +199,13 @@ async function runRound(deps: OfficeAutopilotDeps): Promise<void> {
         deps.log.warn(`[personal-workbench] office autopilot 连续 ${NO_PROGRESS_LIMIT} 轮无产出，已自动关闭 ${c.name} 的自觉开关`);
         continue;
       }
-      // 任务源：① 老板手写待办（@自己 或未指派）→ ② 未验收旧活收尾 → ③ 可选模型微任务 → 都空则跳过
+      // 任务源：① 该员工档案里的待办 → ② 未验收旧活收尾 → ③ 可选模型微任务 → 都空则跳过
       let task: string | null = null;
       let source = '';
-      const mine = backlog.find((t) => !taken.has(t.line) && (t.assignee === undefined || findCharIdByName(t.assignee) === c.id));
-      if (mine !== undefined) {
-        task = mine.text;
-        source = '待办队列';
-        taken.add(mine.line);
-        if (!claimBacklogTask(file, mine.line, c.name)) {
-          deps.log.warn(`[personal-workbench] office 待办认领回写失败（${file} 第 ${mine.line} 行）：本条下次可能被重复派出`);
-        }
+      const todo = takeTodo(c.id);
+      if (todo !== undefined) {
+        task = todo.text;
+        source = '员工待办';
       } else {
         const close = deps.pendingClose?.(c.id);
         if (typeof close === 'string' && close.trim() !== '') {
@@ -233,7 +220,7 @@ async function runRound(deps: OfficeAutopilotDeps): Promise<void> {
         }
       }
       if (task === null) {
-        deps.log.info(`[personal-workbench] office autopilot 跳过 ${c.name}：待办队列与未验收旧活都空（不凭空派活）`);
+        deps.log.info(`[personal-workbench] office autopilot 跳过 ${c.name}：员工待办与未验收旧活都空（不凭空派活）`);
         continue;
       }
       // 熔断③ 去重：只对模型微任务生效（手写待办/收尾是指令，重复也要执行，靠熔断②兜底）
@@ -248,6 +235,14 @@ async function runRound(deps: OfficeAutopilotDeps): Promise<void> {
         continue;
       }
       await deps.dispatch(c.id, c.name, c.role, task);
+      // 员工待办：派出去即自动打勾（在档案里取消勾选 = 允许再派一次）
+      if (todo !== undefined) {
+        try {
+          markTodoDone(c.id, todo.id, c.name);
+        } catch (err) {
+          deps.log.warn(`[personal-workbench] office 待办打勾失败 ${c.name}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
       st.count += 1;
       st.lastTask = task;
       // 注意：这里**不重置 fails**——只有「这一轮看到新产出」才算进展（熔断②靠这一点连坐两轮）。

@@ -140,6 +140,39 @@ export async function clearMemory(char: string): Promise<void> {
   await postJson('memory', { char, clear: true });
 }
 
+/** 员工待办事项（档案页手写；勾完即从「自觉」的任务源消失）。 */
+export type OfficeTodoRow = {
+  id: string;
+  text: string;
+  at: number;
+  doneAt?: number;
+  dispatchedAt?: number;
+  dispatchedTo?: string;
+};
+
+export async function fetchTodos(char: string): Promise<OfficeTodoRow[]> {
+  const data = await getJson<{ todos?: OfficeTodoRow[] }>(`todos?char=${encodeURIComponent(char)}`);
+  return Array.isArray(data.todos) ? data.todos : [];
+}
+
+export async function addTodoItem(char: string, text: string): Promise<OfficeTodoRow[]> {
+  const data = await postJson<{ todos?: OfficeTodoRow[] }>('todos', { char, text });
+  return Array.isArray(data.todos) ? data.todos : [];
+}
+
+export async function toggleTodoItem(char: string, id: string): Promise<OfficeTodoRow[]> {
+  const data = await postJson<{ todos?: OfficeTodoRow[] }>('todos', { char, toggle: id });
+  return Array.isArray(data.todos) ? data.todos : [];
+}
+
+export async function removeTodoItem(char: string, id: string): Promise<void> {
+  await postJson('todos', { char, remove: id });
+}
+
+export async function clearTodoItems(char: string): Promise<void> {
+  await postJson('todos', { char, clear: true });
+}
+
 /** 新增自定义员工；成功返回宿主生成的新条目（id 为 custom-<序号>）。model 可选员工专属模型（`${provider}::${id}`；空 = 跟随默认）。 */
 export async function addRosterEntry(name: string, role: string, model?: string): Promise<RosterEntry> {
   const raw = typeof model === 'string' ? model : '';
