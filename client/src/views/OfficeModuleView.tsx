@@ -849,7 +849,8 @@ export function OfficeModuleView(): ReactElement {
               desks={engine.listDesks().map((d, i) => ({ id: d.id, label: `工位${i + 1} · (${d.x},${d.y})` }))}
               onDeskAssigned={(id, deskId) => engine.assignDesk(id, deskId)}
               onRenamed={(id, name) => engine.renameChar(id, name)}
-              <div className="dsh-pwb-office-hire">
+            />
+            <div className="dsh-pwb-office-hire">
                 <b>员工入职</b>
                 <input
                   value={hireName}
