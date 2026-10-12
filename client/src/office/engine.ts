@@ -396,11 +396,11 @@ export class OfficeEngine {
     return null;
   }
 
-  /** 命中白板前缘格（板正下方一排）。 */
+  /** 命中白板：板本体或板正下方一排（点板身也能开会——最直觉的交互）。 */
   private whiteboardFrontAt(x: number, y: number): Furniture | null {
     for (const f of this.map.furniture) {
       if (f.kind !== 'whiteboard') continue;
-      if (y === f.y + f.h && x >= f.x && x < f.x + f.w) return f;
+      if (x >= f.x && x < f.x + f.w && (y === f.y + f.h || (y >= f.y && y < f.y + f.h))) return f;
     }
     return null;
   }
