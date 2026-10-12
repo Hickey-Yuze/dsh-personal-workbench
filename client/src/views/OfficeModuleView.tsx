@@ -841,6 +841,7 @@ export function OfficeModuleView(): ReactElement {
           )}
 
           {tab === 'data' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0, flex: 1 }}>
             <OfficeProfileView
               members={members}
               roster={roster}
@@ -888,6 +889,7 @@ export function OfficeModuleView(): ReactElement {
                   {roster.length === 0 ? '还没有自定义员工' : `已入职：${roster.map((r) => `${r.name}·${r.role}`).join('、')}`}
                 </span>
               </div>
+            </div>
           )}
 
           {tab === 'edit' && (
