@@ -71,6 +71,8 @@ export class OfficeEngine {
   time = 0;
   /** 会议进行中（renderer 据此高亮白板）。 */
   meetingActive = false;
+  /** 会议结束回调（UI 挂：携带与会者 id/名字，用于纪要→行动项闭环）。 */
+  onMeetingEnded: ((attendees: Array<{ id: string; name: string }>) => void) | null = null;
   /** 头顶气泡：charId → 文本 + 到期引擎时间（秒），tick 清到期。 */
   bubbles = new Map<string, { text: string; until: number }>();
   private desks: Furniture[] = [];
@@ -499,8 +501,17 @@ export class OfficeEngine {
 
   /** 散会：会议相关角色清路径，立即回归 decide 循环。 */
   private endMeeting(): void {
+    const attendees: Array<{ id: string; name: string }> = [];
+    for (const c of this.chars) {
+      if (this.meetingSpots.has(c.id)) attendees.push({ id: c.id, name: c.name });
+    }
     this.meetingActive = false;
     this.meetingSpots.clear();
+    if (attendees.length > 0 && this.onMeetingEnded !== null) {
+      const cb = this.onMeetingEnded;
+      this.onMeetingEnded = null; // 一次性：散会后由 UI 重新挂（防重复派单）
+      cb(attendees);
+    }
     for (const c of this.chars) {
       c.meetingAt = undefined;
       if (c.intent === 'meeting') {

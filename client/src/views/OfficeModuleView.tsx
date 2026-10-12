@@ -584,6 +584,73 @@ export function OfficeModuleView(): ReactElement {
     [engine, sceneState],
   );
 
+  /* ── 会议纪要闭环：散会 → AI 从讨论生成行动项 → 逐条派给对应员工（真会话） ── */
+  const meetingBrief = useCallback(
+    async (attendees: Array<{ id: string; name: string }>): Promise<void> => {
+      if (attendees.length === 0) return;
+      const withRole = attendees.map((a) => {
+        const known = [...BUILTIN_STAFF, ...roster].find((c) => c.id === a.id);
+        return { ...a, role: known?.role ?? '', isSelf: a.id === 'self' };
+      });
+      const rosterNames = [...BUILTIN_STAFF, ...roster].map((c) => `${c.name}·${c.role}`);
+      // ① 让一位与会者（第一个非自己）以会议纪要人口吻输出行动项（严格文本协议，不进聊天面板）
+      const scribe = withRole.find((a) => !a.isSelf) ?? withRole[0];
+      if (scribe === undefined) return;
+      const ctrl = new AbortController();
+      try {
+        const res = await fetch(NPC_CHAT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: scribe.name,
+            role: scribe.role,
+            messages: [
+              {
+                role: 'user',
+                content: `会议刚结束。与会者：${withRole.map((a) => a.name).join('、')}。团队现有成员：${rosterNames.join('、')}。请以会议纪要人身份，把本次会议讨论产出 2~4 条行动项。**只**输出以下格式，每行一条，不要任何其他文字：
+【行动项】负责人名字：具体任务（≤80字，可执行、有产出）
+负责人必须是与会者或团队成员的真名。`,
+              },
+            ],
+            sceneState: sceneState(),
+          }),
+          signal: ctrl.signal,
+        });
+        const brief = await readSse(res, () => {}, () => {});
+        // ② 解析行动项 → 走真实派活协议（office/actions 入队 → agent 会话）
+        const lines = brief.split('\n').filter((l) => l.startsWith('【行动项】'));
+        let dispatched = 0;
+        for (const line of lines.slice(0, 4)) {
+          const m = /^【行动项】\s*([^：:\n]{1,12}?)\s*[：:]\s*(.{1,200})$/.exec(line.trim());
+          if (m === null) continue;
+          const who = [...BUILTIN_STAFF, ...roster].find((c) => c.name === m[1]?.trim());
+          if (who === undefined) continue; // 名字对不上不硬派
+          await fetch(ACTIONS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'desk_visit', payload: { target: who.id } }),
+          }).catch(() => undefined);
+          dispatched += 1;
+        }
+        // ③ 结果冒泡到纪要人头上（可见闭环，不造假）
+        if (lines.length > 0) engine.setBubble(scribe.id, `📋 会议纪要：${lines.length} 条行动项${dispatched > 0 ? `，已派 ${dispatched} 条` : '（未派：负责人未匹配）'}`, 8000);
+      } catch {
+        /* 纪要失败静默：会议本身已完成 */
+      }
+    },
+    [engine, roster, sceneState],
+  );
+
+  // 散会钩子：挂引擎回调（一次性，endMeeting 自动清）
+  useEffect(() => {
+    engine.onMeetingEnded = (attendees) => {
+      void meetingBrief(attendees);
+    };
+    return () => {
+      engine.onMeetingEnded = null;
+    };
+  }, [engine, meetingBrief]);
+
   /* ── 私聊：点谁跟谁聊 ── */
   const sendNpc = useCallback(
     async (text: string, imgs: ChatImage[], ctrl: AbortController): Promise<void> => {
