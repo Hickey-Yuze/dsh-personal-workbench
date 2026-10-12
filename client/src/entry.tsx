@@ -15,10 +15,16 @@ import { ctxGet, type WorkbenchClientCtx } from './env.js';
 import { initI18n, t } from './i18n.js';
 import { PANEL_ID, WorkbenchPanel } from './panel.js';
 import { makeRpc } from './rpc.js';
-import { setSessionOpener } from './sessionNav.js';
+import { setSessionFinder, setSessionOpener } from './sessionNav.js';
 import { ensureThemeStyle } from './theme.js';
 
 export const inject = ['slots', 'layout', 'locale'];
+
+/** uiWorkspace 的最小结构（宿主客户端服务，软取；仅用 openSession 与会话列表两个成员）。 */
+type OfficeUiWorkspace = {
+  openSession?: (target: unknown) => void;
+  sessions?: { list?: { getSnapshot?: () => { ids?: unknown; byId?: Record<string, { title?: unknown }> } } };
+};
 
 /** 「个人工作台」图标：四宫格 + 底部基线。 */
 const ICON_SVG =
@@ -187,11 +193,10 @@ export function apply(ctx: WorkbenchClientCtx): void {
   ensureThemeStyle();
 
   /* 「跳到会话」桥：宿主 uiWorkspace.openSession(id) 把主区切到该会话（侧栏随之把该行标为当前）。
-     服务软取（每次调用时再取：workspace UI 插件可能晚于本插件挂载）：ctxGet → ctx.root.get → ctx 属性；
-     缺失/旧宿主 → false，调用方降级提示。 */
-  setSessionOpener((sessionId: string): boolean => {
-    const asService = (v: unknown): { openSession?: (target: unknown) => void } | undefined =>
-      typeof v === 'object' && v !== null ? (v as { openSession?: (target: unknown) => void }) : undefined;
+     服务软取（每次调用时再取：workspace UI 插件可能晚于本插件挂载）：ctxGet → ctx.root.get → ctx 属性。 */
+  const resolveUiWorkspace = (): OfficeUiWorkspace | undefined => {
+    const asService = (v: unknown): OfficeUiWorkspace | undefined =>
+      typeof v === 'object' && v !== null ? (v as OfficeUiWorkspace) : undefined;
     const root = (ctx as unknown as { root?: { get?(key: string): unknown } }).root;
     const candidates: unknown[] = [
       ctxGet(ctx, 'uiWorkspace'),
@@ -200,17 +205,43 @@ export function apply(ctx: WorkbenchClientCtx): void {
     ];
     for (const candidate of candidates) {
       const service = asService(candidate);
-      if (service === undefined || typeof service.openSession !== 'function') continue;
-      try {
-        service.openSession(sessionId);
-        return true;
-      } catch (err) {
-        console.warn('[personal-workbench] uiWorkspace.openSession 失败', err);
-        return false;
-      }
+      if (service !== undefined && typeof service.openSession === 'function') return service;
     }
-    console.warn('[personal-workbench] 找不到 uiWorkspace 服务，无法跳转会话', sessionId);
-    return false;
+    return undefined;
+  };
+
+  setSessionOpener((sessionId: string): boolean => {
+    const service = resolveUiWorkspace();
+    if (service?.openSession === undefined) {
+      console.warn('[personal-workbench] 找不到 uiWorkspace 服务，无法跳转会话', sessionId);
+      return false;
+    }
+    try {
+      service.openSession(sessionId);
+      return true;
+    } catch (err) {
+      console.warn('[personal-workbench] uiWorkspace.openSession 失败', err);
+      return false;
+    }
+  });
+
+  /* 兜底：宿主重启后 office/agents 的内存派活记录会清空 → 按会话 id 前缀 office-<npcId>- 在宿主
+     会话列表里找 TA 最近的会话（同一个人多次派活时取尾部时间戳最大者）。 */
+  setSessionFinder((npcId: string): string | null => {
+    const list = resolveUiWorkspace()?.sessions?.list?.getSnapshot?.();
+    const ids: unknown[] = Array.isArray(list?.ids) ? (list?.ids as unknown[]) : [];
+    const prefix = `office-${npcId}-`;
+    const stamp = (id: string): number => {
+      const m = /-(\d{10,})$/.exec(id);
+      return m === null ? 0 : Number(m[1]);
+    };
+    let best: { id: string; at: number } | null = null;
+    for (const raw of ids) {
+      if (typeof raw !== 'string' || !raw.startsWith(prefix)) continue;
+      const at = stamp(raw);
+      if (best === null || at > best.at) best = { id: raw, at };
+    }
+    return best === null ? null : best.id;
   });
 
   // 侧栏入口（DOM 注入；样式与「新会话」「定时任务」按钮同款）

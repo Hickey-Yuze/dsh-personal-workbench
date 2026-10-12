@@ -17,7 +17,7 @@ import {
   setAutopilot,
 } from '../office/agentClient.js';
 import type { AgentRow, BuiltinOverride, OfficeModelOption, RosterEntry } from '../office/agentClient.js';
-import { openSessionInShell } from '../sessionNav.js';
+import { findSessionOfNpc, openSessionInShell } from '../sessionNav.js';
 
 export type OfficeAgentPanelProps = {
   /** 派活入口：让老板切到该员工的聊天里派活（id 即 npcId，自定义员工为 custom-<序号>）。 */
@@ -282,7 +282,9 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved }: OfficeAgentPane
       <div className="dsh-pwb-office-emp-list">
         {employees.map((emp) => {
           const row = agentRows[emp.id];
-          const hasSession = row?.sessionId !== undefined && row.sessionId !== '';
+          /* 会话 id：优先宿主内存的派活记录；宿主重启后会丢，再按 id 前缀在宿主会话列表里兜底。 */
+          const sid = row?.sessionId ?? findSessionOfNpc(emp.id) ?? '';
+          const hasSession = sid !== '';
           const dot = statusDot(row);
           const isFrom = fromId === emp.id;
           const auto = builtin?.[emp.id]?.autopilot === true;
@@ -295,7 +297,6 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved }: OfficeAgentPane
                   data-session="1"
                   title={hasSession ? '点击跳到 TA 的真实会话' : 'TA 还没有进行中的会话：点「派活」让 TA 真干活'}
                   onClick={() => {
-                    const sid = row?.sessionId ?? '';
                     if (sid === '') {
                       setNavErr(`「${emp.name}」还没有进行中的会话：点 TA 那行的「派活」派个小任务，会话建好后这里就能点开`);
                       return;

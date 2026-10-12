@@ -18,7 +18,7 @@ import type { BuiltinOverride, OfficeModelOption, RosterEntry } from '../office/
 import { OfficeEditor } from './OfficeEditor.js';
 import { OfficeProfileView } from './OfficeProfileView.js';
 import { OfficeAgentPanel } from './OfficeAgentPanel.js';
-import { openSessionInShell } from '../sessionNav.js';
+import { findSessionOfNpc, openSessionInShell } from '../sessionNav.js';
 
 const STATE_TEXT: Record<MemberStat['state'], string> = {
   idle: '摸鱼中',
@@ -871,9 +871,10 @@ export function OfficeModuleView(): ReactElement {
   const jumpSession = useMemo((): { id: string; name: string } | null => {
     const of = (npcId: string): { id: string; name: string } | null => {
       const row = agentRows[npcId];
-      const sid = row?.sessionId ?? '';
+      const label = builtinOverrides[npcId]?.name ?? row?.name ?? npcId;
+      const sid = row?.sessionId ?? findSessionOfNpc(npcId) ?? '';
       if (sid === '') return null;
-      return { id: sid, name: builtinOverrides[npcId]?.name ?? row?.name ?? npcId };
+      return { id: sid, name: label };
     };
     if (chatTarget.kind === 'npc') {
       const own = of(chatTarget.id);
