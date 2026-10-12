@@ -23,6 +23,7 @@ import {
   clearMemoryNotes,
   findCharIdByName,
   isValidCharId,
+  assessSkills,
   loadMemoryNotes,
   loadOfficeRosterExt,
   personaPromptSuffix,
@@ -1583,6 +1584,24 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
             error: { code: 'upstream', message: modelsErr instanceof Error ? modelsErr.message : '模型清单拉取失败' },
           });
         }
+        return;
+      }
+      // office/skills GET ?char=<id>：能力自动评估（从工作记忆推导 7 维分数）
+      if (officeEndpoint === 'office/skills' && officeMethod === 'GET') {
+        const q = new URL(req.url ?? '/', 'http://x').searchParams;
+        const charId = (q.get('char') ?? '').trim();
+        const ov = builtinOverrideOf(charId);
+        if (ov === undefined) {
+          send(res, 404, { ok: false, error: { code: 'not-found', message: '员工不存在' } });
+          return;
+        }
+        const memNotes = loadMemoryNotes(charId);
+        const work = memNotes.filter((n) => n.text.includes('【工作记录】')).length;
+        const pass = memNotes.filter((n) => n.text.startsWith('【验收结论】通过')).length;
+        const fail = memNotes.filter((n) => n.text.startsWith('【验收结论】不通过')).length;
+        const manual = typeof ov.skills === 'object' && ov.skills !== null ? ov.skills : undefined;
+        const scores = assessSkills(charId, ov.role ?? '', manual);
+        send(res, 200, { ok: true, scores, stat: { work, pass, fail } });
         return;
       }
       // office/memory GET ?char=<id>：员工记忆（真会话工作记录，自生长）

@@ -107,6 +107,17 @@ export async function setAutopilot(id: string, on: boolean): Promise<void> {
 }
 
 /** 员工记忆（真实会话产生的【工作记录】）。 */
+/** 能力自动评估结果：7 维分数 + 工作统计。 */
+export type AssessResult = { scores: Record<string, number>; stat: { work: number; pass: number; fail: number } };
+
+/** 能力自动评估（宿主从工作记忆/验收结论推导；manual 为当前手填分作加权）。 */
+export async function assessSkills(char: string): Promise<AssessResult> {
+  const res = await fetch(`${BASE}/skills?char=${encodeURIComponent(char)}`);
+  if (!res.ok) throw new Error(await errMessage(res, `评估失败（${res.status}）`));
+  const data = (await res.json()) as { scores?: Record<string, number>; stat?: { work: number; pass: number; fail: number } };
+  return { scores: data.scores ?? {}, stat: data.stat ?? { work: 0, pass: 0, fail: 0 } };
+}
+
 export async function fetchMemory(char: string): Promise<MemoryNote[]> {
   const data = await getJson<{ notes?: MemoryNote[] }>(`memory?char=${encodeURIComponent(char)}`);
   return Array.isArray(data.notes) ? data.notes : [];

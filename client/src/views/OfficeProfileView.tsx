@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { addMemoryNote, clearMemory, fetchMemory, listAssetFiles, officeListModels, removeMemoryNote, saveBuiltin } from '../office/agentClient.js';
+import { addMemoryNote, assessSkills, clearMemory, fetchMemory, listAssetFiles, officeListModels, removeMemoryNote, saveBuiltin, type AssessResult } from '../office/agentClient.js';
 import type { BuiltinOverride, MemoryNote, OfficeModelOption, RosterEntry } from '../office/agentClient.js';
 import { BUILTIN_STAFF } from '../office/engine.js';
 import { modelForChar } from '../office/objModels.js';
@@ -85,6 +85,24 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, de
   const ov: BuiltinOverride = builtin[sel?.id ?? ''] ?? {};
 
   const [draft, setDraft] = useState<Draft>({ name: '', persona: '', links: [], skills: {}, avatar: '', desk: '', llm: '' });
+  const [assessing, setAssessing] = useState(false);
+  const [assessInfo, setAssessInfo] = useState<AssessResult | null>(null);
+
+  /** 能力自动评估：宿主从工作记忆/验收结论推导 7 维分，回填滑杆（可再手改）。 */
+  const runAssess = useCallback(async (): Promise<void> => {
+    if (sel === undefined || assessing) return;
+    setAssessing(true);
+    try {
+      const r = await assessSkills(sel.id);
+      setAssessInfo(r);
+      setDraft((d) => ({ ...d, skills: { ...r.scores } }));
+      setSaveMsg(`已按 ${r.stat.work} 条工作记录自动评估`);
+    } catch (err) {
+      setSaveMsg(err instanceof Error ? err.message : '评估失败');
+    } finally {
+      setAssessing(false);
+    }
+  }, [assessing, sel]);
   /** 可选 3D 人物模型（assets/models 下的 .gltf/.glb）。 */
   const [models, setModels] = useState<string[]>([]);
   /** 模型头像（文件名 → dataURL）：员工列表/档案头与选型预览共用。 */
@@ -447,8 +465,65 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, de
 
         <div className="dsh-pwb-office-prof-section">
           <div className="dsh-pwb-office-prof-sec-title">
-            能力<i>0-100 分，决定派活分工与产出标准</i>
+            能力<i>0-100 分；「自动评估」按工作记录与验收结论真数据打分，滑杆可再手改</i>
+            <button
+              className="dsh-pwb-office-prof-ghost"
+              disabled={assessing || sel === undefined}
+              style={{ marginLeft: 'auto', fontSize: 12 }}
+              onClick={() => void runAssess()}
+            >
+              {assessing ? '评估中…' : '自动评估'}
+            </button>
           </div>
+          {assessInfo !== null && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <svg width="120" height="96" viewBox="0 0 240 192" style={{ flex: '0 0 auto' }}>
+                {/* 7 维雷达图：中心 (120,100)，半径 72，维度从顶部顺时针 */}
+                {[1, 0.75, 0.5, 0.25].map((f) => (
+                  <polygon
+                    key={f}
+                    points={SKILL_DIMS.map((_, i) => {
+                      const a = -Math.PI / 2 + (i * 2 * Math.PI) / SKILL_DIMS.length;
+                      return `${120 + Math.cos(a) * 72 * f},${100 + Math.sin(a) * 72 * f}`;
+                    }).join(' ')}
+                    fill="none"
+                    stroke="rgba(20,20,30,0.12)"
+                    strokeWidth="1"
+                  />
+                ))}
+                <polygon
+                  points={SKILL_DIMS.map((dim, i) => {
+                    const a = -Math.PI / 2 + (i * 2 * Math.PI) / SKILL_DIMS.length;
+                    const r = (72 * Math.max(0, Math.min(100, assessInfo.scores[dim] ?? 0))) / 100;
+                    return `${120 + Math.cos(a) * r},${100 + Math.sin(a) * r}`;
+                  }).join(' ')}
+                  fill="rgba(0,200,110,0.18)"
+                  stroke="var(--pwb-accent, #00c853)"
+                  strokeWidth="2"
+                />
+                {SKILL_DIMS.map((dim, i) => {
+                  const a = -Math.PI / 2 + (i * 2 * Math.PI) / SKILL_DIMS.length;
+                  return (
+                    <text
+                      key={dim}
+                      x={120 + Math.cos(a) * 86}
+                      y={100 + Math.sin(a) * 86 + 3}
+                      textAnchor="middle"
+                      fontSize="10"
+                      fill="#6b7280"
+                    >
+                      {dim}
+                    </text>
+                  );
+                })}
+              </svg>
+              <span style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.7 }}>
+                工作记录 {assessInfo.stat.work} 条 · 验收通过 {assessInfo.stat.pass} · 不通过 {assessInfo.stat.fail}
+                <br />
+                自动分已回填滑杆（60% 自动 + 40% 手填加权），可再调整后保存。
+              </span>
+            </div>
+          )}
           <div className="dsh-pwb-office-prof-skills">
             {SKILL_DIMS.map((dim) => {
               const v = draft.skills[dim];

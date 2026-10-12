@@ -341,7 +341,47 @@ export function appendMemoryNote(charId: string, text: string): void {
   }
 }
 
-/** 删除员工记忆第 index 条（0 基；越界/非法 id 返回 false，不抛）。 */
+/**
+ * 能力自动评估：从员工记忆（工作记录/验收结论）推导 7 维分数。
+ * 规则（透明可解释，不用 LLM）：
+ * - 记忆条数 n = 工作记录数（经验量），验收通过 a / 不通过 r（质量）；
+ * - 基础 40 + 经验 min(n,10)*2 + 质量 (a+r>0 ? (a/(a+r))*20 - (r/(a+r))*5 : 0)；
+ * - 维度偏置：各维按员工职务关键词给基础加成（架构师→架构/代码，测试→测试/沟通…）；
+ * - 结果与手填分（若已有）加权平均 60% 自动 + 40% 手填，全 0-100 钳制。
+ */
+export type OfficeSkillScores = Record<string, number>;
+
+const SKILL_ROLE_BIAS: Array<[RegExp, string, number]> = [
+  [/前端|工程师/, '代码', 10],
+  [/架构/, '架构', 12],
+  [/测试|QA/, '测试', 12],
+  [/设计/, '设计', 12],
+  [/产品/, '业务', 10],
+  [/运营/, '沟通', 10],
+  [/数据/, '数据', 12],
+];
+
+export function assessSkills(charId: string, role: string, manual?: Record<string, number>): OfficeSkillScores {
+  const scores: OfficeSkillScores = {};
+  const notes = loadMemoryNotes(charId);
+  const work = notes.filter((n) => n.text.includes('【工作记录】')).length;
+  const pass = notes.filter((n) => n.text.startsWith('【验收结论】通过')).length;
+  const fail = notes.filter((n) => n.text.startsWith('【验收结论】不通过')).length;
+  const exp = Math.min(work, 10) * 2;
+  const quality = pass + fail > 0 ? (pass / (pass + fail)) * 20 - (fail / (pass + fail)) * 5 : 0;
+  for (const dim of OFFICE_SKILL_DIMS) {
+    let base = 40 + exp + quality;
+    for (const [re, dimName, bonus] of SKILL_ROLE_BIAS) {
+      if (dim === dimName && re.test(role)) base += bonus;
+    }
+    // 活跃度加成：近期（7 天内）有新记录 +5
+    if (notes.some((n) => n.text.includes('【工作记录】') && Date.now() - n.t < 7 * 86400_000)) base += 5;
+    const clamped = Math.max(0, Math.min(100, Math.round(base)));
+    const man = manual?.[dim];
+    scores[dim] = typeof man === 'number' ? Math.max(0, Math.min(100, Math.round(clamped * 0.6 + man * 0.4))) : clamped;
+  }
+  return scores;
+}/** 删除员工记忆第 index 条（0 基；越界/非法 id 返回 false，不抛）。 */
 export function removeMemoryNote(charId: string, index: number): boolean {
   if (!isValidCharId(charId) || !Number.isInteger(index)) return false;
   try {

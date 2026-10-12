@@ -201,6 +201,7 @@ export function OfficeModuleView(): ReactElement {
   const [modelOptions, setModelOptions] = useState<OfficeModelOption[]>([]);
   const [hireBusy, setHireBusy] = useState(false);
   const [hireErr, setHireErr] = useState('');
+  const [hireOk, setHireOk] = useState('');
   const [tab, setTab] = useState<Tab>('scene');
   const [chatOpen, setChatOpen] = useState(true);
   const [chatTarget, setChatTarget] = useState<ChatTarget>({ kind: 'ai' });
@@ -430,6 +431,12 @@ export function OfficeModuleView(): ReactElement {
     const name = hireName.trim();
     const role = hireRole.trim();
     if (name === '' || role === '' || hireBusy) return;
+    // 重名校验：内置员工 + 已入职花名册（同名无法在聊天/派活协议里区分，直接拒绝）
+    const dup = [...BUILTIN_STAFF, ...roster].find((c) => c.name === name);
+    if (dup !== undefined) {
+      setHireErr(`已有同名员工「${name}」，请换一个名字`);
+      return;
+    }
     setHireBusy(true);
     setHireErr('');
     try {
@@ -439,12 +446,13 @@ export function OfficeModuleView(): ReactElement {
       setHireName('');
       setHireRole('');
       setHireModel('');
+      setHireOk(`${entry.name} 已入职（${entry.role}），去员工档案完善 TA 的资料吧`);
     } catch (err) {
       setHireErr(isEndpointMissing(err) ? '宿主半是旧代码：⌘Q 重启宿主后再试' : err instanceof Error ? err.message : '添加失败');
     } finally {
       setHireBusy(false);
     }
-  }, [engine, hireBusy, hireModel, hireName, hireRole]);
+  }, [engine, hireBusy, hireModel, hireName, hireRole, roster]);
 
   /** 缩放按钮：围绕中心缩放（平移归零，保持地图居中），范围与滚轮一致 0.5~2.5。 */
   const zoomStep = useCallback((delta: number): void => {
@@ -856,7 +864,11 @@ export function OfficeModuleView(): ReactElement {
                 <input
                   value={hireName}
                   placeholder="名字，如 小黄"
-                  onChange={(e) => setHireName(e.target.value)}
+                  onChange={(e) => {
+                    setHireName(e.target.value);
+                    setHireErr('');
+                    setHireOk('');
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') void hireSubmit();
                   }}
@@ -885,6 +897,7 @@ export function OfficeModuleView(): ReactElement {
                   {hireBusy ? '添加中…' : '添加员工'}
                 </button>
                 {hireErr !== '' && <span className="dsh-pwb-office-hire-err">⚠️ {hireErr}</span>}
+                {hireOk !== '' && hireErr === '' && <span style={{ color: 'var(--pwb-accent, #00c853)', fontSize: 12 }}>✓ {hireOk}</span>}
                 <span className="dsh-pwb-office-hire-roster">
                   {roster.length === 0 ? '还没有自定义员工' : `已入职：${roster.map((r) => `${r.name}·${r.role}`).join('、')}`}
                 </span>
@@ -971,6 +984,33 @@ export function OfficeModuleView(): ReactElement {
                     <button onClick={() => setChatOpen(false)}>收起</button>
                   </span>
                 </div>
+                {/* 今日概览（仅 AI 助手面板顶部；数据 = members 轮询 + 派活统计，真实计数） */}
+                {chatTarget.kind === 'ai' && (
+                  <div
+                    className="dsh-pwb-office-overview"
+                    style={{ display: 'flex', gap: 14, padding: '8px 14px', borderBottom: '1px solid rgba(20,20,30,0.06)', fontSize: 12, color: '#6b7280', flexWrap: 'wrap' }}
+                  >
+                    {(() => {
+                      const working = members.filter((m) => m.state === 'working').length;
+                      const idle = members.filter((m) => m.state === 'idle').length;
+                      const others = members.length - working - idle;
+                      const items: Array<[string, string, string]> = [
+                        ['#4b5563', '在职', `${members.length}`],
+                        ['#00b45f', '工作中', `${working}`],
+                        ['#e08a00', '走动/会议', `${others}`],
+                        ['#9ca3af', '空闲', `${idle}`],
+                        ['#7c5cd6', '已入职', `${roster.length}`],
+                      ];
+                      return items.map(([color, label, num]) => (
+                        <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                          <i style={{ width: 7, height: 7, borderRadius: 7, background: color, cornerShape: 'round' } as React.CSSProperties} />
+                          {label} <b style={{ color: '#374151' }}>{num}</b>
+                        </span>
+                      ));
+                    })()}
+                    <span style={{ marginLeft: 'auto', opacity: 0.7 }}>今日派活/验收走真实 agent 会话，完成后自动入员工记忆</span>
+                  </div>
+                )}
                 {/* OFFICE-AGENT-PANEL-SLOT */}
                 {npcWorkRow !== undefined && (
                   <div className="dsh-pwb-office-work-status">
