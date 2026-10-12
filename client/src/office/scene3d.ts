@@ -250,17 +250,18 @@ function buildDeskProps(f: Furniture, g: THREE.Group, deskW: number, deskD: numb
 
 
 
+
 function buildGlassCell(f: Furniture, g: THREE.Group, wallSet: Set<string>): void {
-  // 砖墙（代码手绘几何体）。转角处理：一格可能同时属于 x 向段和 z 向段（L 转角），
-  // 这里按邻居判断分别补两段；段长按邻居端点收/放半格厚度，保证转角处端面贴合不缺口。
+  // 砖墙。关键：每段严格落在自己格子占用的半空间内，端面永远停在「格边界」上，
+  // 靠相邻格的段把缝填满——这样直线连续、L 转角自然闭合，且两段永不相交。
   const hasXN = wallSet.has(`${f.x - 1},${f.y}`);
   const hasXP = wallSet.has(`${f.x + 1},${f.y}`);
   const hasZN = wallSet.has(`${f.x},${f.y - 1}`);
   const hasZP = wallSet.has(`${f.x},${f.y + 1}`);
   const isX = hasXN || hasXP; // 沿 x 的横段
   const isZ = hasZN || hasZP; // 沿 z 的竖段
-  const THICK = 0.24;         // 墙厚
-  const H = 1.6;              // 砖墙高度
+  const THICK = 0.24;
+  const H = 1.6;
   const cx = f.x + 0.5, cz = f.y + 0.5;
   const brickMat = new THREE.MeshStandardMaterial({ color: '#b8b0a4', roughness: 0.85, metalness: 0.02 });
   const capMat = new THREE.MeshStandardMaterial({ color: '#d5cfc4', roughness: 0.7, metalness: 0.02 });
@@ -272,40 +273,56 @@ function buildGlassCell(f: Furniture, g: THREE.Group, wallSet: Set<string>): voi
     mesh.receiveShadow = true;
     return mesh;
   };
-  /** 一段沿 x 的砖墙：从格中心向 ±x 各延伸 len（半格或半格+半厚），端点由邻居决定 */
-  const xSeg = (len: number, extNeg: boolean, extPos: boolean): void => {
-    // 总长 = len*2 + 端点延伸（每端 +THICK/2 才能与垂直段的端面平齐）
-    const total = len * 2 + (extNeg ? THICK / 2 : 0) + (extPos ? THICK / 2 : 0);
-    const centerOffset = (extPos ? THICK / 2 : 0) - (extNeg ? THICK / 2 : 0);
-    g.add(mk(new THREE.BoxGeometry(total, H, THICK), cx + centerOffset, H / 2, cz, brickMat));
+  /** 沿 x 的段：格内 [x0,x1]（格边界），段厚中心在 cz。端点只按邻居在格边界内收放，不越过格界。 */
+  const xSeg = (x0: number, x1: number, capNeg: boolean, capPos: boolean): void => {
+    const len = x1 - x0;
+    const mid = (x0 + x1) / 2;
+    g.add(mk(new THREE.BoxGeometry(len, H, THICK), mid, H / 2, cz, brickMat));
     for (let r = 1; r <= 2; r++) {
-      g.add(mk(new THREE.BoxGeometry(total - 0.04, 0.018, THICK + 0.016), cx + centerOffset, (H * r) / 3, cz, seamMat));
+      g.add(mk(new THREE.BoxGeometry(len - 0.04, 0.018, THICK + 0.016), mid, (H * r) / 3, cz, seamMat));
     }
-    g.add(mk(new THREE.BoxGeometry(total + 0.08, 0.09, THICK + 0.08), cx + centerOffset, H + 0.045, cz, capMat));
+    if (capNeg || capPos) {
+      // 只在孤立端点（无邻居）放压顶端帽，避免与垂直段压顶交叉
+      const capW = capNeg && capPos ? len : len * 0.12 + 0.08;
+      const capX = capNeg && capPos ? mid : (capNeg ? x0 + (len * 0.12 + 0.08) / 2 : x1 - (len * 0.12 + 0.08) / 2);
+      g.add(mk(new THREE.BoxGeometry(capW, 0.09, THICK + 0.08), capX, H + 0.045, cz, capMat));
+    } else {
+      // 两端都有邻居：压顶整段（由相邻格的压顶自然拼接，同一平面不交叉）
+      g.add(mk(new THREE.BoxGeometry(len, 0.09, THICK + 0.08), mid, H + 0.045, cz, capMat));
+    }
   };
-  /** 一段沿 z 的砖墙 */
-  const zSeg = (len: number, extNeg: boolean, extPos: boolean): void => {
-    const total = len * 2 + (extNeg ? THICK / 2 : 0) + (extPos ? THICK / 2 : 0);
-    const centerOffset = (extPos ? THICK / 2 : 0) - (extNeg ? THICK / 2 : 0);
-    g.add(mk(new THREE.BoxGeometry(THICK, H, total), cx, H / 2, cz + centerOffset, brickMat));
+  const zSeg = (z0: number, z1: number, capNeg: boolean, capPos: boolean): void => {
+    const len = z1 - z0;
+    const mid = (z0 + z1) / 2;
+    g.add(mk(new THREE.BoxGeometry(THICK, H, len), cx, H / 2, mid, brickMat));
     for (let r = 1; r <= 2; r++) {
-      g.add(mk(new THREE.BoxGeometry(THICK + 0.016, 0.018, total - 0.04), cx, (H * r) / 3, cz + centerOffset, seamMat));
+      g.add(mk(new THREE.BoxGeometry(THICK + 0.016, 0.018, len - 0.04), cx, (H * r) / 3, mid, seamMat));
     }
-    g.add(mk(new THREE.BoxGeometry(THICK + 0.08, 0.09, total + 0.08), cx, H + 0.045, cz + centerOffset, capMat));
+    if (capNeg || capPos) {
+      const capD = capNeg && capPos ? len : len * 0.12 + 0.08;
+      const capZ = capNeg && capPos ? mid : (capNeg ? z0 + (len * 0.12 + 0.08) / 2 : z1 - (len * 0.12 + 0.08) / 2);
+      g.add(mk(new THREE.BoxGeometry(THICK + 0.08, 0.09, capD), cx, H + 0.045, capZ, capMat));
+    } else {
+      g.add(mk(new THREE.BoxGeometry(THICK + 0.08, 0.09, len), cx, H + 0.045, mid, capMat));
+    }
   };
   if (isX) {
-    // 端点延伸：邻格是墙 → 延半厚填缝（转角/直线闭合）；否则也延半厚封端
-    xSeg(0.5, hasXN || isZ, hasXP || isZ);
+    // x 段：占满本格 [x, x+1]，两端只在「该侧无邻居」时收短留出端帽，有邻居时顶到格界由邻格续接
+    const x0 = hasXN ? f.x : f.x + (hasZP || hasZN ? THICK / 2 : 0);
+    const x1 = hasXP ? f.x + 1 : f.x + 1 - (hasZP || hasZN ? THICK / 2 : 0);
+    xSeg(x0, x1, !hasXN, !hasXP);
   }
   if (isZ) {
-    zSeg(0.5, hasZN || isX, hasZP || isX);
+    const z0 = hasZN ? f.y : f.y + (hasXP || hasXN ? THICK / 2 : 0);
+    const z1 = hasZP ? f.y + 1 : f.y + 1 - (hasXP || hasXN ? THICK / 2 : 0);
+    zSeg(z0, z1, !hasZN, !hasZP);
   }
   if (!isX && !isZ) {
-    // 孤立墙格：画一个小方柱
     g.add(mk(new THREE.BoxGeometry(0.8, H, 0.8), cx, H / 2, cz, brickMat));
     g.add(mk(new THREE.BoxGeometry(0.9, 0.09, 0.9), cx, H + 0.045, cz, capMat));
   }
 }
+
 
 
 
