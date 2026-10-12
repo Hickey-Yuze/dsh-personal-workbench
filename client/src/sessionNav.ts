@@ -9,10 +9,13 @@
  * 且每次调用时再取——workspace UI 插件可能晚于本插件挂载。
  */
 
-/** 跳转结果：service=走宿主 uiWorkspace 服务；sidebar=退化成点侧栏那一行；后两者=都没成功。 */
-export type JumpOutcome = 'service' | 'sidebar' | 'service-missing' | 'failed';
+/**
+ * 跳转报告：ok=true 时 detail 是走通的通道（service/retain/sidebar）；
+ * ok=false 时 detail 是逐步失败原因串（便于直接看出是接口缺失、抛错，还是侧栏没有那一行）。
+ */
+export type JumpReport = { ok: boolean; detail: string };
 
-type SessionOpener = (sessionId: string) => Promise<JumpOutcome> | JumpOutcome;
+type SessionOpener = (sessionId: string) => Promise<JumpReport> | JumpReport;
 /**
  * 按员工 npcId 在宿主会话列表里找 TA 最近的会话 id。
  * 宿主重启后 office/agents 的内存派活记录会清空，只剩磁盘上的会话——会话 id 形如
@@ -33,14 +36,14 @@ export function setSessionFinder(fn: SessionFinder): void {
   finder = fn;
 }
 
-/** 跳到指定会话（宿主主区 + 侧栏定位）；返回实际走通的方式，失败原因由调用方提示。 */
-export async function openSessionInShell(sessionId: string): Promise<JumpOutcome> {
-  if (sessionId === '' || opener === null) return 'failed';
+/** 跳到指定会话（宿主主区 + 侧栏定位）；返回是否成功与逐步原因。 */
+export async function openSessionInShell(sessionId: string): Promise<JumpReport> {
+  if (sessionId === '' || opener === null) return { ok: false, detail: '跳转桥没注册（插件没加载完？）' };
   try {
     return await opener(sessionId);
   } catch (err) {
     console.warn('[personal-workbench] 跳转会话异常', err);
-    return 'failed';
+    return { ok: false, detail: `跳转异常：${err instanceof Error ? err.message : String(err)}` };
   }
 }
 

@@ -871,7 +871,7 @@ export function OfficeModuleView(): ReactElement {
   const jumpSession = useMemo((): { id: string; name: string } | null => {
     const of = (npcId: string): { id: string; name: string } | null => {
       const row = agentRows[npcId];
-      const label = builtinOverrides[npcId]?.name ?? row?.name ?? npcId;
+      const label = builtinOverrides[npcId]?.name ?? row?.name ?? members.find((m) => m.id === npcId)?.name ?? npcId;
       const sid = row?.sessionId ?? findSessionOfNpc(npcId) ?? '';
       if (sid === '') return null;
       return { id: sid, name: label };
@@ -880,15 +880,17 @@ export function OfficeModuleView(): ReactElement {
       const own = of(chatTarget.id);
       if (own !== null) return own;
     }
+    // 候选=场景里全部员工（含没在干活的）；宿主重启后 agentRows 会空，靠按 npcId 前缀找回会话
     let best: { id: string; name: string; at: number } | null = null;
-    for (const npcId of Object.keys(agentRows)) {
-      const cand = of(npcId);
+    for (const member of members) {
+      const cand = of(member.id);
       if (cand === null) continue;
-      const at = agentRows[npcId]?.updatedAt ?? agentRows[npcId]?.startedAt ?? 0;
+      const row = agentRows[member.id];
+      const at = row?.updatedAt ?? row?.startedAt ?? 0;
       if (best === null || at > best.at) best = { id: cand.id, name: cand.name, at };
     }
     return best === null ? null : { id: best.id, name: best.name };
-  }, [agentRows, builtinOverrides, chatTarget]);
+  }, [agentRows, builtinOverrides, chatTarget, members]);
 
   return (
     <div className="dsh-pwb-view">
@@ -918,10 +920,11 @@ export function OfficeModuleView(): ReactElement {
                     : `在宿主侧栏打开「${jumpSession.name}」的真实会话`
                 }
                 onClick={() => {
-                  if (jumpSession === null) return;
-                  void openSessionInShell(jumpSession.id).then((how) => {
-                    if (how !== 'service' && how !== 'sidebar') setWorkErr(how === 'service-missing' ? '跳转失败：宿主没提供 uiWorkspace 接口，侧栏里也没找到该会话行' : '跳转失败：侧栏里找不到该会话行（分组折叠或会话已被删）');
-                  });
+                  if (jumpSession === null) {
+                    setWorkErr('还没有可跳转的员工会话：先给某位同事点「派活」');
+                    return;
+                  }
+                  void openSessionInShell(jumpSession.id).then((r) => setWorkErr(r.ok ? '' : `跳转失败（${jumpSession.name}）：${r.detail}`));
                 }}
               >
                 {jumpSession === null ? '会话' : `${jumpSession.name} 的会话 ↗`}
@@ -1099,10 +1102,8 @@ export function OfficeModuleView(): ReactElement {
                           setWorkErr('还没有进行中的员工会话：先给某位同事点「派活」，会话建好后这里就能跳转');
                           return;
                         }
-                        void openSessionInShell(jumpSession.id).then((how) => {
-                          if (how === 'service' || how === 'sidebar') setWorkErr('');
-                          else if (how === 'service-missing') setWorkErr('跳转失败：宿主没提供 uiWorkspace 接口，侧栏里也没找到该会话行');
-                          else setWorkErr('跳转失败：侧栏里找不到该会话行（分组折叠或会话已被删）');
+                        void openSessionInShell(jumpSession.id).then((r) => {
+                          setWorkErr(r.ok ? '' : `跳转失败（${jumpSession.name}）：${r.detail}`);
                         });
                       }}
                     >

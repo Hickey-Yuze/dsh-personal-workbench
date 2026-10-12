@@ -15,7 +15,7 @@ import { ctxGet, type WorkbenchClientCtx } from './env.js';
 import { initI18n, t } from './i18n.js';
 import { PANEL_ID, WorkbenchPanel } from './panel.js';
 import { makeRpc } from './rpc.js';
-import { setSessionFinder, setSessionOpener, type JumpOutcome } from './sessionNav.js';
+import { setSessionFinder, setSessionOpener, type JumpReport } from './sessionNav.js';
 import { ensureThemeStyle } from './theme.js';
 
 export const inject = ['slots', 'layout', 'locale'];
@@ -249,32 +249,79 @@ export function apply(ctx: WorkbenchClientCtx): void {
     return undefined;
   };
 
-  setSessionOpener(async (sessionId: string): Promise<JumpOutcome> => {
-    const service = resolveUiWorkspace();
-    if (service?.openSession !== undefined) {
-      try {
-        service.openSession(sessionId);
-        if (await jumpLanded(sessionId)) return 'service';
-      } catch (err) {
-        console.warn('[personal-workbench] uiWorkspace.openSession 失败', err);
-      }
-    } else {
-      console.warn('[personal-workbench] 取不到 uiWorkspace 服务，改走侧栏行点击', sessionId);
-    }
-    // 兜底：直接点宿主侧栏里那一行（等于用户手点：展开分组 + 滚动定位 + 高亮 + 打开主区）
+  setSessionOpener(async (sessionId: string): Promise<JumpReport> => {
+    const notes: string[] = [];
+    const reason = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+    type SessionsService = {
+      retain?: (target: string, options: { source: string }) => unknown;
+      list?: { getSnapshot?: () => { byId?: Record<string, { retainedBy?: { mainView?: number } }> } };
+    };
+    const sessions = ctxGet(ctx, 'sessions') as SessionsService | undefined;
+    const catalogRow = sessions?.list?.getSnapshot?.()?.byId?.[sessionId];
+    if (catalogRow === undefined) notes.push('客户端会话目录里没有这个 id');
+
     const expandSidebar = (): void => {
       const shortcuts = ctxGet(ctx, 'shortcuts') as { invoke?: (id: string, context: unknown) => unknown } | undefined;
-      if (typeof shortcuts?.invoke !== 'function') return;
+      if (typeof shortcuts?.invoke !== 'function') {
+        notes.push('也没有 shortcuts 服务可展开左栏');
+        return;
+      }
       try {
         shortcuts.invoke('sidebar.left.toggle', { target: document.body, region: 'main', modal: null });
+        notes.push('已调 sidebar.left.toggle 展开左栏');
       } catch (err) {
-        console.warn('[personal-workbench] 展开左栏命令失败', err);
+        notes.push(`展开左栏命令抛错：${reason(err)}`);
       }
     };
-    if (await clickSidebarSessionRow(sessionId, expandSidebar)) {
-      if (await jumpLanded(sessionId)) return 'sidebar';
+
+    // ① 官方通道：uiWorkspace.openSession（主区切到该会话 + 关掉办公面板）
+    const service = resolveUiWorkspace();
+    if (service?.openSession === undefined) {
+      notes.push('取不到 uiWorkspace 服务');
+    } else {
+      try {
+        service.openSession(sessionId);
+        if (await jumpLanded(sessionId)) return { ok: true, detail: 'service' };
+        notes.push('openSession 调用了但没落地（面板没关、侧栏该行也没成为当前行）');
+      } catch (err) {
+        notes.push(`openSession 抛错：${reason(err)}`);
+      }
     }
-    return service?.openSession === undefined ? 'service-missing' : 'failed';
+
+    // ② 自己按官方语义切主区：retain 标 mainView（生效才关面板，避免白跑还关掉当前面板）
+    if (typeof sessions?.retain !== 'function') {
+      notes.push('取不到 sessions 服务');
+    } else {
+      try {
+        sessions.retain(sessionId, { source: 'mainView' });
+        const held = (sessions.list?.getSnapshot?.()?.byId?.[sessionId]?.retainedBy?.mainView ?? 0) > 0;
+        if (!held) {
+          notes.push('retain 调用了但 retainedBy.mainView 还是 0');
+        } else {
+          ctx.layout.selectPanel(null);
+          if (await jumpLanded(sessionId)) return { ok: true, detail: 'retain' };
+          notes.push('retain 生效、面板也关了，但侧栏该行没成为当前行');
+        }
+      } catch (err) {
+        notes.push(`retain 抛错：${reason(err)}`);
+      }
+    }
+
+    // ③ 兜底：点宿主左栏里那一行（等于用户手点：展开分组 + 定位 + 高亮 + 打开主区）
+    if (typeof document !== 'undefined') {
+      const allRows = document.querySelectorAll('[data-row-key]').length;
+      const sessionRows = document.querySelectorAll('[data-row-key^="session:"]').length;
+      notes.push(`左栏 DOM：data-row-key ${allRows} 行 / 会话行 ${sessionRows} 行`);
+    }
+    if (await clickSidebarSessionRow(sessionId, expandSidebar)) {
+      if (await jumpLanded(sessionId)) return { ok: true, detail: 'sidebar' };
+      notes.push('点了侧栏那一行但没落地');
+    } else {
+      notes.push('左栏里没有该会话行');
+    }
+    const detail = notes.join('；');
+    console.warn('[personal-workbench] 跳转会话失败', sessionId, detail);
+    return { ok: false, detail };
   });
 
   /* 兜底：宿主重启后 office/agents 的内存派活记录会清空 → 按会话 id 前缀 office-<npcId>- 在宿主
