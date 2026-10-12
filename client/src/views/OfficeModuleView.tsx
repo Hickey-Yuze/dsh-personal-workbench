@@ -849,12 +849,6 @@ export function OfficeModuleView(): ReactElement {
               desks={engine.listDesks().map((d, i) => ({ id: d.id, label: `工位${i + 1} · (${d.x},${d.y})` }))}
               onDeskAssigned={(id, deskId) => engine.assignDesk(id, deskId)}
               onRenamed={(id, name) => engine.renameChar(id, name)}
-            />
-          )}
-
-          {tab === 'edit' && (
-            <>
-              <OfficeEditor map={engine.map} onSave={handleSaveMap} onCancel={() => setTab('scene')} />
               <div className="dsh-pwb-office-hire">
                 <b>员工入职</b>
                 <input
@@ -893,7 +887,10 @@ export function OfficeModuleView(): ReactElement {
                   {roster.length === 0 ? '还没有自定义员工' : `已入职：${roster.map((r) => `${r.name}·${r.role}`).join('、')}`}
                 </span>
               </div>
-            </>
+          )}
+
+          {tab === 'edit' && (
+            <OfficeEditor map={engine.map} onSave={handleSaveMap} onCancel={() => setTab('scene')} />
           )}
 
           <div className="dsh-pwb-office-status">

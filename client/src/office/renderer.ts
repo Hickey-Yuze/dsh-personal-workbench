@@ -368,30 +368,42 @@ function drawCoffee(ctx: CanvasRenderingContext2D, f: Furniture, s: number, ox: 
   ctx.fillRect(X + s * 0.68, Y + s * 0.22, s * 0.08, s * 0.08);
 }
 
-/** 隔断墙（2D 俯视）：黑框玻璃 + 斜向反光，与 3D 场景的玻璃隔断一致。 */
+/** 隔断墙（2D 俯视）：砖墙俯视图标——暖灰砖体 + 交错砖缝 + 压顶高光，与 3D 砖墙一致。 */
 function drawWall(ctx: CanvasRenderingContext2D, f: Furniture, s: number, ox: number, oy: number): void {
   const X = ox + f.x * s;
   const Y = oy + f.y * s;
-  softShadow(ctx, X + s * 0.5, Y + s * 0.92, s * 0.34, s * 0.06);
-  ctx.fillStyle = 'rgba(206,222,232,0.55)';
-  rr(ctx, X + s * 0.1, Y + s * 0.12, s * 0.8, s * 0.76, s * 0.04);
+  softShadow(ctx, X + s * 0.5, Y + s * 0.9, s * 0.36, s * 0.06);
+  // 砖体
+  ctx.fillStyle = '#b8b0a4';
+  rr(ctx, X + s * 0.08, Y + s * 0.08, s * 0.84, s * 0.84, s * 0.06);
   ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  // 压顶（顶部高光条）
+  ctx.fillStyle = '#d5cfc4';
+  ctx.fillRect(X + s * 0.08, Y + s * 0.08, s * 0.84, Math.max(1.5, s * 0.1));
+  // 砖缝：2 条横缝
+  ctx.strokeStyle = 'rgba(90,84,76,0.42)';
+  ctx.lineWidth = Math.max(1, s * 0.045);
+  for (const fy of [0.4, 0.68]) {
+    ctx.beginPath();
+    ctx.moveTo(X + s * 0.08, Y + s * fy);
+    ctx.lineTo(X + s * 0.92, Y + s * fy);
+    ctx.stroke();
+  }
+  // 交错竖缝：三行，中行错位
   ctx.beginPath();
-  ctx.moveTo(X + s * 0.24, Y + s * 0.2);
-  ctx.lineTo(X + s * 0.38, Y + s * 0.2);
-  ctx.lineTo(X + s * 0.2, Y + s * 0.8);
-  ctx.lineTo(X + s * 0.14, Y + s * 0.8);
-  ctx.closePath();
-  ctx.fill();
-  ctx.strokeStyle = '#3a4046';
-  ctx.lineWidth = Math.max(1.5, s * 0.08);
-  rr(ctx, X + s * 0.1, Y + s * 0.12, s * 0.8, s * 0.76, s * 0.04);
+  ctx.moveTo(X + s * 0.5, Y + s * 0.08);
+  ctx.lineTo(X + s * 0.5, Y + s * 0.4);
+  ctx.moveTo(X + s * 0.3, Y + s * 0.4);
+  ctx.lineTo(X + s * 0.3, Y + s * 0.68);
+  ctx.moveTo(X + s * 0.72, Y + s * 0.4);
+  ctx.lineTo(X + s * 0.72, Y + s * 0.68);
+  ctx.moveTo(X + s * 0.5, Y + s * 0.68);
+  ctx.lineTo(X + s * 0.5, Y + s * 0.92);
   ctx.stroke();
-  ctx.lineWidth = Math.max(1, s * 0.05);
-  ctx.beginPath();
-  ctx.moveTo(X + s * 0.5, Y + s * 0.12);
-  ctx.lineTo(X + s * 0.5, Y + s * 0.88);
+  // 外框
+  ctx.strokeStyle = 'rgba(70,64,56,0.5)';
+  ctx.lineWidth = Math.max(1, s * 0.04);
+  rr(ctx, X + s * 0.08, Y + s * 0.08, s * 0.84, s * 0.84, s * 0.06);
   ctx.stroke();
 }
 
