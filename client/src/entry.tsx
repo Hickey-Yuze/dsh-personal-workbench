@@ -15,7 +15,7 @@ import { ctxGet, type WorkbenchClientCtx } from './env.js';
 import { initI18n, t } from './i18n.js';
 import { PANEL_ID, WorkbenchPanel } from './panel.js';
 import { makeRpc } from './rpc.js';
-import { setSessionFinder, setSessionOpener } from './sessionNav.js';
+import { setSessionFinder, setSessionOpener, type JumpOutcome } from './sessionNav.js';
 import { ensureThemeStyle } from './theme.js';
 
 export const inject = ['slots', 'layout', 'locale'];
@@ -25,6 +25,45 @@ type OfficeUiWorkspace = {
   openSession?: (target: unknown) => void;
   sessions?: { list?: { getSnapshot?: () => { ids?: unknown; byId?: Record<string, { title?: unknown }> } } };
 };
+
+/**
+ * 「跳到会话」是否真的落地：办公面板被卸载（主区回到会话），或侧栏里那一行已被标成当前行。
+ * 两个判据取或：任一个成立就算跳转成功，避免误报失败。
+ */
+async function jumpLanded(sessionId: string): Promise<boolean> {
+  await new Promise((resolve) => setTimeout(resolve, 260));
+  if (typeof document === 'undefined') return true;
+  if (document.querySelector('.dsh-pwb-view') === null) return true;
+  const row = document.querySelector<HTMLElement>(`[data-row-key="session:${sessionId}"]`);
+  return row !== null && /selected/i.test(row.className);
+}
+
+/**
+ * 兜底跳转：直接点宿主侧栏里那一行会话（宿主用 data-row-key 标记行）。
+ * 会话所在分组可能折叠着，先展开折叠的分组与「更多」折叠按钮，等 React 重渲染后再找一次。
+ */
+async function clickSidebarSessionRow(sessionId: string, expandSidebar: () => void): Promise<boolean> {
+  if (typeof document === 'undefined') return false;
+  const find = (): HTMLElement | null => document.querySelector<HTMLElement>(`[data-row-key="session:${sessionId}"]`);
+  let row = find();
+  if (row === null) {
+    // 分组折叠 / 会话被「更多」收起的：先展开折叠分组与折叠按钮，等 React 重渲染后再找
+    for (const node of Array.from(document.querySelectorAll<HTMLElement>('[data-row-key^="workspace:"][aria-expanded="false"]'))) node.click();
+    for (const node of Array.from(document.querySelectorAll<HTMLElement>('[data-row-key^="overflow:"]'))) node.click();
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    row = find();
+  }
+  if (row === null && document.querySelector('[data-row-key^="session:"]') === null) {
+    // 一处会话行都没有 = 整个左栏收起着：先让宿主把左栏展开，再找一次
+    expandSidebar();
+    await new Promise((resolve) => setTimeout(resolve, 240));
+    row = find();
+  }
+  if (row === null) return false;
+  row.scrollIntoView({ block: 'nearest' });
+  row.click();
+  return true;
+}
 
 /** 「个人工作台」图标：四宫格 + 底部基线。 */
 const ICON_SVG =
@@ -210,19 +249,32 @@ export function apply(ctx: WorkbenchClientCtx): void {
     return undefined;
   };
 
-  setSessionOpener((sessionId: string): boolean => {
+  setSessionOpener(async (sessionId: string): Promise<JumpOutcome> => {
     const service = resolveUiWorkspace();
-    if (service?.openSession === undefined) {
-      console.warn('[personal-workbench] 找不到 uiWorkspace 服务，无法跳转会话', sessionId);
-      return false;
+    if (service?.openSession !== undefined) {
+      try {
+        service.openSession(sessionId);
+        if (await jumpLanded(sessionId)) return 'service';
+      } catch (err) {
+        console.warn('[personal-workbench] uiWorkspace.openSession 失败', err);
+      }
+    } else {
+      console.warn('[personal-workbench] 取不到 uiWorkspace 服务，改走侧栏行点击', sessionId);
     }
-    try {
-      service.openSession(sessionId);
-      return true;
-    } catch (err) {
-      console.warn('[personal-workbench] uiWorkspace.openSession 失败', err);
-      return false;
+    // 兜底：直接点宿主侧栏里那一行（等于用户手点：展开分组 + 滚动定位 + 高亮 + 打开主区）
+    const expandSidebar = (): void => {
+      const shortcuts = ctxGet(ctx, 'shortcuts') as { invoke?: (id: string, context: unknown) => unknown } | undefined;
+      if (typeof shortcuts?.invoke !== 'function') return;
+      try {
+        shortcuts.invoke('sidebar.left.toggle', { target: document.body, region: 'main', modal: null });
+      } catch (err) {
+        console.warn('[personal-workbench] 展开左栏命令失败', err);
+      }
+    };
+    if (await clickSidebarSessionRow(sessionId, expandSidebar)) {
+      if (await jumpLanded(sessionId)) return 'sidebar';
     }
+    return service?.openSession === undefined ? 'service-missing' : 'failed';
   });
 
   /* 兜底：宿主重启后 office/agents 的内存派活记录会清空 → 按会话 id 前缀 office-<npcId>- 在宿主

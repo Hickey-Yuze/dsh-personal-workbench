@@ -301,8 +301,11 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved }: OfficeAgentPane
                       setNavErr(`「${emp.name}」还没有进行中的会话：点 TA 那行的「派活」派个小任务，会话建好后这里就能点开`);
                       return;
                     }
-                    if (openSessionInShell(sid)) setNavErr('');
-                    else setNavErr('没找到宿主会话接口：⌘Q 重启宿主后再试（或先点「派活」重开会话）');
+                    void openSessionInShell(sid).then((how) => {
+                      if (how === 'service' || how === 'sidebar') setNavErr('');
+                      else if (how === 'service-missing') setNavErr('跳转失败：宿主没提供 uiWorkspace 接口，侧栏里也没找到该会话行');
+                      else setNavErr('跳转失败：侧栏里找不到该会话行（分组折叠或会话已被删）');
+                    });
                   }}
                 >
                   <span className="dsh-pwb-office-emp-dot" style={{ background: dot.color }} title={dot.label} />

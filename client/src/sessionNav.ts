@@ -9,7 +9,10 @@
  * 且每次调用时再取——workspace UI 插件可能晚于本插件挂载。
  */
 
-type SessionOpener = (sessionId: string) => boolean;
+/** 跳转结果：service=走宿主 uiWorkspace 服务；sidebar=退化成点侧栏那一行；后两者=都没成功。 */
+export type JumpOutcome = 'service' | 'sidebar' | 'service-missing' | 'failed';
+
+type SessionOpener = (sessionId: string) => Promise<JumpOutcome> | JumpOutcome;
 /**
  * 按员工 npcId 在宿主会话列表里找 TA 最近的会话 id。
  * 宿主重启后 office/agents 的内存派活记录会清空，只剩磁盘上的会话——会话 id 形如
@@ -30,10 +33,15 @@ export function setSessionFinder(fn: SessionFinder): void {
   finder = fn;
 }
 
-/** 在宿主侧栏打开指定会话；无实现或失败返回 false（调用方自行降级提示）。 */
-export function openSessionInShell(sessionId: string): boolean {
-  if (sessionId === '' || opener === null) return false;
-  return opener(sessionId);
+/** 跳到指定会话（宿主主区 + 侧栏定位）；返回实际走通的方式，失败原因由调用方提示。 */
+export async function openSessionInShell(sessionId: string): Promise<JumpOutcome> {
+  if (sessionId === '' || opener === null) return 'failed';
+  try {
+    return await opener(sessionId);
+  } catch (err) {
+    console.warn('[personal-workbench] 跳转会话异常', err);
+    return 'failed';
+  }
 }
 
 /** 找回员工最近的会话 id（宿主内存里有派活记录时不需要它）；找不到返回 null。 */

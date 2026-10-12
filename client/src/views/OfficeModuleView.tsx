@@ -919,7 +919,9 @@ export function OfficeModuleView(): ReactElement {
                 }
                 onClick={() => {
                   if (jumpSession === null) return;
-                  if (!openSessionInShell(jumpSession.id)) setWorkErr('宿主侧栏接口不可用：⌘Q 重启宿主后再试');
+                  void openSessionInShell(jumpSession.id).then((how) => {
+                    if (how !== 'service' && how !== 'sidebar') setWorkErr(how === 'service-missing' ? '跳转失败：宿主没提供 uiWorkspace 接口，侧栏里也没找到该会话行' : '跳转失败：侧栏里找不到该会话行（分组折叠或会话已被删）');
+                  });
                 }}
               >
                 {jumpSession === null ? '会话' : `${jumpSession.name} 的会话 ↗`}
@@ -1087,18 +1089,24 @@ export function OfficeModuleView(): ReactElement {
                       新建
                     </button>
                     <button
-                      disabled={jumpSession === null}
                       title={
                         jumpSession === null
                           ? '还没有进行中的员工会话：先给谁点「派活」'
                           : `跳转：打开「${jumpSession.name}」的真实会话`
                       }
                       onClick={() => {
-                        if (jumpSession === null) return;
-                        if (!openSessionInShell(jumpSession.id)) setWorkErr('宿主会话接口不可用：⌘Q 重启宿主后再试');
+                        if (jumpSession === null) {
+                          setWorkErr('还没有进行中的员工会话：先给某位同事点「派活」，会话建好后这里就能跳转');
+                          return;
+                        }
+                        void openSessionInShell(jumpSession.id).then((how) => {
+                          if (how === 'service' || how === 'sidebar') setWorkErr('');
+                          else if (how === 'service-missing') setWorkErr('跳转失败：宿主没提供 uiWorkspace 接口，侧栏里也没找到该会话行');
+                          else setWorkErr('跳转失败：侧栏里找不到该会话行（分组折叠或会话已被删）');
+                        });
                       }}
                     >
-                      会话 ↗
+                      {jumpSession === null ? '会话' : '会话 ↗'}
                     </button>
                     <button onClick={() => setChatOpen(false)}>收起</button>
                   </span>
