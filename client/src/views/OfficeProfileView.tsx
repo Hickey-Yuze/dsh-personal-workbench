@@ -554,6 +554,56 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, de
           <div className="dsh-pwb-office-prof-sec-title">
             关系链<i>协作关系短句，逐条注入提示词</i>
           </div>
+          {(() => {
+            // 关系图谱：从全员关系链短句自动提取「员工→被提到的人」连线（纯文本匹配，无假数据）
+            const allNames = [...BUILTIN_STAFF, ...roster].map((c) => c.name);
+            const edges: Array<{ from: string; to: string; label: string }> = [];
+            for (const c of [...BUILTIN_STAFF, ...roster]) {
+              const ls = c.id === sel?.id ? draft.links : ((builtin[c.id]?.links ?? []) as string[]);
+              for (const l of ls) {
+                for (const n of allNames) {
+                  if (n !== c.name && l.includes(n)) edges.push({ from: c.name, to: n, label: l });
+                }
+              }
+            }
+            if (edges.length === 0) return null;
+            const uniq = Array.from(new Map(edges.map((e) => [`${e.from}→${e.to}`, e])).values());
+            const names = Array.from(new Set(uniq.flatMap((e) => [e.from, e.to])));
+            const W = 520;
+            const H = Math.max(120, names.length * 46);
+            const pos = new Map(names.map((n, i) => [n, { x: i % 2 === 0 ? 110 : W - 110, y: 30 + i * 46 }]));
+            return (
+              <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ maxHeight: 190, marginBottom: 8 }}>
+                {uniq.map((e, i) => {
+                  const a = pos.get(e.from);
+                  const b = pos.get(e.to);
+                  if (a === undefined || b === undefined) return null;
+                  const mx = (a.x + b.x) / 2;
+                  const my = (a.y + b.y) / 2 - 14;
+                  return (
+                    <g key={i}>
+                      <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="rgba(20,20,30,0.18)" strokeWidth="1.5" />
+                      <text x={mx} y={my} textAnchor="middle" fontSize="9" fill="#9ca3af">
+                        {e.label.slice(0, 14)}
+                      </text>
+                    </g>
+                  );
+                })}
+                {names.map((n) => {
+                  const p = pos.get(n);
+                  if (p === undefined) return null;
+                  return (
+                    <g key={n}>
+                      <circle cx={p.x} cy={p.y} r={16} fill={n === (sel?.name ?? '') ? 'rgba(0,200,110,0.15)' : '#fff'} stroke="rgba(20,20,30,0.18)" strokeWidth="1.5" />
+                      <text x={p.x} y={p.y + 3} textAnchor="middle" fontSize="10" fill="#374151">
+                        {n}
+                      </text>
+                    </g>
+                  );
+                })}
+              </svg>
+            );
+          })()}
           <div className="dsh-pwb-office-prof-links">
             {draft.links.map((l, i) => (
               <span key={`${i}-${l}`} className="dsh-pwb-office-prof-link">
@@ -595,14 +645,37 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, de
 
         <div className="dsh-pwb-office-prof-section">
           <div className="dsh-pwb-office-prof-sec-title">
-            记忆<i>
-              工作记录 {notes.length}/50 · 派活自动入档
-              {notes.length > 0 && (
-                <button type="button" className="dsh-pwb-office-prof-ghost" style={{ marginLeft: 'auto', padding: '3px 10px', fontSize: 11 }} onClick={() => void memClear()}>
+            记忆<i>工作记录 {notes.length}/50 · 派活自动入档</i>
+            {notes.length > 0 && (
+              <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6 }}>
+                <button
+                  type="button"
+                  className="dsh-pwb-office-prof-ghost"
+                  style={{ padding: '3px 10px', fontSize: 11 }}
+                  title="把该员工的工作记录导出为 Markdown 知识库文件"
+                  onClick={() => {
+                    const md = [
+                      `# ${sel?.name ?? sel?.id ?? ''} 的工作记录`,
+                      '',
+                      `> 导出自像素办公室员工档案 · ${new Date().toLocaleString()}`,
+                      '',
+                      ...[...notes].reverse().map((n) => `- ${new Date(n.t).toLocaleString()} — ${n.text}`),
+                    ].join('\n');
+                    const url = URL.createObjectURL(new Blob([md], { type: 'text/markdown' }));
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `办公室知识库-${sel?.name ?? sel?.id ?? '员工'}.md`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                >
+                  导出 .md
+                </button>
+                <button type="button" className="dsh-pwb-office-prof-ghost" style={{ padding: '3px 10px', fontSize: 11 }} onClick={() => void memClear()}>
                   清空
                 </button>
-              )}
-            </i>
+              </span>
+            )}
           </div>
           <div className="dsh-pwb-office-prof-mems">
             {notes.map((n, i) => (
