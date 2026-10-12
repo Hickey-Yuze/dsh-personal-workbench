@@ -186,17 +186,31 @@ export function apply(ctx: WorkbenchClientCtx): void {
   initI18n(ctx.locale);
   ensureThemeStyle();
 
-  /* 「跳到侧栏会话」桥：宿主 uiWorkspace.openSession(id) 在主区打开会话并在侧栏展开分组+定位高亮。
-     服务是软取（每次调用时再取，可能在 apply 之后才挂载）；缺失/旧宿主 → 返回 false，调用方降级。 */
+  /* 「跳到会话」桥：宿主 uiWorkspace.openSession(id) 把主区切到该会话（侧栏随之把该行标为当前）。
+     服务软取（每次调用时再取：workspace UI 插件可能晚于本插件挂载）：ctxGet → ctx.root.get → ctx 属性；
+     缺失/旧宿主 → false，调用方降级提示。 */
   setSessionOpener((sessionId: string): boolean => {
-    const uiWorkspace = ctxGet(ctx, 'uiWorkspace') as { openSession?: (target: unknown) => void } | undefined;
-    if (uiWorkspace === undefined || typeof uiWorkspace.openSession !== 'function') return false;
-    try {
-      uiWorkspace.openSession(sessionId);
-      return true;
-    } catch {
-      return false;
+    const asService = (v: unknown): { openSession?: (target: unknown) => void } | undefined =>
+      typeof v === 'object' && v !== null ? (v as { openSession?: (target: unknown) => void }) : undefined;
+    const root = (ctx as unknown as { root?: { get?(key: string): unknown } }).root;
+    const candidates: unknown[] = [
+      ctxGet(ctx, 'uiWorkspace'),
+      root?.get?.('uiWorkspace'),
+      (ctx as unknown as { uiWorkspace?: unknown }).uiWorkspace,
+    ];
+    for (const candidate of candidates) {
+      const service = asService(candidate);
+      if (service === undefined || typeof service.openSession !== 'function') continue;
+      try {
+        service.openSession(sessionId);
+        return true;
+      } catch (err) {
+        console.warn('[personal-workbench] uiWorkspace.openSession 失败', err);
+        return false;
+      }
     }
+    console.warn('[personal-workbench] 找不到 uiWorkspace 服务，无法跳转会话', sessionId);
+    return false;
   });
 
   // 侧栏入口（DOM 注入；样式与「新会话」「定时任务」按钮同款）

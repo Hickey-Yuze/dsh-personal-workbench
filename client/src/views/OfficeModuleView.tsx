@@ -1085,6 +1085,20 @@ export function OfficeModuleView(): ReactElement {
                     >
                       新建
                     </button>
+                    <button
+                      disabled={jumpSession === null}
+                      title={
+                        jumpSession === null
+                          ? '还没有进行中的员工会话：先给谁点「派活」'
+                          : `跳转：打开「${jumpSession.name}」的真实会话`
+                      }
+                      onClick={() => {
+                        if (jumpSession === null) return;
+                        if (!openSessionInShell(jumpSession.id)) setWorkErr('宿主会话接口不可用：⌘Q 重启宿主后再试');
+                      }}
+                    >
+                      会话 ↗
+                    </button>
                     <button onClick={() => setChatOpen(false)}>收起</button>
                   </span>
                 </div>

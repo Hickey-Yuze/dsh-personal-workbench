@@ -278,6 +278,7 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved }: OfficeAgentPane
     <div style={card}>
       <p style={sectionTitle}>我的员工</p>
       {rosterErr !== '' && <p style={errText}>⚠️ {rosterErr}</p>}
+      {navErr !== '' && <p style={errText}>⚠️ {navErr}</p>}
       <div className="dsh-pwb-office-emp-list">
         {employees.map((emp) => {
           const row = agentRows[emp.id];
@@ -291,16 +292,17 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved }: OfficeAgentPane
               <div className="dsh-pwb-office-emp-line">
                 <span
                   className="dsh-pwb-office-emp-open"
-                  data-session={hasSession ? '1' : '0'}
-                  title={hasSession ? '点击在侧栏打开 TA 的真实会话' : 'TA 还没有进行中的会话：点「派活」让 TA 真干活'}
-                  onClick={
-                    hasSession
-                      ? () => {
-                          if (openSessionInShell(row?.sessionId ?? '')) setNavErr('');
-                          else setNavErr('没找到宿主侧栏接口：⌘Q 重启宿主后再试（或点「派活」重开会话）');
-                        }
-                      : undefined
-                  }
+                  data-session="1"
+                  title={hasSession ? '点击跳到 TA 的真实会话' : 'TA 还没有进行中的会话：点「派活」让 TA 真干活'}
+                  onClick={() => {
+                    const sid = row?.sessionId ?? '';
+                    if (sid === '') {
+                      setNavErr(`「${emp.name}」还没有进行中的会话：点 TA 那行的「派活」派个小任务，会话建好后这里就能点开`);
+                      return;
+                    }
+                    if (openSessionInShell(sid)) setNavErr('');
+                    else setNavErr('没找到宿主会话接口：⌘Q 重启宿主后再试（或先点「派活」重开会话）');
+                  }}
                 >
                   <span className="dsh-pwb-office-emp-dot" style={{ background: dot.color }} title={dot.label} />
                   <b className="dsh-pwb-office-emp-name">{emp.name}</b>
@@ -416,7 +418,6 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved }: OfficeAgentPane
           {handoffErr !== '' && <p style={errText}>⚠️ {handoffErr}</p>}
         </div>
       )}
-      {navErr !== '' && <p style={errText}>{navErr}</p>}
       <p style={hintText}>点名字那一簇可在侧栏打开 TA 的真实会话；点「派活」在聊天里给 TA 布置真实任务；绿点 = 会话中，橙点 = 空闲，灰点 = 未派活。自觉开关开着时 TA 会自己找活干。</p>
     </div>
   );
