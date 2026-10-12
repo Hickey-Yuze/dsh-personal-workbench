@@ -1419,7 +1419,9 @@ html { color-scheme: light !important; }
 /* 员工面板（我的员工）：全员行 + 自觉开关 + 编辑卡 */
 .dsh-pwb-office-emp-list { display: flex; flex-direction: column; gap: 2px; }
 .dsh-pwb-office-emp-item { display: flex; flex-direction: column; gap: 2px; padding: 3px 0; }
-.dsh-pwb-office-emp-line { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
+.dsh-pwb-office-emp-line { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; cursor: pointer; border-radius: 10px; transition: background 0.12s ease; }
+.dsh-pwb-office-emp-line:hover { background: rgba(20, 20, 30, 0.045); }
+.dsh-pwb-office-emp-line:hover .dsh-pwb-office-emp-name { text-decoration: underline; text-underline-offset: 2px; }
 .dsh-pwb-office-emp-dot { width: 8px; height: 8px; border-radius: 50%; corner-shape: round; flex-shrink: 0; }
 .dsh-pwb-office-emp-name { font-weight: 600; color: #111827; font-size: 12.5px; }
 .dsh-pwb-office-emp-role { color: #6b7280; font-size: 12px; }
@@ -1436,9 +1438,6 @@ html { color-scheme: light !important; }
 .dsh-pwb-office-emp-spacer { flex: 1; }
 /* 点这一簇（状态点+名字+职务+状态）= 在宿主侧栏打开该员工的真实会话 */
 .dsh-pwb-office-emp-open { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.dsh-pwb-office-emp-open[data-session='1'] { cursor: pointer; }
-.dsh-pwb-office-emp-open[data-session='1']:hover .dsh-pwb-office-emp-name { text-decoration: underline; text-underline-offset: 2px; }
-.dsh-pwb-office-emp-goto { color: var(--pwb-accent, #00c853); font-size: 11px; }
 /* 自觉工作开关：小滑块（关=灰，开=绿；旋钮显式 corner-shape:round 防 superellipse） */
 .dsh-pwb-office-emp-switch {
   position: relative;

@@ -17,7 +17,6 @@ import {
   setAutopilot,
 } from '../office/agentClient.js';
 import type { AgentRow, BuiltinOverride, OfficeModelOption, RosterEntry } from '../office/agentClient.js';
-import { findSessionOfNpc, openSessionInShell } from '../sessionNav.js';
 
 export type OfficeAgentPanelProps = {
   /** 派活入口：让老板切到该员工的聊天里派活（id 即 npcId，自定义员工为 custom-<序号>）。 */
@@ -104,7 +103,6 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved }: OfficeAgentPane
   const [savedHint, setSavedHint] = useState('');
   const agentsDeadRef = useRef(false);
   /** 「点到侧栏会话」失败提示（宿主 uiWorkspace 缺失/旧宿主时才会出现）。 */
-  const [navErr, setNavErr] = useState('');
 
   const refreshRoster = useCallback((): void => {
     loadRoster()
@@ -278,54 +276,53 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved }: OfficeAgentPane
     <div style={card}>
       <p style={sectionTitle}>我的员工</p>
       {rosterErr !== '' && <p style={errText}>⚠️ {rosterErr}</p>}
-      {navErr !== '' && <p style={errText}>⚠️ {navErr}</p>}
       <div className="dsh-pwb-office-emp-list">
         {employees.map((emp) => {
           const row = agentRows[emp.id];
-          /* 会话 id：优先宿主内存的派活记录；宿主重启后会丢，再按 id 前缀在宿主会话列表里兜底。 */
-          const sid = row?.sessionId ?? findSessionOfNpc(emp.id) ?? '';
-          const hasSession = sid !== '';
           const dot = statusDot(row);
           const isFrom = fromId === emp.id;
           const auto = builtin?.[emp.id]?.autopilot === true;
           const expanded = expandedId === emp.id;
           return (
             <div key={emp.id} className="dsh-pwb-office-emp-item">
-              <div className="dsh-pwb-office-emp-line">
-                <span
-                  className="dsh-pwb-office-emp-open"
-                  data-session="1"
-                  title={hasSession ? '点击跳到 TA 的真实会话' : 'TA 还没有进行中的会话：点「派活」让 TA 真干活'}
-                  onClick={() => {
-                    if (sid === '') {
-                      setNavErr(`「${emp.name}」还没有进行中的会话：点 TA 那行的「派活」派个小任务，会话建好后这里就能点开`);
-                      return;
-                    }
-                    void openSessionInShell(sid).then((r) => setNavErr(r.ok ? '' : `跳转失败（${emp.name}）：${r.detail}`));
-                  }}
-                >
+              {/* 点整行 = 把下面的聊天区切到这位同事（和 TA 说话）；行内按钮/开关各自 stopPropagation */}
+              <div
+                className="dsh-pwb-office-emp-line"
+                title={`点这一行：在下面和 ${emp.name} 聊天`}
+                onClick={() => onOpenChat(emp.id, emp.name, emp.role)}
+              >
+                <span className="dsh-pwb-office-emp-open">
                   <span className="dsh-pwb-office-emp-dot" style={{ background: dot.color }} title={dot.label} />
                   <b className="dsh-pwb-office-emp-name">{emp.name}</b>
                   <span className="dsh-pwb-office-emp-role">{emp.role}</span>
                   {auto && <span className="dsh-pwb-office-emp-autotag">自觉中</span>}
                   <span className="dsh-pwb-office-emp-status">{dot.label}</span>
-                  {hasSession && <span className="dsh-pwb-office-emp-goto" title="有真实会话">↗</span>}
                 </span>
                 <span className="dsh-pwb-office-emp-spacer" />
                 <button
                   className={`dsh-pwb-office-emp-switch${auto ? ' on' : ''}`}
                   title="自觉工作：开着不派活也会自己找活干"
-                  onClick={() => toggleAuto(emp.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleAuto(emp.id);
+                  }}
                 >
                   <i />
                 </button>
-                <button className="dsh-pwb-office-emp-act" onClick={() => onOpenChat(emp.id, emp.name, emp.role)}>
+                <button
+                  className="dsh-pwb-office-emp-act"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenChat(emp.id, emp.name, emp.role);
+                  }}
+                >
                   派活
                 </button>
                 <button
                   className="dsh-pwb-office-emp-act gray"
                   title={row === undefined || row.status === 'stopped' ? '双方都需要先有进行中的会话才能移交' : '把当前工作移交给其他同事'}
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     setHandoffErr('');
                     setFromId(isFrom ? null : emp.id);
                     setToId('');
@@ -418,7 +415,7 @@ export function OfficeAgentPanel({ onOpenChat, onBuiltinSaved }: OfficeAgentPane
           {handoffErr !== '' && <p style={errText}>⚠️ {handoffErr}</p>}
         </div>
       )}
-      <p style={hintText}>点名字那一簇可在侧栏打开 TA 的真实会话；点「派活」在聊天里给 TA 布置真实任务；绿点 = 会话中，橙点 = 空闲，灰点 = 未派活。自觉开关开着时 TA 会自己找活干。</p>
+      <p style={hintText}>点 TA 那一行 = 在下面和 TA 聊天；点「派活」让 TA 真干活（真任务走 TA 的真实会话，右栏「会话 ↗」可跳到宿主侧栏那条会话）；绿点 = 会话中，橙点 = 空闲，灰点 = 未派活。自觉开关开着时 TA 会自己找活干。</p>
     </div>
   );
 }
