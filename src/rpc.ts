@@ -194,6 +194,8 @@ type OfficeAgentEntry = {
   reportAt?: number;
   /** 派活层级：0=老板/autopilot 直接派（可再往下派活），1=被同事派来协助（不再派活，防递归） */
   level?: 0 | 1;
+  /** 任务来源：boss=老板在办公室面板派活（没验收结论的旧活会被自觉工作催办收尾）；autopilot=自觉工作自动派 */
+  origin?: 'boss' | 'autopilot';
   /** level=1 时：派活方员工 id 与原始任务（干完后宿主把产出回递给派活方验收） */
   parentId?: string;
   parentTask?: string;
@@ -449,7 +451,7 @@ async function officeSpawnAgent(
   role: string,
   task: string,
   cwd?: string,
-  opts?: { level?: 0 | 1; parentId?: string; parentTask?: string },
+  opts?: { level?: 0 | 1; parentId?: string; parentTask?: string; origin?: 'boss' | 'autopilot' },
 ): Promise<void> {
   officeDispatchCtl = { ctx, log };
   const agents = ctx.get('agents') as OfficeAgentsService | undefined;
@@ -531,6 +533,8 @@ async function officeSpawnAgent(
       startedAt: Date.now(),
       updatedAt: Date.now(),
       level: opts?.level ?? 0,
+      // 任务来源：用于「有汇报但没验收结论的老板派活」收尾兜底（autopilot 自己派的不催办）
+      origin: opts?.origin ?? 'boss',
       ...(opts?.parentId !== undefined ? { parentId: opts.parentId, parentTask: opts.parentTask ?? task } : {}),
     },
     turnText: '',
@@ -2308,14 +2312,23 @@ export function registerRpc(ctx: Context, deps: RpcDeps): void {
     }
   };
 
-  // 自觉工作 autopilot：30 分钟一轮，为开启开关且空闲的员工用 llm 生成微任务并 spawn 真会话（全程静默失败）
+  // 自觉工作 autopilot：30 分钟一轮，为开启开关且空闲的员工派活（任务源＝老板手写待办 → 未验收旧活收尾；全程静默失败）
   try {
     const stopOfficeAutopilot = installOfficeAutopilot({
       ctx,
       log: deps.log,
       isBusy: (id) => officeAgents.get(id)?.entry.status === 'working',
-      // 微任务沿用该员工上次会话的工作区（老板派过活的目录），没派过活才落主目录
-      dispatch: (id, name, role, task) => officeSpawnAgent(ctx, deps.log, id, name, role, task, officeAgents.get(id)?.entry.cwd),
+      // 待办/收尾任务沿用该员工上次会话的工作区（老板派过活的目录），没派过活才落主目录
+      dispatch: (id, name, role, task) =>
+        officeSpawnAgent(ctx, deps.log, id, name, role, task, officeAgents.get(id)?.entry.cwd, { origin: 'autopilot' }),
+      // 收尾兜底：老板派过、已有汇报、但始终没验收结论的旧活 → 让本人复核产物、补齐落盘
+      pendingClose: (id) => {
+        const e = officeAgents.get(id)?.entry;
+        if (e === undefined || e.origin !== 'boss' || e.status === 'stopped') return undefined;
+        if (e.report === undefined || e.report.trim() === '' || e.acceptance !== undefined) return undefined;
+        const t = e.task.trim();
+        return `收尾复核：老板此前派给你的任务「${t.slice(0, 60)}」你已汇报，但还没有验收结论。请实际打开/读取相关文件核对产出是否齐全、把缺失或没落盘的部分补齐落盘，然后单独写一行【工作记录】说明改了哪些文件（不要再重复提交已完成的内容）。`;
+      },
     });
     ctx.effect(() => stopOfficeAutopilot);
   } catch (err) {
