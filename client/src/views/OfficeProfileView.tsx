@@ -58,17 +58,19 @@ type Props = {
   desks?: Array<{ id: string; label: string }>;
   /** 工位改选后同步引擎：空串 = 恢复自动分配。 */
   onDeskAssigned?: (id: string, deskId: string) => void;
+  /** 名字改后同步引擎改名（场景/聊天气泡/名牌）。 */
+  onRenamed?: (id: string, name: string) => void;
 };
 
-type Draft = { persona: string; links: string[]; skills: Record<string, number>; avatar: string; desk: string; llm: string };
+type Draft = { name: string; persona: string; links: string[]; skills: Record<string, number>; avatar: string; desk: string; llm: string };
 
-export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, desks, onDeskAssigned }: Props): ReactElement {
+export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, desks, onDeskAssigned, onRenamed }: Props): ReactElement {
   const chars = useMemo(() => [...BUILTIN_STAFF, ...roster], [roster]);
   const [selId, setSelId] = useState('');
   const sel = chars.find((c) => c.id === selId) ?? chars[0];
   const ov: BuiltinOverride = builtin[sel?.id ?? ''] ?? {};
 
-  const [draft, setDraft] = useState<Draft>({ persona: '', links: [], skills: {}, avatar: '', desk: '', llm: '' });
+  const [draft, setDraft] = useState<Draft>({ name: '', persona: '', links: [], skills: {}, avatar: '', desk: '', llm: '' });
   /** 可选 3D 人物模型（assets/models 下的 .gltf/.glb）。 */
   const [models, setModels] = useState<string[]>([]);
   /** 模型头像（文件名 → dataURL）：员工列表/档案头与选型预览共用。 */
@@ -91,10 +93,12 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, de
     if (id === selRef.current) return;
     selRef.current = id;
     const cur: BuiltinOverride = builtin[id] ?? {};
+    const sel0 = chars.find((c) => c.id === id);
     setDraft({
       persona: typeof cur.persona === 'string' ? cur.persona : '',
       links: Array.isArray(cur.links) ? [...cur.links] : [],
       skills: cur.skills !== undefined && typeof cur.skills === 'object' ? { ...cur.skills } : {},
+      name: typeof cur.name === 'string' && cur.name !== '' ? cur.name : (sel0?.name ?? ''),
       avatar: typeof cur.avatar === 'string' ? cur.avatar : '',
       desk: typeof cur.deskId === 'string' ? cur.deskId : '',
       llm:
@@ -122,6 +126,7 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, de
     if (draft.persona !== (typeof cur.persona === 'string' ? cur.persona : '')) return true;
     if (JSON.stringify(draft.links) !== JSON.stringify(Array.isArray(cur.links) ? cur.links : [])) return true;
     if (JSON.stringify(draft.skills) !== JSON.stringify(curSkills)) return true;
+    if (draft.name !== (typeof cur.name === 'string' && cur.name !== '' ? cur.name : (sel?.name ?? ''))) return true;
     if (draft.avatar !== (typeof cur.avatar === 'string' ? cur.avatar : '')) return true;
     if (draft.desk !== (typeof cur.deskId === 'string' ? cur.deskId : '')) return true;
     const curLlm =
@@ -141,6 +146,7 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, de
       const llmProvider = sep > 0 ? draft.llm.slice(0, sep) : '';
       const llmModel = sep > 0 ? draft.llm.slice(sep + 2) : '';
       const table = await saveBuiltin(sel.id, {
+        ...(draft.name.trim() !== '' ? { name: draft.name.trim() } : {}),
         persona: draft.persona,
         links: draft.links,
         skills: draft.skills,
@@ -152,13 +158,14 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, de
       onBuiltinSaved(table);
       // 工位只影响场景座位：同步给引擎（空串 = 恢复自动分配）
       onDeskAssigned?.(sel.id, draft.desk);
+      if (draft.name.trim() !== '' && draft.name.trim() !== sel.name) onRenamed?.(sel.id, draft.name.trim());
       setSaveMsg('已保存 ✓');
     } catch (err) {
       setSaveMsg(err instanceof Error ? err.message : '保存失败');
     } finally {
       setSaving(false);
     }
-  }, [draft, onBuiltinSaved, onDeskAssigned, saving, sel]);
+  }, [draft, onBuiltinSaved, onDeskAssigned, onRenamed, saving, sel]);
 
   /* LLM 模型清单：挂载时拉一次（失败静默，下拉只剩「跟随默认」） */
   useEffect(() => {
@@ -330,7 +337,13 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, de
             </span>
           )}
           <span>
-            <div className="dsh-pwb-office-prof-head-name">{sel.name}</div>
+            <input
+              className="dsh-pwb-office-prof-head-name dsh-pwb-office-prof-name-input"
+              value={draft.name}
+              maxLength={20}
+              placeholder="员工名字"
+              onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+            />
             <div className="dsh-pwb-office-prof-head-role">
               {sel.role} · {sel.id}
             </div>

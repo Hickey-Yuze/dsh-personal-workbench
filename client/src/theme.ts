@@ -2010,6 +2010,9 @@ html { color-scheme: light !important; }
 }
 .dsh-pwb-office-prof-head { display: flex; align-items: center; gap: 12px; }
 .dsh-pwb-office-prof-head-name { font-size: 16px; font-weight: 750; color: var(--pwb-text); }
+.dsh-pwb-office-prof-name-input { width: 100%; border: 1px solid transparent; background: transparent; font: inherit; font-weight: inherit; color: inherit; padding: 1px 4px; margin: -1px -4px; border-radius: 8px; }
+.dsh-pwb-office-prof-name-input:hover { border-color: rgba(20,20,30,0.15); }
+.dsh-pwb-office-prof-name-input:focus { outline: none; border-color: var(--pwb-accent, #00c853); background: var(--pwb-card-hi, #f6f7f9); }
 .dsh-pwb-office-prof-head-role { font-size: 12px; color: var(--pwb-dim); margin-top: 2px; }
 .dsh-pwb-office-prof-chip { margin-left: auto; padding: 4px 10px; border-radius: 999px; corner-shape: round; font-size: 11.5px; line-height: 1; flex-shrink: 0; }
 .dsh-pwb-office-prof-section { display: flex; flex-direction: column; gap: 8px; }
