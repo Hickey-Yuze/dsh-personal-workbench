@@ -421,11 +421,17 @@ async function officeSpawnAgent(
   // office/agent/start 与 autopilot 派活共用本函数，覆盖一处生效。
   const effProvider = typeof override?.provider === 'string' && override.provider !== '' ? override.provider : provider;
   const effModel = typeof override?.model === 'string' && override.model !== '' ? override.model : model;
+  // sessionId 必须纯 ASCII：宿主 llm 适配器会把 session id 放进 HTTP 头
+  // （pi-ai openai-completions：x-session-id / x-client-request-id / x-session-affinity），
+  // 中文会让 Headers.set 抛 ByteString TypeError，被 SDK 包成 APIConnectionError
+  // → 派活瞬时 TRANSPORT「Connection error.」、请求根本没发出去（换任何 provider 都一样）。
+  // 用 npcId 做 slug（npc-1 / custom-2 本身就是安全字符），员工姓名不进 id。
+  const sidSlug = npcId.replace(/[^A-Za-z0-9_-]/g, '') || 'npc';
+  const sidStamp = Date.now();
   const handle = await agents.create({
     // sessionId 必传：agent.id 必须与 session.id 一致（AgentRegistry.enter 不变式），
-    // 缺省时 agent id 为 undefined 而创建即抛错。id 里带员工姓名（宿主会话列表可读），
-    // 时间戳后缀保证改名/重复派活时 id 唯一。
-    sessionId: `office-${name}-${Date.now()}`,
+    // 缺省时 agent id 为 undefined 而创建即抛错。时间戳后缀保证改名/重复派活时 id 唯一。
+    sessionId: `office-${sidSlug}-${sidStamp}`,
     // cwd 必须随 meta 写进 session header：system-prompt 组装 deployment:persona-suffix
     // 需要 {{cwd}} 变量（variable("cwd", ctx => ctx.agent?.session.header.cwd)），
     // 缺省会让 agent 第 1 步就报 "prompt variable \"{{cwd}}\" has no value" 而挂。
