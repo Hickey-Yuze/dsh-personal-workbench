@@ -47,6 +47,7 @@ type Scene3D = {
   requested: Set<string>;
   meeting: boolean;
   lastDt: number; // 上一帧 dt（AnimationMixer 推进用）
+  lastDpr: number; // 上次应用的 pixelRatio：只有它变了才调 setPixelRatio（见 renderScene3d）
   furnModels: Map<string, THREE.Group | null>; // 家具 GLB 缓存（name → group，null=失败）
   furnRequested: Set<string>;
   furnVersion: number; // 家具模型就绪数变化 → 重建场景
@@ -76,7 +77,9 @@ function ensureScene(canvas: HTMLCanvasElement): Scene3D | null {
     scene.add(new THREE.AmbientLight(0xfff1e0, 0.42));  // 原 1.25 过曝：整体泛白的主因
     const sun = new THREE.DirectionalLight(0xffeecb, 1.42);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    // 2048 的 PCFSoft 阴影贴图每帧都要重渲一整个深度 pass，人物走动时是最大的固定开销；
+    // 1024 在 90×90 的覆盖范围上肉眼几乎无差（PCFSoft 本身就柔），换来约 4 倍阴影成本下降。
+    sun.shadow.mapSize.set(1024, 1024);
     sun.shadow.camera.left = -45;
     sun.shadow.camera.right = 45;
     sun.shadow.camera.top = 45;
@@ -92,7 +95,7 @@ function ensureScene(canvas: HTMLCanvasElement): Scene3D | null {
     pivot.add(charGroup);
     s = {
       renderer, scene, camera, pivot, sun, charGroup,
-      boardMats: [], sceneKey: '', sceneGroup: null, instances: new Map(), loaded: new Map(), requested: new Set(), meeting: false, lastDt: 0.016,
+      boardMats: [], sceneKey: '', sceneGroup: null, instances: new Map(), loaded: new Map(), requested: new Set(), meeting: false, lastDt: 0.016, lastDpr: 0,
       furnModels: new Map(), furnRequested: new Set(), furnVersion: 0,
     };
     scenes.set(canvas, s);
@@ -875,8 +878,14 @@ export function renderScene3d(
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const pxW = Math.max(1, Math.round(cssW * dpr));
   const pxH = Math.max(1, Math.round(cssH * dpr));
-  if (canvas.width !== pxW || canvas.height !== pxH) s.renderer.setSize(cssW, cssH, false);
-  s.renderer.setPixelRatio(dpr);
+  // 只在像素尺寸或 pixelRatio 真变了才动渲染器：setPixelRatio 内部会再调一次 setSize
+  // （每次都写 canvas.width/height + setViewport），每帧无条件调用会把上面的按需 setSize
+  // 整个推翻 —— Retina 下这是走路一帧一顿的主要来源之一。
+  if (canvas.width !== pxW || canvas.height !== pxH || s.lastDpr !== dpr) {
+    s.renderer.setPixelRatio(dpr);
+    s.renderer.setSize(cssW, cssH, false);
+    s.lastDpr = dpr;
+  }
 
   // 家具 GLB：先把用到的都请求起来（就绪数变化 → 重建场景以替换几何体）
   for (const f of furniture) {
@@ -888,8 +897,14 @@ export function renderScene3d(
     }
   }
 
-  // 静态场景：家具内容指纹（含模型就绪版本）变了才重建
-  const key = `${JSON.stringify(furniture)}@${s.furnVersion}`;
+  // 静态场景：家具内容指纹（含模型就绪版本）变了才重建。
+  // 原来每帧 JSON.stringify(整张地图家具)：每秒几十 KB 字符串垃圾 + GC 抖动，是「走路一卡一卡」的诱因之一。
+  // 改为廉价数字哈希（覆盖坐标/种类/id 长度），零对象分配。
+  let fh = Math.imul(furniture.length, 2654435761);
+  for (const f of furniture) {
+    fh = (Math.imul(fh, 31) + f.x * 73856093 + f.y * 19349663 + f.kind.length * 83492791 + f.id.length) | 0;
+  }
+  const key = `${fh}@${furniture.length}@${s.furnVersion}`;
   if (key !== s.sceneKey || s.sceneGroup === null) {
     s.sceneKey = key;
     if (s.sceneGroup !== null) s.pivot.remove(s.sceneGroup);
