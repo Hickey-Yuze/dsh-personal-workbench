@@ -6,7 +6,14 @@
 import { deskChairCell, buildBlocked, defaultMap, isFree, MAP_H, MAP_W } from './map.js';
 import type { Character, Furniture, Intent, MemberStat, OfficeMap, Vec } from './types.js';
 
-const SPEED = 2.4; // 格 / 秒
+/** 走路速度（格/秒）。3D 里模型走路动画的步频按 SPEED / WALK_BASE_SPEED 同比缩放（见 scene3d），
+ *  只调这里就会同步提速且不滑步。 */
+export const SPEED = 3.8;
+/** 走路动画天然匹配的基准速度（格/秒）：改 SPEED 时保持不动，它是动画步频 1.0 的参照点。 */
+export const WALK_BASE_SPEED = 2.4;
+/** 走路动画步频系数 = SPEED / WALK_BASE_SPEED。3D 骨骼动画 timeScale 与 2D 腿摆频率共用它，
+ *  保证「人走多快、腿摆多快」，避免提速后滑步。 */
+export const WALK_TIME_SCALE = SPEED / WALK_BASE_SPEED;
 
 interface NpcDef {
   name: string;

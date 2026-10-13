@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { MAP_H, MAP_W } from './map.js';
+import { WALK_TIME_SCALE } from './engine.js';
 import { loadCharModel, loadObjModel, modelForChar } from './objModels.js';
 import type { AnimationAction } from 'three';
 import type { Character, Furniture } from './types.js';
@@ -579,6 +580,7 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
           const sitClip = pickClip(model.animations, 'SitDown', 'Sitting');
           if (walkClip !== undefined) {
             walk = mixer.clipAction(walkClip);
+            walk.timeScale = WALK_TIME_SCALE; // 步频跟速（否则提速后脚摆跟不上，看着像滑冰）
             walk.play();
           }
           if (idleClip !== undefined) {
@@ -625,7 +627,7 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
       }
     }
     inst.obj.position.set(gx, seatLift, gy);
-    if (walking) inst.obj.position.y = Math.abs(Math.sin(time * 9 + c.phase)) * 0.05;
+    if (walking) inst.obj.position.y = Math.abs(Math.sin(time * 9 * WALK_TIME_SCALE + c.phase)) * 0.05;
     else inst.obj.position.y = 0;
     // 朝向：走路按移动方向转身（glTF 原生面朝 +z，rotation.y = atan2(dx, dz) 恰好对齐该约定）；
     // 非走路回到 face 二值朝向（面向/背对镜头斜 0.6）

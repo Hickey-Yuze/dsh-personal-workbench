@@ -8,6 +8,7 @@
  * P2：气泡绘制（最上层）、会议中白板高亮、头顶 💬 兜底、cellAtPoint 点击换算。
  */
 import { MAP_H, MAP_W } from './map.js';
+import { WALK_TIME_SCALE } from './engine.js';
 import type { Character, Furniture, Vec } from './types.js';
 
 /* ───────────── 调色板（暖白低饱和，向 pixoffice 质感看齐） ───────────── */
@@ -639,9 +640,9 @@ function drawChar(
   const walking = c.state === 'walking';
   // 走路上下轻微 bob（sin(time*10 + 相位)）；phase 为生成期固定随机相位，等价 charId 哈希
   const bob = walking
-    ? Math.abs(Math.sin(time * 10 + c.phase)) * s * 0.07
+    ? Math.abs(Math.sin(time * 10 * WALK_TIME_SCALE + c.phase)) * s * 0.07
     : Math.sin(time * 2 + c.phase) * s * 0.015;
-  const bobN = walking ? Math.abs(Math.sin(time * 10 + c.phase)) : 0;
+  const bobN = walking ? Math.abs(Math.sin(time * 10 * WALK_TIME_SCALE + c.phase)) : 0;
   const bodyW = s * 0.52;
   const bodyH = s * 0.34;
   const headR = s * 0.19;
@@ -666,7 +667,7 @@ function drawChar(
 
   // 腿（走路交替摆动，与 bob 同频）
   if (!sitting) {
-    const swing = walking ? Math.sin(time * 10 + c.phase) * s * 0.1 : 0;
+    const swing = walking ? Math.sin(time * 10 * WALK_TIME_SCALE + c.phase) * s * 0.1 : 0;
     ctx.fillStyle = '#3a3f4a';
     ctx.fillRect(px - bodyW * 0.38 + swing, baseY - legH, bodyW * 0.26, legH);
     ctx.fillRect(px + bodyW * 0.12 - swing, baseY - legH, bodyW * 0.26, legH);
@@ -1741,8 +1742,8 @@ function isoDrawChar(
   const px = foot.x;
   const sitting = c.state === 'working' || c.state === 'coffee';
   const walking = c.state === 'walking';
-  const bob = walking ? Math.abs(Math.sin(time * 10 + c.phase)) * k * 0.05 : Math.sin(time * 2 + c.phase) * k * 0.012;
-  const bobN = walking ? Math.abs(Math.sin(time * 10 + c.phase)) : 0;
+  const bob = walking ? Math.abs(Math.sin(time * 10 * WALK_TIME_SCALE + c.phase)) * k * 0.05 : Math.sin(time * 2 + c.phase) * k * 0.012;
+  const bobN = walking ? Math.abs(Math.sin(time * 10 * WALK_TIME_SCALE + c.phase)) : 0;
 
   // 落地软影
   const shadowK = 1 - bobN * 0.15;
@@ -1768,7 +1769,7 @@ function isoDrawChar(
   const headR = k * 0.38; // Q 版大头（参考稿头身比约 1:1）
   const baseY = foot.y;
   if (!sitting) {
-    const swing = walking ? Math.sin(time * 10 + c.phase) * k * 0.08 : 0;
+    const swing = walking ? Math.sin(time * 10 * WALK_TIME_SCALE + c.phase) * k * 0.08 : 0;
     ctx.fillStyle = ISO_PANTS;
     ctx.fillRect(px - bodyW * 0.36 + swing, baseY - legH, bodyW * 0.26, legH * 0.78);
     ctx.fillRect(px + bodyW * 0.1 - swing, baseY - legH, bodyW * 0.26, legH * 0.78);
