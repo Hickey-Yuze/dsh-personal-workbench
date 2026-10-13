@@ -1329,8 +1329,14 @@ html { color-scheme: light !important; }
   font-size: 12px;
   color: var(--pwb-dim);
 }
+/* 总览小部件里的办公室画布：随卡片铺满。
+   原来写死 aspect-ratio: 40/12（旧地图比例）：卡片一旦被拉高，画布只占顶部一条，
+   下面整片留白（用户截图红框）。地图 48×30 由渲染器 fit 居中，容器必须吃满卡片高度。 */
 .dsh-pwb-office-mini {
-  aspect-ratio: 40 / 12;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
   border-radius: 12px;
   overflow: hidden;
   background: #f6f7f8;
