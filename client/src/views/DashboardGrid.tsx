@@ -3,7 +3,7 @@
  * 交互与几何算法来自 client/src/grid.ts（对齐 Yuze Workbench OverviewPage）：
  *   · 编辑模式下每张卡顶部出现拖动条、四角/四边出现 8 个手柄
  *   · 拖拽全程用 window 级 pointermove（指针可离开卡片），松手才提交布局
- *   · 拖到滚动区上下边缘自动滚动
+ *   · 撞到别的卡片就停在最后一个合法位置（不推挤别人），拖到滚动区边缘自动滚动
  * 非编辑模式下完全不干预，卡片内部组件照常交互。
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -13,6 +13,7 @@ import {
   GRID_GAP,
   ROW_HEIGHT,
   RESIZE_HANDLES,
+  cellOverlaps,
   createAutoScroll,
   moveCell,
   resizeCell,
@@ -138,12 +139,13 @@ export function DashboardGrid({
     const target = cellsRef.current.find((c) => c.id === id);
     if (target === undefined) return;
     const base: RectBase = { col: target.col, row: target.row, colSpan: target.colSpan, rowSpan: target.rowSpan };
-    // 拖拽起始快照：每帧都基于它重算。否则 resolveOverlaps 会在上一帧结果上继续下推，
-    // 下方卡片被一帧帧累积挤压、越跑越远且松手不回弹。
+    // 拖拽起始快照：每帧都基于它重算，避免位移逐帧累加。
     const snapshot = cellsRef.current.map((c) => ({ ...c }));
     trackPointer(e, id, (dx, dy) => {
       setCells(() => {
         const next = moveCell(snapshot, id, dx, dy, base);
+        // 目标位置撞上别的卡片：停在最后一个合法位置，不把上方卡片挤走。
+        if (cellOverlaps(next, id)) return cellsRef.current;
         // 同步 ref：松手时无需等下一帧渲染就能拿到最终布局
         cellsRef.current = next;
         return next;
@@ -159,6 +161,7 @@ export function DashboardGrid({
     trackPointer(e, id, (dx, dy) => {
       setCells(() => {
         const next = resizeCell(snapshot, id, dir, dx, dy, base);
+        if (cellOverlaps(next, id)) return cellsRef.current; // 放大到别人身上：停在最后一个合法尺寸
         cellsRef.current = next;
         return next;
       });

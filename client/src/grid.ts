@@ -1,8 +1,8 @@
 /**
  * 仪表盘网格布局算法 —— 逐条对齐 Yuze Workbench `OverviewPage` 的实现：
  *   12 列 / 行高 150px / 间距 16px；指针事件拖动 + 8 向缩放；
- *   基于「拖拽起始基准」计算位移（避免逐帧累加误差）；重叠自动下推；
- *   拖到滚动区上下边缘时自动滚动，并带「虚拟偏移」（滚到顶后多余位移仍然生效）。
+ *   基于「拖拽起始基准」计算位移（避免逐帧累加误差）；重叠落位直接拒绝（不推挤别的卡片）；
+ *   拖到滚动区上下边缘时自动滚动（只上报真实滚动位移）。
  * 这些常量与算法与原项目保持一致，改这里等于改行为。
  */
 import type { CSSProperties } from 'react';
@@ -46,38 +46,21 @@ function overlaps(a: CellConfig, b: CellConfig): boolean {
 }
 
 /**
- * 重叠消解：被压在下面的卡片整体下推到冲突卡的下方，直到收敛（带 100 轮护栏）。
- * fixedId 是本次操作的主动卡（正在被拖拽/缩放的那张）：它绝不被下推 ——
- * 否则指针还在原地、卡片却自己跳到别人下面，还会被逐帧推得越来越远。
+ * 某张卡在给定布局里是否与别的卡片重叠。
+ * 拖动/缩放用它拒绝非法落位：撞上已有卡片就停在最后一个合法位置 ——
+ * 不再把别人的卡片往下推（用户口径：「上面有卡片就不要硬拽上去」）。
  */
-export function resolveOverlaps(list: CellConfig[], fixedId?: string): CellConfig[] {
-  const result = list.map((c) => ({ ...c }));
-  let changed = true;
-  let guard = 0;
-  while (changed && guard < 100) {
-    changed = false;
-    guard += 1;
-    for (const a of result) {
-      for (const b of result) {
-        if (a === b || b.id === fixedId) continue;
-        if (overlaps(a, b)) {
-          const newRow = a.row + a.rowSpan;
-          if (b.row !== newRow) {
-            b.row = newRow;
-            changed = true;
-          }
-        }
-      }
-    }
-  }
-  return result;
+export function cellOverlaps(list: CellConfig[], id: string): boolean {
+  const self = list.find((c) => c.id === id);
+  if (self === undefined) return false;
+  return list.some((c) => c.id !== id && overlaps(self, c));
 }
 
-/** 拖动移动：列被夹在网格内，行不设上限（可往下无限延伸）。 */
+/** 拖动移动：列被夹在网格内，行不设上限（可往下无限延伸）。不做推挤。 */
 export function moveCell(list: CellConfig[], id: string, dxCols: number, dyRows: number, base: RectBase): CellConfig[] {
   const col = clamp(Math.round(base.col + dxCols), 1, GRID_COLS - base.colSpan + 1);
   const row = Math.max(1, Math.round(base.row + dyRows));
-  return resolveOverlaps(list.map((c) => (c.id === id ? { ...c, col, row } : c)), id);
+  return list.map((c) => (c.id === id ? { ...c, col, row } : c));
 }
 
 /** 8 方向缩放：以拖拽起点为基准，方向由 dir 的字符决定（n/s/e/w 可组合）。 */
@@ -116,7 +99,7 @@ export function resizeCell(
   colSpan = clamp(colSpan, MIN_COL_SPAN, GRID_COLS - col + 1);
   rowSpan = Math.max(1, Math.round(rowSpan));
 
-  return resolveOverlaps(list.map((c) => (c.id === id ? { ...c, col, row, colSpan, rowSpan } : c)), id);
+  return list.map((c) => (c.id === id ? { ...c, col, row, colSpan, rowSpan } : c));
 }
 
 /** 8 个方向的缩放手柄：位置/光标/内部刻线（对应原项目 RESIZE_HANDLES）。 */
