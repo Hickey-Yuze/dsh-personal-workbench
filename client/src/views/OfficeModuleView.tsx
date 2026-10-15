@@ -9,7 +9,7 @@ import { OfficeEngine, BUILTIN_STAFF } from '../office/engine.js';
 import { setAvatarOverrides } from '../office/objModels.js';
 import { OfficeCanvas } from '../office/OfficeCanvas.js';
 import { loadOfficeMap } from '../office/store.js';
-import { deskChairCell } from '../office/map.js';
+
 import type { OfficeMap } from '../office/types.js';
 import type { MemberStat } from '../office/types.js';
 import type { OfficeView } from '../office/renderer.js';
@@ -764,20 +764,12 @@ export function OfficeModuleView(): ReactElement {
       if (a.type === 'desk_visit') {
         const name = typeof a.payload?.name === 'string' ? a.payload.name : '';
         const target = engine.chars.find((c) => c.name === name && !c.isSelf);
-        const desk = target === undefined ? undefined : engine.map.furniture.find((f) => f.id === target.deskId);
-        if (desk !== undefined) {
-          const ch = deskChairCell(desk);
-          engine.clickCell(ch.x, ch.y);
-        }
+        if (target !== undefined) engine.visitDesk(target.id);
       } else if (a.type === 'desk_visit_tour') {
         const others = engine.chars.filter((c) => !c.isSelf);
         others.forEach((c, i) => {
           window.setTimeout(() => {
-            const desk = engine.map.furniture.find((f) => f.id === c.deskId);
-            if (desk !== undefined) {
-              const ch = deskChairCell(desk);
-              engine.clickCell(ch.x, ch.y);
-            }
+            engine.visitDesk(c.id);
           }, i * 5000);
         });
       } else if (a.type === 'set_state') {
@@ -845,12 +837,12 @@ export function OfficeModuleView(): ReactElement {
     } catch { /* 指针捕获已释放时忽略 */ }
   }, []);
 
-  /* 点格子：互动照旧；点到同事（本人格或其椅位）→ 切私聊 */
+  /* 点格子：同事 → 打招呼私聊（不再接管操控）；空椅 → 当前操控对象坐下；空地 → 走过去。
+     切换操控对象只用底部员工状态胶囊（见下方 status 条）。 */
   const handleCellClick = useCallback(
     (cell: { x: number; y: number }): void => {
       const out = engine.clickCell(cell.x, cell.y);
-      setCtrlId(engine.controlledId); // 点同事即接管操控权：同步左上角提示
-      if (out.kind === 'select' && out.id !== 'self') {
+      if (out.kind === 'chat') {
         const hit = engine.chars.find((c) => c.id === out.id);
         if (hit !== undefined) {
           setChatTarget({ kind: 'npc', id: hit.id, name: hit.name, role: hit.role });

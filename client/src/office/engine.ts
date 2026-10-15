@@ -389,26 +389,18 @@ export class OfficeEngine {
 
   /**
    * 点击格子互动（行动人 = 当前操控对象，默认老板自己）：
-   * · 点到某个同事 → 接管操控他（再点他一次 → 自己走过去寒暄，保持原交互）
-   * · 点老板而当前操控的是别人 → 切回操控老板
-   * · 白板前缘格 → 发起会议：自己先去，NPC 陆续到白板前集合，全员 state='meeting' 8~15s 后散会
-   * · 空着的工位椅位 → 操控对象走过去坐下（老板点空位即「坐这儿」）
+   * · 点同事所在格 → 操控对象走过去打招呼（到达后冒泡），视图同步打开私聊面板
+   * · 点白板（板身或板正下方一排）→ 发起会议：老板先去，NPC 陆续到白板前集合，全员 state='meeting' 8~15s 后散会
+   * · 点空着的工位椅位 → 操控对象走过去坐下（一直坐着，直到再点别处）
    * · 其他可走空地 → 操控对象走过去，到达后回归正常 decide 循环
+   * 注意：切换操控对象只用底部员工状态胶囊，场景里点人不改变操控权。
    */
-  clickCell(x: number, y: number): { kind: 'none' | 'select' | 'chat' | 'seat' | 'walk' | 'meeting'; id: string } {
+  clickCell(x: number, y: number): { kind: 'none' | 'chat' | 'seat' | 'walk' | 'meeting'; id: string } {
     if (x < -this.arenaLeft || y < -this.arenaTop || x >= MAP_W + this.arenaRight || y >= MAP_H + this.arenaBottom) return { kind: 'none', id: '' }; // 延伸区外的界外；墙环/家具格由 free 判定
-    const onCell = this.chars.find((c) => c.cx === x && c.cy === y);
-    if (onCell !== undefined && !onCell.isSelf) {
-      if (this.ctrlId === onCell.id) {
-        this.goChatWith(onCell); // 再点当前操控对象 → 老板过去寒暄
-        return { kind: 'chat', id: onCell.id };
-      }
-      this.setControl(onCell.id);
-      return { kind: 'select', id: onCell.id };
-    }
-    if (onCell !== undefined && this.ctrlId !== 'self') {
-      this.setControl('self');
-      return { kind: 'select', id: 'self' };
+    const npc = this.chars.find((c) => !c.isSelf && c.cx === x && c.cy === y);
+    if (npc !== undefined) {
+      this.goChatWith(npc);
+      return { kind: 'chat', id: npc.id };
     }
     const board = this.whiteboardFrontAt(x, y);
     if (board !== null) {
@@ -477,9 +469,17 @@ export class OfficeEngine {
     return true;
   }
 
-  /** 走到 NPC 工位旁寒暄：到达后自己冒泡打招呼，NPC 按职业回一句。 */
+  /** 「拜访同事」动作入口（宿主 office/agents 动作）：让当前操控对象走到该同事工位旁寒暄。 */
+  visitDesk(npcId: string): boolean {
+    const npc = this.chars.find((c) => c.id === npcId && !c.isSelf);
+    if (npc === undefined) return false;
+    this.goChatWith(npc);
+    return true;
+  }
+
+  /** 走到 NPC 工位旁寒暄：到达后行动人（当前操控对象）冒泡打招呼，NPC 按职业回一句。 */
   private goChatWith(npc: Character): void {
-    const self = this.self();
+    const self = this.controlled ?? this.self();
     if (self === null) return;
     const desk = this.desks.find((f) => f.id === npc.deskId);
     if (desk === undefined) return;
