@@ -62,7 +62,7 @@ type Props = {
   onRenamed?: (id: string, name: string) => void;
 };
 
-type Draft = { name: string; persona: string; links: string[]; skills: Record<string, number>; avatar: string; desk: string; llm: string };
+type Draft = { name: string; role: string; persona: string; links: string[]; skills: Record<string, number>; avatar: string; desk: string; llm: string };
 
 export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, desks, onDeskAssigned, onRenamed }: Props): ReactElement {
   // 左栏列表必须套用档案里保存的 name/role 覆盖：BUILTIN_STAFF 是静态数组，
@@ -84,7 +84,7 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, de
   const sel = chars.find((c) => c.id === selId) ?? chars[0];
   const ov: BuiltinOverride = builtin[sel?.id ?? ''] ?? {};
 
-  const [draft, setDraft] = useState<Draft>({ name: '', persona: '', links: [], skills: {}, avatar: '', desk: '', llm: '' });
+  const [draft, setDraft] = useState<Draft>({ name: '', role: '', persona: '', links: [], skills: {}, avatar: '', desk: '', llm: '' });
   const [assessing, setAssessing] = useState(false);
   const [assessInfo, setAssessInfo] = useState<AssessResult | null>(null);
 
@@ -135,6 +135,7 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, de
       links: Array.isArray(cur.links) ? [...cur.links] : [],
       skills: cur.skills !== undefined && typeof cur.skills === 'object' ? { ...cur.skills } : {},
       name: typeof cur.name === 'string' && cur.name !== '' ? cur.name : (sel0?.name ?? ''),
+      role: typeof cur.role === 'string' && cur.role !== '' ? cur.role : (sel0?.role ?? ''),
       avatar: typeof cur.avatar === 'string' ? cur.avatar : '',
       desk: typeof cur.deskId === 'string' ? cur.deskId : '',
       llm:
@@ -167,6 +168,10 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, de
     if (JSON.stringify(draft.links) !== JSON.stringify(Array.isArray(cur.links) ? cur.links : [])) return true;
     if (JSON.stringify(draft.skills) !== JSON.stringify(curSkills)) return true;
     if (draft.name !== (typeof cur.name === 'string' && cur.name !== '' ? cur.name : (sel?.name ?? ''))) return true;
+    // 职称：空 = 「恢复默认职称」——此时只有当前确实存在覆盖才算脏，否则保存后按钮一直亮着
+    const curRole = typeof cur.role === 'string' && cur.role !== '' ? cur.role : (sel?.role ?? '');
+    const draftRole = draft.role.trim();
+    if (draftRole === '' ? curRole !== (sel?.role ?? '') : draftRole !== curRole) return true;
     if (draft.avatar !== (typeof cur.avatar === 'string' ? cur.avatar : '')) return true;
     if (draft.desk !== (typeof cur.deskId === 'string' ? cur.deskId : '')) return true;
     const curLlm =
@@ -187,6 +192,8 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, de
       const llmModel = sep > 0 ? draft.llm.slice(sep + 2) : '';
       const table = await saveBuiltin(sel.id, {
         ...(draft.name.trim() !== '' ? { name: draft.name.trim() } : {}),
+        // 职务/职称：清空即删掉覆盖、回落静态名单里的默认职称（宿主对空串做 delete）
+        role: draft.role.trim(),
         persona: draft.persona,
         links: draft.links,
         skills: draft.skills,
@@ -437,7 +444,15 @@ export function OfficeProfileView({ members, roster, builtin, onBuiltinSaved, de
               onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
             />
             <div className="dsh-pwb-office-prof-head-role">
-              {sel.role} · {sel.id}
+              <input
+                className="dsh-pwb-office-prof-role-input"
+                value={draft.role}
+                maxLength={20}
+                placeholder={sel.role}
+                title="职务 / 职称"
+                onChange={(e) => setDraft((d) => ({ ...d, role: e.target.value }))}
+              />
+              <span className="dsh-pwb-office-prof-head-id"> · {sel.id}</span>
             </div>
           </span>
           <span className="dsh-pwb-office-prof-chip" style={{ background: `${tone.dot}1f`, color: tone.dot }}>
