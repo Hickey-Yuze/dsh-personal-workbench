@@ -1324,6 +1324,25 @@ html { color-scheme: light !important; }
   border-color: rgba(0, 210, 106, 0.35);
   box-shadow: 0 1px 6px rgba(0, 200, 106, 0.18);
 }
+/* 状态条胶囊可点击：点谁就操控谁（与场景里脚下绿圈对应） */
+button.dsh-pwb-office-chip {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+button.dsh-pwb-office-chip:hover {
+  border-color: rgba(0, 178, 106, 0.5);
+  box-shadow: 0 2px 8px rgba(0, 200, 106, 0.18);
+}
+button.dsh-pwb-office-chip:active {
+  background: #f4fbf7;
+}
+.dsh-pwb-office-chip-ctrl {
+  border-color: rgba(0, 210, 106, 0.75);
+  background: rgba(0, 210, 106, 0.12);
+  box-shadow: 0 1px 8px rgba(0, 200, 106, 0.28);
+}
 .dsh-pwb-office-hint {
   margin-top: 10px;
   font-size: 12px;

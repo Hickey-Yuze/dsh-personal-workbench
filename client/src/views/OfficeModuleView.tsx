@@ -1041,17 +1041,26 @@ export function OfficeModuleView(): ReactElement {
 
           <div className="dsh-pwb-office-status">
             {members.map((m) => (
-              <span key={m.id} className={`dsh-pwb-office-chip${m.isSelf ? ' dsh-pwb-office-chip-self' : ''}`}>
+              <button
+                key={m.id}
+                type="button"
+                className={`dsh-pwb-office-chip${m.isSelf ? ' dsh-pwb-office-chip-self' : ''}${ctrlId === m.id ? ' dsh-pwb-office-chip-ctrl' : ''}`}
+                title={m.isSelf ? '点击操控老板自己' : `点击操控 ${m.name}`}
+                onClick={() => {
+                  engine.setControl(m.id);
+                  setCtrlId(engine.controlledId);
+                }}
+              >
                 <b>{m.name}</b>
                 <i>{m.role}</i>
                 <em>
                   {STATE_TEXT[m.state]}
                   {agentRows[m.id]?.status === 'working' ? ' ⚒' : ''}
                 </em>
-              </span>
+              </button>
             ))}
           </div>
-          <div className="dsh-pwb-office-hint">点同事打招呼并私聊 · 点空地走位 · 点白板开会 · 群聊里看同事们互聊</div>
+          <div className="dsh-pwb-office-hint">点下面的员工切换操控对象 · 点同事打招呼并私聊 · 点空地走位 · 点白板开会</div>
         </div>
 
         {chatOpen && (
