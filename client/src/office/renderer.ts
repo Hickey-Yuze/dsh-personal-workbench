@@ -649,8 +649,8 @@ function drawChar(
   const legH = sitting ? 0 : s * 0.16;
   const baseY = py + s * 0.28;
 
-  // 自己：脚底高亮圈
-  if (c.isSelf) {
+  // 自己 / 被玩家操控的角色：脚底高亮圈
+  if (c.isSelf || c.controlled === true) {
     ctx.strokeStyle = 'rgba(0, 210, 106, 0.85)';
     ctx.lineWidth = Math.max(1.5, s * 0.06);
     ctx.beginPath();

@@ -193,6 +193,11 @@ export function OfficeModuleView(): ReactElement {
   const [officeView, setOfficeView] = useState<OfficeView>({}); // 场景缩放/平移（滚轮+按钮）
   const [char3d, setChar3d] = useState(true); // 场景永远 3D（WebGL 失败自动回退 2D）
   void setChar3d;
+  /** 当前被玩家操控的角色 id（'self' = 老板自己）；点场景里的人物即接管操控。 */
+  const [ctrlId, setCtrlId] = useState('self');
+  useEffect(() => {
+    setCtrlId('self'); // 引擎重建（换地图 / 重置）后操控权回到老板
+  }, [engine]);
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [builtinOverrides, setBuiltinOverrides] = useState<Record<string, BuiltinOverride>>({});
   const [hireName, setHireName] = useState('');
@@ -843,18 +848,14 @@ export function OfficeModuleView(): ReactElement {
   /* 点格子：互动照旧；点到同事（本人格或其椅位）→ 切私聊 */
   const handleCellClick = useCallback(
     (cell: { x: number; y: number }): void => {
-      engine.clickCell(cell.x, cell.y);
-      const hit = engine.chars.find((c) => {
-        if (c.isSelf) return false;
-        if (c.cx === cell.x && c.cy === cell.y) return true;
-        const desk = engine.map.furniture.find((f) => f.id === c.deskId);
-        if (desk === undefined) return false;
-        const ch = deskChairCell(desk);
-        return ch.x === cell.x && ch.y === cell.y;
-      });
-      if (hit !== undefined) {
-        setChatTarget({ kind: 'npc', id: hit.id, name: hit.name, role: hit.role });
-        setChatOpen(true);
+      const out = engine.clickCell(cell.x, cell.y);
+      setCtrlId(engine.controlledId); // 点同事即接管操控权：同步左上角提示
+      if (out.kind === 'select' && out.id !== 'self') {
+        const hit = engine.chars.find((c) => c.id === out.id);
+        if (hit !== undefined) {
+          setChatTarget({ kind: 'npc', id: hit.id, name: hit.name, role: hit.role });
+          setChatOpen(true);
+        }
       }
     },
     [engine],
@@ -948,6 +949,20 @@ export function OfficeModuleView(): ReactElement {
                   onViewChange={setOfficeView}
                   char3d={char3d}
                 />
+                {ctrlId !== 'self' && (
+                  <button
+                    type="button"
+                    className="dsh-pwb-office-ctrlchip"
+                    title="点此把操控权切回老板（也可以直接点场景里的老板）"
+                    onClick={() => {
+                      engine.setControl('self');
+                      setCtrlId('self');
+                    }}
+                  >
+                    操控中：{builtinOverrides[ctrlId]?.name ?? members.find((m) => m.id === ctrlId)?.name ?? engine.chars.find((c) => c.id === ctrlId)?.name ?? ctrlId}
+                    {' · 切回老板'}
+                  </button>
+                )}
                 <div className="dsh-pwb-office-zoom">
                   <button title="放大" onClick={() => zoomStep(0.2)}>
                     ＋

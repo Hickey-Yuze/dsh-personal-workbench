@@ -656,6 +656,25 @@ function syncChars(s: Scene3D, chars: Character[], time: number, dt: number): vo
     inst.anchorZ = gy;
     inst.anchorY = (seated ? 1.08 : 1.48) + inst.obj.position.y;
     inst.obj.rotation.y += (faceRot - inst.obj.rotation.y) * 0.25;
+    // 被玩家操控的角色：脚下高亮环（与 2D 同一绿色；老板另有名字标签「（我）」区分）
+    const possessed = inst.obj.userData.ctrlRing as THREE.Mesh | undefined;
+    if (c.controlled !== true) {
+      if (possessed !== undefined) possessed.visible = false;
+    } else {
+      let ring = possessed;
+      if (ring === undefined) {
+        ring = new THREE.Mesh(
+          new THREE.RingGeometry(0.22, 0.32, 28),
+          new THREE.MeshBasicMaterial({ color: 0x00d26a, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }),
+        );
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.y = 0.01;
+        ring.renderOrder = 4; // 低于人物本体，避免盖住脚
+        inst.obj.add(ring);
+        inst.obj.userData.ctrlRing = ring;
+      }
+      ring.visible = true;
+    }
     // 动画切换：走路播 Walk、工作/咖啡播 SitDown、其余 Idle（互斥权重）
     if (inst.mixer !== undefined) {
       const want: 'walk' | 'sit' | 'idle' = walking ? 'walk' : seated ? 'sit' : 'idle';

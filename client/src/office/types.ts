@@ -53,6 +53,8 @@ export interface Character {
   phase: number;
   /** 会议集结出发时间（引擎时间秒）；undefined = 未被召集（P2 会议用）。 */
   meetingAt?: number;
+  /** 玩家是否正操控该角色（点击人物接管操控权；视图据此画脚下高亮圈）。 */
+  controlled?: boolean;
 }
 
 export interface OfficeMap {

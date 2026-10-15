@@ -365,42 +365,63 @@ export class OfficeEngine {
     this.bubbles.set(charId, { text, until: this.time + Math.max(0.3, durMs / 1000) });
   }
 
+  /* ───────────── 操控（玩家接管某个角色） ───────────── */
+
+  /** 玩家当前操控的角色 id（默认 'self' = 老板自己）。 */
+  private ctrlId = 'self';
+
+  /** 当前被操控的角色 id（视图用来显示「操控中」提示）。 */
+  get controlledId(): string {
+    return this.ctrlId;
+  }
+
+  /** 当前操控对象（id 失效时回落老板）。 */
+  get controlled(): Character | null {
+    return this.chars.find((c) => c.id === this.ctrlId) ?? this.self();
+  }
+
+  /** 接管某个角色的操控权：老板本就是「我」，不重复标记高亮。 */
+  setControl(id: string): void {
+    if (!this.chars.some((c) => c.id === id)) return;
+    this.ctrlId = id;
+    for (const c of this.chars) c.controlled = c.id === id && !c.isSelf;
+  }
+
   /**
-   * 点击格子互动：
-   * · NPC 所在格 / 其椅位 → 自己走到该工位旁，双方冒泡寒暄（按职业台词）
+   * 点击格子互动（行动人 = 当前操控对象，默认老板自己）：
+   * · 点到某个同事 → 接管操控他（再点他一次 → 自己走过去寒暄，保持原交互）
+   * · 点老板而当前操控的是别人 → 切回操控老板
    * · 白板前缘格 → 发起会议：自己先去，NPC 陆续到白板前集合，全员 state='meeting' 8~15s 后散会
-   * · 其他可走空地 → 自己 walkTo 过去，到达后回归正常 decide 循环
+   * · 空着的工位椅位 → 操控对象走过去坐下（老板点空位即「坐这儿」）
+   * · 其他可走空地 → 操控对象走过去，到达后回归正常 decide 循环
    */
-  clickCell(x: number, y: number): void {
-    if (x < -this.arenaLeft || y < -this.arenaTop || x >= MAP_W + this.arenaRight || y >= MAP_H + this.arenaBottom) return; // 延伸区外的界外；墙环/家具格由 free 判定
-    const npc = this.npcAt(x, y);
-    if (npc !== null) {
-      this.goChatWith(npc);
-      return;
+  clickCell(x: number, y: number): { kind: 'none' | 'select' | 'chat' | 'seat' | 'walk' | 'meeting'; id: string } {
+    if (x < -this.arenaLeft || y < -this.arenaTop || x >= MAP_W + this.arenaRight || y >= MAP_H + this.arenaBottom) return { kind: 'none', id: '' }; // 延伸区外的界外；墙环/家具格由 free 判定
+    const onCell = this.chars.find((c) => c.cx === x && c.cy === y);
+    if (onCell !== undefined && !onCell.isSelf) {
+      if (this.ctrlId === onCell.id) {
+        this.goChatWith(onCell); // 再点当前操控对象 → 老板过去寒暄
+        return { kind: 'chat', id: onCell.id };
+      }
+      this.setControl(onCell.id);
+      return { kind: 'select', id: onCell.id };
+    }
+    if (onCell !== undefined && this.ctrlId !== 'self') {
+      this.setControl('self');
+      return { kind: 'select', id: 'self' };
     }
     const board = this.whiteboardFrontAt(x, y);
     if (board !== null) {
       this.startMeeting(board);
-      return;
+      return { kind: 'meeting', id: '' };
     }
-    this.walkSelfTo(x, y);
+    if (this.seatControlledAt(x, y)) return { kind: 'seat', id: this.ctrlId };
+    if (this.walkControlledTo(x, y)) return { kind: 'walk', id: this.ctrlId };
+    return { kind: 'none', id: '' };
   }
 
   private self(): Character | null {
     return this.chars.find((c) => c.isSelf) ?? null;
-  }
-
-  /** 命中 NPC：所在格或其工位椅位。 */
-  private npcAt(x: number, y: number): Character | null {
-    for (const c of this.chars) {
-      if (c.isSelf) continue;
-      if (c.cx === x && c.cy === y) return c;
-      const desk = this.desks.find((f) => f.id === c.deskId);
-      if (desk === undefined) continue;
-      const chair = deskChairCell(desk);
-      if (chair.x === x && chair.y === y) return c;
-    }
-    return null;
   }
 
   /** 命中白板：板本体或板正下方一排（点板身也能开会——最直觉的交互）。 */
@@ -412,19 +433,48 @@ export class OfficeEngine {
     return null;
   }
 
-  /** 自己走到 (x,y)：闲逛意图，到达后自动回归 decide 循环。 */
-  private walkSelfTo(x: number, y: number): void {
-    const self = this.self();
-    if (self === null) return;
-    if (!this.free(x, y)) return; // 家具格 / 不可走点不动
-    if (self.cx === x && self.cy === y) {
-      self.intent = 'wander';
-      this.arrive(self);
-      return;
+  /** 操控对象走到 (x,y)：闲逛意图，到达后自动回归 decide 循环。 */
+  private walkControlledTo(x: number, y: number): boolean {
+    const c = this.controlled;
+    if (c === null) return false;
+    if (!this.free(x, y)) return false; // 家具格 / 不可走点不动
+    if (c.cx === x && c.cy === y) {
+      c.intent = 'wander';
+      this.arrive(c);
+      return true;
     }
-    const path = this.path({ x: self.cx, y: self.cy }, { x, y });
-    if (path.length === 0) return;
-    this.startWalk(self, path, 'wander');
+    const path = this.path({ x: c.cx, y: c.cy }, { x, y });
+    if (path.length === 0) return false;
+    this.startWalk(c, path, 'wander');
+    return true;
+  }
+
+  /**
+   * 空工位坐下：操控对象走到该桌椅位并保持坐姿（直到再点别处）。
+   * 老板点空位即「选择这个位子坐下来」——会把他的工位改到这张桌，后续自主行为也回这里。
+   */
+  private seatControlledAt(x: number, y: number): boolean {
+    const c = this.controlled;
+    if (c === null) return false;
+    const desk = this.desks.find((f) => {
+      const ch = deskChairCell(f);
+      return ch.x === x && ch.y === y;
+    });
+    if (desk === undefined) return false;
+    const chair = deskChairCell(desk);
+    if (this.occupied(c, chair.x, chair.y)) return false; // 已经有人坐着
+    c.deskId = desk.id; // 换座位：坐姿渲染与「回工位」都以它为准
+    if (c.cx === chair.x && c.cy === chair.y) {
+      c.path = [];
+      c.intent = null;
+      c.state = 'working';
+      c.stateUntil = this.time + 1e6; // 玩家安排的座位：一直坐着，直到再点别处
+      return true;
+    }
+    const path = this.path({ x: c.cx, y: c.cy }, chair);
+    if (path.length === 0) return false;
+    this.startWalk(c, path, 'work');
+    return true;
   }
 
   /** 走到 NPC 工位旁寒暄：到达后自己冒泡打招呼，NPC 按职业回一句。 */
@@ -567,6 +617,8 @@ export class OfficeEngine {
         return;
       }
     }
+    // 被玩家接管的同事：原地待命、不自主决策（等玩家点击）；老板保持原自主循环，避免观感退化
+    if (c.id === this.ctrlId && !c.isSelf) return;
     if (this.time < c.stateUntil) return;
     this.decide(c);
   }

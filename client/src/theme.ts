@@ -1356,6 +1356,24 @@ html { color-scheme: light !important; }
   min-height: 0;
   position: relative;
 }
+/* 「操控中」提示（左上角悬浮）：点同事接管操控后显示，点它切回老板 */
+.dsh-pwb-office-ctrlchip {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 4;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 178, 106, 0.4);
+  background: rgba(0, 210, 106, 0.12);
+  color: #0a7f4b;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dsh-pwb-office-ctrlchip:hover {
+  background: rgba(0, 210, 106, 0.22);
+}
 /* 场景缩放控制（右上角悬浮）：＋/－/复位，滚轮同样可缩放 */
 .dsh-pwb-office-zoom {
   position: absolute;
