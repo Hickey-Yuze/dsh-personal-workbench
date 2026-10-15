@@ -183,8 +183,9 @@ export interface AutoScrollHandle {
 
 /**
  * 拖拽到滚动区边缘时的自动滚动。
- * 滚到底/顶之后，多余位移记为虚拟偏移继续参与布局计算 —— 这样即便容器已经滚到尽头，
- * 卡片仍能跟着指针继续走（原项目同名实现的等价移植）。
+ * 只上报「真实滚动位移」：卡片相对指针的位移由 grid 的 (clientY - startY) 承担。
+ * 不要再叠加「虚拟偏移」—— 那会让按住卡片顶部拖动条（指针本就贴着容器上沿）时
+ * 卡片被每 16ms 反向拽一点，表现为「往下拖却被硬拽上去」，还会连带挤压上方卡片。
  */
 export function createAutoScroll(
   getScroller: () => HTMLElement | null,
@@ -193,7 +194,6 @@ export function createAutoScroll(
 ): AutoScrollHandle {
   let timer: number | undefined;
   let speed = 0;
-  let virtualOffset = 0;
 
   const stop = (): void => {
     if (timer !== undefined) {
@@ -209,23 +209,25 @@ export function createAutoScroll(
       return;
     }
     const maxScroll = scroller.scrollHeight - scroller.clientHeight;
-    const next = scroller.scrollTop + speed;
-    if (speed > 0 && next >= maxScroll) {
-      virtualOffset += next - maxScroll;
-      scroller.scrollTop = maxScroll;
-    } else if (speed < 0 && next <= 0) {
-      virtualOffset += next;
-      scroller.scrollTop = 0;
-    } else {
-      scroller.scrollTop = next;
+    if (maxScroll <= 0) {
+      onScroll(0);
+      return;
     }
-    onScroll(scroller.scrollTop - startScrollTop + virtualOffset);
+    const next = scroller.scrollTop + speed;
+    scroller.scrollTop = next < 0 ? 0 : next > maxScroll ? maxScroll : next;
+    onScroll(scroller.scrollTop - startScrollTop);
   };
 
   return {
     update(ev: PointerEvent): void {
       const scroller = getScroller();
       if (scroller === null) return;
+      // 容器没有可滚空间：不做自动滚动（否则指针贴着上沿时会持续反向拽卡片）。
+      if (scroller.scrollHeight - scroller.clientHeight <= 0) {
+        speed = 0;
+        stop();
+        return;
+      }
       const rect = scroller.getBoundingClientRect();
       const zone = 72;
       const maxSpeed = 18;
