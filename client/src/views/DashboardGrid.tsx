@@ -138,9 +138,12 @@ export function DashboardGrid({
     const target = cellsRef.current.find((c) => c.id === id);
     if (target === undefined) return;
     const base: RectBase = { col: target.col, row: target.row, colSpan: target.colSpan, rowSpan: target.rowSpan };
+    // 拖拽起始快照：每帧都基于它重算。否则 resolveOverlaps 会在上一帧结果上继续下推，
+    // 下方卡片被一帧帧累积挤压、越跑越远且松手不回弹。
+    const snapshot = cellsRef.current.map((c) => ({ ...c }));
     trackPointer(e, id, (dx, dy) => {
-      setCells((prev) => {
-        const next = moveCell(prev, id, dx, dy, base);
+      setCells(() => {
+        const next = moveCell(snapshot, id, dx, dy, base);
         // 同步 ref：松手时无需等下一帧渲染就能拿到最终布局
         cellsRef.current = next;
         return next;
@@ -152,9 +155,10 @@ export function DashboardGrid({
     const target = cellsRef.current.find((c) => c.id === id);
     if (target === undefined) return;
     const base: RectBase = { col: target.col, row: target.row, colSpan: target.colSpan, rowSpan: target.rowSpan };
+    const snapshot = cellsRef.current.map((c) => ({ ...c })); // 同上：缩放也基于起始布局重算
     trackPointer(e, id, (dx, dy) => {
-      setCells((prev) => {
-        const next = resizeCell(prev, id, dir, dx, dy, base);
+      setCells(() => {
+        const next = resizeCell(snapshot, id, dir, dx, dy, base);
         cellsRef.current = next;
         return next;
       });

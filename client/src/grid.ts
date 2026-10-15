@@ -45,8 +45,12 @@ function overlaps(a: CellConfig, b: CellConfig): boolean {
   );
 }
 
-/** 重叠消解：被压在下面的卡片整体下推到冲突卡的下方，直到收敛（带 100 轮护栏）。 */
-export function resolveOverlaps(list: CellConfig[]): CellConfig[] {
+/**
+ * 重叠消解：被压在下面的卡片整体下推到冲突卡的下方，直到收敛（带 100 轮护栏）。
+ * fixedId 是本次操作的主动卡（正在被拖拽/缩放的那张）：它绝不被下推 ——
+ * 否则指针还在原地、卡片却自己跳到别人下面，还会被逐帧推得越来越远。
+ */
+export function resolveOverlaps(list: CellConfig[], fixedId?: string): CellConfig[] {
   const result = list.map((c) => ({ ...c }));
   let changed = true;
   let guard = 0;
@@ -55,7 +59,7 @@ export function resolveOverlaps(list: CellConfig[]): CellConfig[] {
     guard += 1;
     for (const a of result) {
       for (const b of result) {
-        if (a === b) continue;
+        if (a === b || b.id === fixedId) continue;
         if (overlaps(a, b)) {
           const newRow = a.row + a.rowSpan;
           if (b.row !== newRow) {
@@ -73,7 +77,7 @@ export function resolveOverlaps(list: CellConfig[]): CellConfig[] {
 export function moveCell(list: CellConfig[], id: string, dxCols: number, dyRows: number, base: RectBase): CellConfig[] {
   const col = clamp(Math.round(base.col + dxCols), 1, GRID_COLS - base.colSpan + 1);
   const row = Math.max(1, Math.round(base.row + dyRows));
-  return resolveOverlaps(list.map((c) => (c.id === id ? { ...c, col, row } : c)));
+  return resolveOverlaps(list.map((c) => (c.id === id ? { ...c, col, row } : c)), id);
 }
 
 /** 8 方向缩放：以拖拽起点为基准，方向由 dir 的字符决定（n/s/e/w 可组合）。 */
@@ -112,7 +116,7 @@ export function resizeCell(
   colSpan = clamp(colSpan, MIN_COL_SPAN, GRID_COLS - col + 1);
   rowSpan = Math.max(1, Math.round(rowSpan));
 
-  return resolveOverlaps(list.map((c) => (c.id === id ? { ...c, col, row, colSpan, rowSpan } : c)));
+  return resolveOverlaps(list.map((c) => (c.id === id ? { ...c, col, row, colSpan, rowSpan } : c)), id);
 }
 
 /** 8 个方向的缩放手柄：位置/光标/内部刻线（对应原项目 RESIZE_HANDLES）。 */
