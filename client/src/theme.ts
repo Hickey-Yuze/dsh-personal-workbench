@@ -42,6 +42,10 @@ const CSS = `
 .dsh-pwb-sidebar-icon { display: inline-flex !important; align-items: center !important; line-height: 1 !important; }
 .dsh-pwb-sidebar-label { font-size: 14px !important; display: inline-block !important; }
 
+/* 宿主收起左栏（「新会话」只剩图标）时：入口同步收成纯图标，别把文字裁成「个人工」 */
+.dsh-pwb-sidebar-btn-narrow { padding: 11px 0 !important; gap: 0 !important; }
+.dsh-pwb-sidebar-btn-narrow .dsh-pwb-sidebar-label { display: none !important; }
+
 /* ── 面板：跟随宿主主题 ── */
 .dsh-pwb-panel {
   --pwb-bg: var(--dsw-alias-bg-base, #ffffff);

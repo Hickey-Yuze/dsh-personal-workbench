@@ -157,13 +157,32 @@ function injectSidebarEntry(ctx: WorkbenchClientCtx): () => void {
    * 水平位置交给 CSS 的 `margin: 4px auto 8px !important` —— 与 dsh-cron-board 一致：
    * 该 !important 本来就会覆盖 inline margin-left，写它只会造成两套几何互相打架。
    */
+  /** 「图标 + 文字 + 内边距」所需的最小宽度（首次测得后缓存：收起态文字被隐藏就量不到了）。 */
+  let labelNeed = 0;
+  function measureLabelNeed(icon: HTMLElement, label: HTMLElement): number {
+    if (labelNeed > 0) return labelNeed;
+    const style = window.getComputedStyle(entry);
+    const pad = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+    const gap = parseFloat(style.columnGap) || 8;
+    labelNeed = Math.ceil(icon.getBoundingClientRect().width + gap + label.scrollWidth + pad);
+    return labelNeed;
+  }
+
   function syncGeometry(reference: HTMLElement | undefined): void {
     if (reference === undefined) return;
+    const icon = entry.querySelector<HTMLElement>('.dsh-pwb-sidebar-icon');
+    const label = entry.querySelector<HTMLElement>('.dsh-pwb-sidebar-label');
     const apply = (): void => {
       if (disposed || !reference.isConnected) return;
-      const width = `${Math.round(reference.getBoundingClientRect().width)}px`;
+      const width = Math.round(reference.getBoundingClientRect().width);
+      const px = `${width}px`;
       // 仅在数值真的变化时写 DOM：MutationObserver 回调频繁，避免无意义样式写入
-      if (entry.style.width !== width) entry.style.width = width;
+      if (entry.style.width !== px) entry.style.width = px;
+      // 宿主左栏收起后「新会话」只剩图标，我们同步到的这个宽度放不下文字 ——
+      // 那就只留图标（否则文字被裁成「个人工」）。
+      if (icon !== null && label !== null) {
+        entry.classList.toggle('dsh-pwb-sidebar-btn-narrow', width < measureLabelNeed(icon, label));
+      }
     };
     apply();
     if (observedRef !== reference) {
